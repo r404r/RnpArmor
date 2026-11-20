@@ -1,0 +1,43 @@
+name: smoke
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+      - name: packages
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake python3 zlib1g-dev libbz2-dev pkg-config patchelf
+      - name: build pinned librnp
+        run: bash scripts/build-librnp.sh
+      - name: test
+        env:
+          RNPARMOR_LIBRNP: ${{ github.workspace }}/out/lib/librnp.so
+          # The race detector needs cgo enabled in the toolchain. The
+          # program itself does not use cgo.
+          CGO_ENABLED: "1"
+        run: go test -race -gcflags=all=-d=checkptr=0 ./...
+      - name: build window without cgo
+        env:
+          CGO_ENABLED: "0"
+        run: go build -o /tmp/rnparmor ./cmd/rnparmor
+
+  windows-compile:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+      # Compiling the Go sources on a Windows runner does not execute them
+      # and does not show that a portable zip works on Windows 10 or 11.
+      - name: compile windows packages
+        env:
+          CGO_ENABLED: "0"
+        run: go test -c -o "$env:TEMP\loadlib.test.exe" ./internal/loadlib/; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; go test -c -o "$env:TEMP\rnp.test.exe" ./internal/rnp/; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; go build -o "$env:TEMP\rnparmor.exe" ./cmd/rnparmor

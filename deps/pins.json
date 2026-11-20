@@ -1,0 +1,47 @@
+{
+  "go_toolchain": {
+    "version": "1.27.4",
+    "source": "https://go.dev/dl/go1.27.4.linux-amd64.tar.gz",
+    "sha256": "7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840",
+    "note": "MyGo v0.10.0 的 go.mod 写 go 1.27.3。工具链用当时 go.dev/dl JSON 列出的稳定版 1.27.4，SHA-256 来自同一 JSON。"
+  },
+  "mygo": {
+    "module": "github.com/egoist/mygo",
+    "version": "v0.10.0",
+    "commit": "ebde9399baf2734b3361856a53f4036859973d1d",
+    "ffi_tree": "e557e834c3a698e5cf18959cc430750851ddba5d",
+    "ffi_tree_also_at": "e88574c82acca009a971c822048eb4d11d5c049a",
+    "license": "MIT"
+  },
+  "purego": {
+    "module": "github.com/ebitengine/purego",
+    "version": "v0.11.1",
+    "commit": "15800b5b0a4f3febc099cf663d75ab558a6db8f2",
+    "license": "Apache-2.0"
+  },
+  "rnp": {
+    "version": "0.18.1",
+    "tag": "v0.18.1",
+    "commit": "aad1892e4d8423398a0b973bd0a7e4544c359afc",
+    "source": "https://github.com/rnpgp/rnp",
+    "license_file": "LICENSE.md",
+    "do_not_use": ["v0.18.0"],
+    "sexpp_commit": "c641a2f36520bab783657a58650d9fda548b9dec",
+    "sexpp_source": "https://github.com/rnpgp/sexpp"
+  },
+  "json_c": {
+    "version": "0.19",
+    "tag": "json-c-0.19-20260627",
+    "tarball": "https://github.com/json-c/json-c/releases/download/json-c-0.19-20260627/json-c-0.19.tar.gz",
+    "sha256": "37ad0249902e301bd9052bf712e511fcc6acff4ecaad4b5900aad9ce564e26de",
+    "note": "rnp v0.18.1 的 CMake 仍要求 json-c >= 0.11。SHA-256 来自 GitHub release asset 的 digest 字段，下载后再用 sha256sum 核对。较晚的 rnp main 才改用库内 JSON，那不是这个 tag。"
+  },
+  "botan": {
+    "version": "3.10.0",
+    "tarball": "https://botan.randombit.net/releases/Botan-3.10.0.tar.xz",
+    "sums": "https://botan.randombit.net/releases/sha256sums.txt",
+    "sha256": "fde194236f6d5434f136ea0a0627f6cc9d26af8b96e9f1e1c7d8c82cd90f4f24",
+    "git_tag_commit": "e27d332089247f04e89854a2e60a3af2ec4e430f",
+    "note": "rnp v0.18.1 docs/installation.adoc 写 Botan-3.10.0。SHA-256 取自 botan.randombit.net/releases/sha256sums.txt 中 Botan-3.10.0.tar.xz 那一行。git tag 3.10.0 指向的提交另行记录，发行包以 tarball 哈希为准。"
+  }
+}

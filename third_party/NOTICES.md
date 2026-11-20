@@ -1,0 +1,21 @@
+# 第三方许可
+
+本仓库没有选择 RnpArmor 自己的开源许可证。下面只记录这一阶段实际链接或导入的上游文本，不构成法律意见。分发二进制时需要随包带上对应全文。`third_party/licenses/` 里的文件是从钉扎来源原样复制的。
+
+| 组件 | 钉扎 | 许可 | 文本 |
+| --- | --- | --- | --- |
+| librnp | tag `v0.18.1`，提交 `aad1892e4d8423398a0b973bd0a7e4544c359afc` | BSD-2-Clause，另有文件内列出的 NetBSD/NetPGP 等通知 | `third_party/licenses/rnp-LICENSE.md` |
+| sexpp | 提交 `c641a2f36520bab783657a58650d9fda548b9dec`（rnp 该提交的 gitlink；版本号 0.9.0） | MIT（Ribose 与原始 MIT 声明都在同一文件） | `third_party/licenses/sexpp-LICENSE.md` |
+| Botan | 3.10.0，tarball SHA-256 `fde194236f6d5434f136ea0a0627f6cc9d26af8b96e9f1e1c7d8c82cd90f4f24` | BSD-2-Clause | `third_party/licenses/botan-license.txt` |
+| json-c | 0.19，tag `json-c-0.19-20260627`，tarball SHA-256 `37ad0249902e301bd9052bf712e511fcc6acff4ecaad4b5900aad9ce564e26de` | MIT。rnp v0.18.1 仍链接它；更晚的 rnp `main` 才把 JSON 放进库内，那不是这个 tag | `third_party/licenses/json-c-COPYING` |
+| MyGo | `v0.10.0`，提交 `ebde9399baf2734b3361856a53f4036859973d1d` | MIT，Copyright (c) 2026 MyGo contributors | `third_party/licenses/mygo-MIT.txt` |
+| purego | `v0.11.1`，提交 `15800b5b0a4f3febc099cf663d75ab558a6db8f2` | Apache-2.0 | `third_party/licenses/purego-Apache-2.0.txt` |
+
+Linux 构建还动态链接发行版的 zlib 和 bzip2，没有把它们的源码或 DLL 放进仓库：
+
+- zlib1g `1:1.3.dfsg-3.1ubuntu2.3`，zlib 许可。
+- libbz2 `1.0.8-5.1ubuntu0.1`，bzip2 自己的四条款许可。
+
+Windows portable 目录如果带上 `zlib1.dll`、`bz2.dll` 或其他非系统 DLL，必须使用那次构建实际产生的文件，并把对应许可文本放进同一个目录。不要拿这份 Linux 包里的 soname 当作 Windows DLL 文件名。
+
+`scripts/build-librnp.sh` 会把 rnp、Botan、sexpp 的许可文件再复制到 `out/licenses/`。`out/` 不提交。
