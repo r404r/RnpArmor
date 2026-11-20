@@ -18,9 +18,9 @@ $zip = Join-Path $root "out\rnparmor-windows-amd64.zip"
 $report = Join-Path $root "out\windows-report.txt"
 New-Item -ItemType Directory -Force -Path $src, $deps, $work | Out-Null
 
-function Run([string]$File, [string[]]$Args) {
-    Write-Host "+ $File $($Args -join ' ')"
-    & $File @Args
+function Run([string]$File, [string[]]$CommandArgs) {
+    Write-Host "+ $File $($CommandArgs -join ' ')"
+    & $File @CommandArgs
     if ($LASTEXITCODE -ne 0) { throw "$File exited $LASTEXITCODE" }
 }
 
