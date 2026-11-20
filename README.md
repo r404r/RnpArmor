@@ -1,79 +1,101 @@
 # RnpArmor
 
-最小安全垂直切片：MyGo 原生窗口加上 librnp。这里还不是文件工具的完整界面。
+MyGo 原生窗口加上 librnp 的最小试验。目标是 Windows 10/11 上解压即可用的单目录程序，macOS 和 Linux 以后再补。当前没有完整的文件管理界面，也没有选定本项目的开源许可证。
 
-仓库最初只有这一行标题。现有内容保留，没有另建仓库，没有合并，没有发布 release，也没有为项目选定开源许可证。
+仓库最初只有标题。没有合并，没有 GitHub Release。
 
-研究笔记 `p-research-rnp` 的 `0017-gui-feasibility.md`（`12eee8f6de7a4f3031cce254da284fe11a1e27ff`）没有跑过原型，也没有在真实 Windows 上跑过。下面凡是写“通过”的，都是这次在 Linux 上实际跑出来的结果。
+## 现在能用的
 
-## 方案
+- 一个 MyGo 窗口。它只显示 librnp 是否加载，以及库报告的版本字符串。不在窗口里生成密钥或加密文件。
+- 库路径必须是绝对路径，或与 `rnparmor.exe` 放在同一目录的 `rnp.dll`（Windows）/ `librnp.so`（Linux）。加载前核对同目录 `SHA256SUMS`。Windows 使用 `LoadLibraryEx`，不搜索当前目录和 `PATH`。
+- 测试代码可以：用随机口令生成临时 EDDSA 与 Curve25519 密钥；加密、解密、分离签名、验签；拒绝错误口令、取消、篡改和覆盖已有文件。这些操作不在窗口里。
+- 签名验签成功只表示签名和本会话里的钥匙在数学上对得上。程序不会把这说成身份可信。
 
-比较了两条可审计的接法，没有改 UI 栈。
+## 还没有的
 
-MyGo `ffi` 包不能直接登记 C 回调。`v0.10.0`（`ebde9399baf2734b3361856a53f4036859973d1d`）和较晚的 `e88574c82acca009a971c822048eb4d11d5c049a` 的 `ffi` 树都是 `e557e834c3a698e5cf18959cc430750851ddba5d`。该目录只通过 `purego.RegisterFunc` 把 C 函数绑给 Go。Windows 加载用 `syscall.LoadLibrary`，依赖 DLL 仍走默认搜索，包含当前目录和 `PATH`。因此不用这个包去加载 librnp。
+- 密钥列表、导入导出、进度条，以及在窗口里选择文件。
+- 从进行中的 librnp 调用里取消。取消只在调用返回后丢弃尚未发布的输出。
+- 默认钥匙圈、`%APPDATA%`、智能卡、钥匙服务器和信任模型。测试阶段不要放真实钥匙或口令。
+- 中文输入法和高 DPI。没有测过。
+- 干净的 Windows 10 或 Windows 11 桌面上由人打开窗口的确认。GitHub 的 Windows runner 不是这个环境。
 
-另一条是 cgo/C 桥，或单独的辅助进程。cgo 会让构建依赖 C 编译器，Windows 上还受 MinGW 限制。辅助进程再添一个状态所有者和一套口令 IPC。这一阶段放不进可重复的最小验证。
+## 下载 Windows 包
 
-采用的接法：MyGo 只画原生窗口；librnp 用 MyGo 已经依赖的 purego `v0.11.1` 直接调用。口令回调是进程内一个 `purego.NewCallback` 跳板，`app_ctx` 只传整数槽位，不把 Go 指针交给 C。purego 不会释放这个跳板。`Close` 释放的是槽位、口令副本、密钥 handle 和 `rnp_ffi_t`。Windows 加载代码使用绝对路径和 `LoadLibraryEx` 的 `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32`。这条加载代码已能交叉编译，没有在 Windows 上执行。
+Windows x64 的单目录 zip 由本仓库的 GitHub Actions 作业 `windows-portable` 上传为 artifact，名称是 `rnparmor-windows-amd64`。这不是 GitHub Release。artifact 保留 30 天，下载需要能打开该 Actions 页面的 GitHub 账号。
 
-一个 `Session` 持有一把锁，再进进程级的 librnp 锁。口令回调发生在持锁的那个 OS 线程上，回调里不能再进 `Session`。界面线程要用 `Session.Go`，不要直接跑加解密。
+准确链接和 zip 的 SHA-256 在作业完成后写在这里。作业页：<https://github.com/r404r/RnpArmor/actions>
 
-## 钉扎
+解压后进入 `rnparmor-windows-amd64`，直接运行 `rnparmor.exe`。不需要安装 Go、编译器或额外的 VC 运行库。`rnp.dll` 必须留在 exe 旁边。zlib 和 bzip2 编进 `rnp.dll`，不另附 DLL。
 
-| 组件 | 来源 | 标识 |
-| --- | --- | --- |
-| Go 工具链 | `https://go.dev/dl/go1.27.4.linux-amd64.tar.gz` | SHA-256 `7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840`。MyGo 的 `go` 行是 1.27.3，这里用当时 JSON 列出的稳定版 1.27.4 |
-| MyGo | `github.com/egoist/mygo` `v0.10.0` | `ebde9399baf2734b3361856a53f4036859973d1d`，MIT |
-| purego | `v0.11.1` | `15800b5b0a4f3febc099cf663d75ab558a6db8f2`，Apache-2.0 |
-| librnp | tag `v0.18.1` | `aad1892e4d8423398a0b973bd0a7e4544c359afc`。不要用已撤回的 `v0.18.0` |
-| sexpp | rnp 该提交的 gitlink | `c641a2f36520bab783657a58650d9fda548b9dec` |
-| Botan | `https://botan.randombit.net/releases/Botan-3.10.0.tar.xz` | SHA-256 `fde194236f6d5434f136ea0a0627f6cc9d26af8b96e9f1e1c7d8c82cd90f4f24`，与官网 `sha256sums.txt` 一致 |
-| json-c | release `json-c-0.19-20260627` 的 `json-c-0.19.tar.gz` | SHA-256 `37ad0249902e301bd9052bf712e511fcc6acff4ecaad4b5900aad9ce564e26de`。v0.18.1 的 CMake 仍要求 json-c；更晚的 rnp `main` 才把 JSON 编进库里，那不是这个 tag |
+## 目录
 
-完整字段在 `deps/pins.json`。许可文本在 `third_party/NOTICES.md`。项目自己的 LICENSE 未决。
+```
+rnparmor-windows-amd64/
+  rnparmor.exe
+  rnp.dll
+  SHA256SUMS
+  DEPENDENCIES.txt
+  PORTABLE.txt
+  licenses/
+```
 
-## 构建和测试
+`DEPENDENCIES.txt` 是打包时 `dumpbin /dependents` 的原文。系统 DLL（含 UCRT，如果导入表里有）不放进 zip，它们来自 Windows 10 及以上的系统目录。若导入表出现 `vcruntime*.dll` 或 `msvcp*.dll`，构建会失败，而不是从系统目录抄一份进来。
+
+## 依赖和系统要求
+
+| 组件 | 钉扎 |
+| --- | --- |
+| librnp `v0.18.1` | `aad1892e4d8423398a0b973bd0a7e4544c359afc`。不要用已撤回的 `v0.18.0` |
+| sexpp | `c641a2f36520bab783657a58650d9fda548b9dec` |
+| Botan 3.10.0 | SHA-256 `fde194236f6d5434f136ea0a0627f6cc9d26af8b96e9f1e1c7d8c82cd90f4f24` |
+| json-c 0.19 | SHA-256 `37ad0249902e301bd9052bf712e511fcc6acff4ecaad4b5900aad9ce564e26de`，静态链接 |
+| zlib 1.4 | SHA-256 `02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584`，静态链接 |
+| bzip2 1.0.8 | SHA-512 `083f5e675d73f3233c7930ebe20425a533feedeaaa9d8cc86831312a6581cefbe6ed0d08d2fa89be81082f2a5abdabca8b3c080bf97218a1bd59dc118a30b9f3`，静态链接 |
+| MyGo `v0.10.0` | `ebde9399baf2734b3361856a53f4036859973d1d`，MIT |
+| purego `v0.11.1` | `15800b5b0a4f3febc099cf663d75ab558a6db8f2` |
+| Go | 1.27.4。MyGo 的 `go` 行是 1.27.3 |
+
+Windows 包假定系统自带 UCRT，也就是 64 位 Windows 10 或更新的版本。runner 上的实际系统版本写在该次 artifact 旁的 `windows-report.txt`。Linux 上的 `scripts/build-librnp.sh` 仍使用发行版的 zlib 和 bzip2 共享库，和 Windows zip 里静态链进去的不是同一个二进制。
+
+字段和许可全文见 `deps/pins.json` 与 `third_party/NOTICES.md`。
+
+## 自己构建
+
+Linux：
 
 ```sh
 bash scripts/build-librnp.sh
-export RNPARMOR_LIBRNP="$PWD/out/lib/librnp.so"   # 必须是绝对路径
+export RNPARMOR_LIBRNP="$PWD/out/lib/librnp.so"
 go test ./...
 CGO_ENABLED=1 go test -race -gcflags=all=-d=checkptr=0 ./...
 CGO_ENABLED=0 go build -o rnparmor ./cmd/rnparmor
 ```
 
-`RNPARMOR_LIBRNP` 若是相对路径会被拒绝。加载前会核对同目录的 `SHA256SUMS`。脚本把 `libbotan-3.so.10` 和 `libjson-c.so.5` 放在 `librnp.so` 旁边，并把 RUNPATH 设为 `$ORIGIN`。不要靠当前目录或 `LD_LIBRARY_PATH`。zlib 和 bzip2 仍用发行版的系统库。
+`go test -race` 会打开 checkptr。对 librnp 的 C 缓冲区做 `unsafe.Slice` 会被 checkptr 判为非法指针运算，所以竞态检查加上 `-d=checkptr=0`。竞态检测器本身没有关。这是既有限制，不是为了压掉新的告警。
 
-`go test -race` 会打开 checkptr。对 librnp 的 C 缓冲区做 `unsafe.Slice` 会被 checkptr 判为非法指针运算，所以竞态检查要加 `-d=checkptr=0`。这不是关掉竞态检测器。
+Windows x64，在装有 Visual Studio C++、CMake、Python 和 Git 的环境：
 
-Windows 打包脚本是 `scripts/build-librnp.ps1` 和 `scripts/package-portable.ps1`。前者在核对钉扎后停止，因为没有在 Windows 上试过编译参数。后者要求绝对路径，并在复制前核对 `SHA256SUMS`。两个脚本都没有在本环境执行。它们不会创建 GitHub release。
+```powershell
+pwsh -File .\scripts\build-windows.ps1
+```
 
-## 这次实际跑过的结果
+脚本核对钉扎、用 MSVC 静态运行库编译 Botan、json-c、zlib、bzip2 和 `rnp.dll`，再编 `rnparmor.exe`，把它们放进 `out\dist\rnparmor-windows-amd64`，在 `PATH` 只剩 `System32` 的情况下跑测试，并尝试启动窗口。zip 在 `out\rnparmor-windows-amd64.zip`。CI 用 `windows-2022` 跑同一脚本并上传 artifact。
 
-环境：Linux x86_64，Go 1.27.4，gcc/g++ 13.3.0。没有 Windows 机器。
+## 已经跑过的结果
 
-- `bash scripts/build-librnp.sh` 成功。`out/lib/ldd.txt` 里 `libbotan-3.so.10` 和 `libjson-c.so.5` 都解析到 `out/lib/`，没有设置 `LD_LIBRARY_PATH`。`libz` 和 `libbz2` 来自 `/lib/x86_64-linux-gnu`。
-- `go test ./internal/rnp/ ./internal/loadlib/` 通过。覆盖版本字符串 `0.18.1`、正确口令、错误口令、取消、重复回调、关闭后回调失效、回调与调用方同一 OS 线程、临时 EDDSA/Curve25519 密钥的文件加密解密、篡改失败且不留下明文、分离签名与验签、篡改签名和篡改原文、验签结果的 `IdentityTrusted` 恒为 false、已有文件不覆盖、空文件和超限拒绝、显式目录保存/加载、不写 `HOME`、`Session.Go` 在 librnp 调用结束前返回、取消后不发布输出。
-- `CGO_ENABLED=1 go test -race -gcflags=all=-d=checkptr=0 ./internal/rnp/ ./internal/loadlib/` 通过。
-- `go vet ./...` 通过。
-- `CGO_ENABLED=0 go build` 编出 Linux 的 `cmd/rnparmor`，也编出 `GOOS=windows` 的 exe。Windows 那个 exe 没有运行。
-- 在本机 `DISPLAY=:1` 上启动窗口约 5 秒。进程保持运行，`xwininfo` 看到标题为 `RnpArmor`、约 558×271 的窗口。标准错误是 `mygo: native UI draws without the GPU: there is none`。没有读取窗口像素，所以不能把界面上的版本文字说成已经目视核对。版本文字的核对来自 `Probe` 测试。没有 GPU 的绘制路径也没有在 Windows 上出现过。
+Linux x86_64、Go 1.27.4 上：`scripts/build-librnp.sh` 成功；`go test` 和带 `-d=checkptr=0` 的 `go test -race` 通过；`go vet` 通过。本机曾启动窗口，`xwininfo` 看到标题 `RnpArmor`。标准错误写明没有 GPU。没有读取像素。
 
-测试口令在运行时随机生成，不写入源码、日志或仓库。没有提交私钥或 `out/` 里的二进制。
+Windows 包的命令、runner 系统版本、测试输出和窗口是否出现，以该次 artifact 里的 `windows-report.txt` 为准。在那份报告写上之前，不要把“编译通过”或“作业变绿”说成 Windows 10/11 桌面已经人工验证。
 
-## 行为边界
+## 安全限制
 
-- 输入上限 32 MiB，librnp 输出缓冲上限 40 MiB，口令最长 255 字节（librnp 的缓冲区是 256，含结尾 NUL）。
-- 解密和验签失败时不把输出提交到目标路径。明文先留在内存里，成功后才发布。
-- Linux 上发布用同目录临时文件 `.rnparmor-*`，写完后 `renameat2(RENAME_NOREPLACE)`。目标已存在就失败并保留原文件。崩溃时可能留下临时文件，其中可能有输出字节，需要删除。非 Linux 的发布是 `O_EXCL` 再写入，不是原子替换，而且没有跑过。
-- 持久化只有 `SaveTo` / `LoadFrom` 的显式绝对目录。不调用 `rnp_get_default_homedir`，不写 `%APPDATA%` 或家目录 `.rnp`。目录不可写时返回错误，不改去别处。
-- 签名数学有效只说明它和本会话里的钥匙对得上。`IdentityTrusted` 固定为 false。
-- 已经开始的 librnp 调用不能从中途取消。取消只保证调用返回后不发布输出。
-- 校验和打开之间有时间差。校验文件不在仓库里跟踪，由构建脚本写到 `out/lib/SHA256SUMS`。
+- 测试口令在运行时随机生成，不进源码、日志或 zip。
+- 失败的解密不把明文写成目标文件。已有文件不覆盖。Linux 用 `renameat2(RENAME_NOREPLACE)`。Windows 用 `O_EXCL` 再写入，不是原子替换。
+- 输入上限 32 MiB，输出缓冲上限 40 MiB，口令最长 255 字节。
+- 不读默认钥匙圈。保存密钥必须给出显式目录。
+- 口令回调在持有 librnp 锁的线程上同步执行，回调里不能再进入会话。
+- purego 不释放回调跳板。`Close` 释放槽位、口令副本和 C handle。
 
-## 还没验证的事
+## 许可
 
-- 真实 Windows 10/11 上的加载、回调、打包和运行。Linux 交叉编译与 CI 编译都不能代替。
-- `.github/workflows/smoke.yml` 已提交，这次没有等待 GitHub Actions。即使以后变绿，也不证明干净的 Win10/11。
-- MyGo 在没有 GPU 的机器上的绘制质量、IME 和高 DPI。
-- 智能卡、钥匙服务器、信任模型和完整界面。
+RnpArmor 自己的许可证还没定。zip 里的 `licenses\` 只是第三方文本。分发二进制时要带上它们。这不是法律意见。

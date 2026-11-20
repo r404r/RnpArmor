@@ -321,10 +321,10 @@ func TestCommitRefusesOverwriteAndUnusableDir(t *testing.T) {
 	}
 
 	ro := t.TempDir()
-	if err := os.Chmod(ro, 0o555); err != nil {
+	if err := makeUnwritable(ro); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(ro, 0o755) })
+	t.Cleanup(func() { _ = restoreWritable(ro) })
 	roDst := filepath.Join(ro, "out.asc")
 	err = s.EncryptFile(ctx, src, roDst)
 	if err == nil {
@@ -427,8 +427,8 @@ func TestPersistIsExplicit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if secInfo.Mode().Perm() != 0o600 {
-		t.Fatalf("secring mode %o", secInfo.Mode().Perm())
+	if !secretRestricted(secInfo) {
+		t.Fatalf("secring mode %o size %d", secInfo.Mode().Perm(), secInfo.Size())
 	}
 	if err := s.SaveTo(ctx, keys); !errors.Is(err, ErrExists) {
 		t.Fatalf("second save: %v", err)

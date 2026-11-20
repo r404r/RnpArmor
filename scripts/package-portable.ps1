@@ -48,9 +48,9 @@ foreach ($line in Get-Content -LiteralPath $sumsPath) {
 }
 $haveDll = $false
 foreach ($f in $files) {
-    if ([System.IO.Path]::GetFileName($f) -eq "librnp.dll") { $haveDll = $true }
+    if ([System.IO.Path]::GetFileName($f) -eq "rnp.dll") { $haveDll = $true }
 }
-if (-not $haveDll) { throw "SHA256SUMS does not list librnp.dll" }
+if (-not $haveDll) { throw "SHA256SUMS does not list rnp.dll" }
 
 if (Test-Path -LiteralPath $OutDir) { throw "output directory already exists" }
 New-Item -ItemType Directory -Path $OutDir | Out-Null
@@ -62,9 +62,10 @@ Copy-Item -LiteralPath $sumsPath -Destination (Join-Path $OutDir "SHA256SUMS")
 
 $note = @"
 RnpArmor portable directory.
-Persistence is off unless a future build is given an explicit directory.
-This folder does not read the default keyring.
-Windows 10/11 behavior of this exact folder was not established by the Linux CI job.
+Start rnparmor.exe from this folder. It loads rnp.dll beside the executable.
+Do not put real keys in this test build.
+RnpArmor itself has no chosen license. Third-party notices are in licenses\ if this copy step is followed by build-windows.ps1.
+This script only copies an already built exe and DLL. It does not prove Windows 10 or 11.
 "@
 Set-Content -LiteralPath (Join-Path $OutDir "PORTABLE.txt") -Value $note -Encoding utf8
 Write-Host "wrote $OutDir"

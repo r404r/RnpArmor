@@ -73,12 +73,13 @@ func Verify(path string) error {
 		if !ok {
 			return fmt.Errorf("%w: malformed line", ErrChecksum)
 		}
-		name = strings.TrimSpace(name)
+		name = strings.TrimSpace(strings.ReplaceAll(name, `\`, "/"))
 		hexsum = strings.TrimSpace(hexsum)
-		if name == "" || strings.Contains(name, "/") || strings.Contains(name, `\`) || name == "." || name == ".." {
-			return fmt.Errorf("%w: bad name %q", ErrChecksum, name)
+		full, err := bundlePath(dir, name)
+		if err != nil {
+			return err
 		}
-		if err := matchFile(filepath.Join(dir, name), hexsum); err != nil {
+		if err := matchFile(full, hexsum); err != nil {
 			return err
 		}
 		if name == base {
@@ -92,6 +93,25 @@ func Verify(path string) error {
 		return fmt.Errorf("%w: %s is not listed", ErrChecksum, base)
 	}
 	return nil
+}
+
+// bundlePath resolves name inside dir. Names may use slashes for files in
+// subdirectories. ".." and absolute names are rejected.
+func bundlePath(dir, name string) (string, error) {
+	if name == "" || strings.Contains(name, ":") || strings.HasPrefix(name, "/") {
+		return "", fmt.Errorf("%w: bad name %q", ErrChecksum, name)
+	}
+	for _, part := range strings.Split(name, "/") {
+		if part == "" || part == "." || part == ".." {
+			return "", fmt.Errorf("%w: bad name %q", ErrChecksum, name)
+		}
+	}
+	full := filepath.Join(dir, filepath.FromSlash(name))
+	rel, err := filepath.Rel(dir, full)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%w: bad name %q", ErrChecksum, name)
+	}
+	return full, nil
 }
 
 func matchFile(path, want string) error {

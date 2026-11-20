@@ -32,6 +32,32 @@ func TestVerifyRejectsRelativeAndTamper(t *testing.T) {
 	if err := Verify(lib); err == nil {
 		t.Fatal("tampered dependency was accepted")
 	}
+	if err := os.WriteFile(filepath.Join(dir, "SHA256SUMS"), []byte("aabbcc  ../librnp.so\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(lib); err == nil {
+		t.Fatal("parent path in checksum was accepted")
+	}
+	sub := filepath.Join(dir, "licenses")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	notice := filepath.Join(sub, "notice.txt")
+	if err := os.WriteFile(notice, []byte("notice"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeSums(t, dir, lib, notice)
+	// writeSums records only the base name. Rewrite the notice line with its relative path.
+	sum := sha256.Sum256(mustRead(t, lib))
+	nsum := sha256.Sum256(mustRead(t, notice))
+	text := hex.EncodeToString(sum[:]) + "  " + filepath.Base(lib) + "\n" +
+		hex.EncodeToString(nsum[:]) + "  licenses/notice.txt\n"
+	if err := os.WriteFile(filepath.Join(dir, SumFile), []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(lib); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestResolveRejectsRelativeEnv(t *testing.T) {

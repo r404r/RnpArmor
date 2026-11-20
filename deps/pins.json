@@ -36,6 +36,20 @@
     "sha256": "37ad0249902e301bd9052bf712e511fcc6acff4ecaad4b5900aad9ce564e26de",
     "note": "rnp v0.18.1 的 CMake 仍要求 json-c >= 0.11。SHA-256 来自 GitHub release asset 的 digest 字段，下载后再用 sha256sum 核对。较晚的 rnp main 才改用库内 JSON，那不是这个 tag。"
   },
+  "zlib": {
+    "version": "1.4",
+    "tarball": "https://github.com/madler/zlib/releases/download/v1.4/zlib-1.4.tar.gz",
+    "sha256": "02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584",
+    "note": "GitHub release asset digest，并用下载文件的 SHA-256 核对过。zlib.net 也提供 zlib-1.4.tar.gz。Windows 包静态链接这一版。Linux 测试仍用发行版的 zlib 共享库，两者不是同一个二进制。"
+  },
+  "bzip2": {
+    "version": "1.0.8",
+    "tarball": "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
+    "sha512": "083f5e675d73f3233c7930ebe20425a533feedeaaa9d8cc86831312a6581cefbe6ed0d08d2fa89be81082f2a5abdabca8b3c080bf97218a1bd59dc118a30b9f3",
+    "sha256": "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269",
+    "sums": "https://sourceware.org/pub/bzip2/sha512.sum",
+    "note": "SHA-512 与 sourceware sha512.sum 里 bzip2-1.0.8.tar.gz 那一行一致。SHA-256 是对这份通过 SHA-512 核对的 tarball 再计算的。Windows 包静态链接它。"
+  },
   "botan": {
     "version": "3.10.0",
     "tarball": "https://botan.randombit.net/releases/Botan-3.10.0.tar.xz",
