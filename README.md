@@ -43,14 +43,24 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, focused on a 
    - Non-overwrite output semantics for file publishing.
 
 4. **Windows portable build + smoke flow hardening**
-   - `rnparmor.exe --smoke-test` added for deterministic CI smoke checks.
+    - `rnparmor.exe --smoke-test` added for deterministic CI smoke checks.
+   - `--smoke-test` now also prints `app_version=<value>` and is validated by CI.
    - Windows script smoke path now runs headless smoke-test first, then bounded GUI probe.
    - CI dependency cache added (`out/deps`) for Linux and Windows jobs.
+
+5. **Automated release workflow for portable artifacts**
+   - New `.github/workflows/release.yml` runs on `push` tag `v*` and `workflow_dispatch`.
+   - Builds both Linux and Windows portable bundles and uploads them as artifacts.
+   - Publishes/updates GitHub Release with:
+     - `rnparmor-windows-amd64.zip`
+     - `rnparmor-linux-amd64.tar.gz`
+     - `windows-report.txt`
+     - `rnparmor-${TAG}-SHA256SUMS.txt`
 
 ## Current Architecture (at a glance)
 
 - `cmd/rnparmor/`
-  - `main.go`: MyGo app entry + 5-workspace UI + async session operations.
+  - `main.go`: MyGo app entry + 5-workspace UI + async session operations + build-time `appVersion` display/output.
   - `i18n.go`: tri-lingual catalog (EN/ZH/JA), language resolution, translation validation.
 - `internal/rnp/`
   - `api.go`: purego FFI bindings to librnp APIs.
@@ -60,7 +70,9 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, focused on a 
 - `scripts/build-windows.ps1`
   - builds pinned deps and portable output, runs tests and smoke steps.
 - `.github/workflows/smoke.yml`
-  - Linux + Windows portable jobs with cache.
+  - Linux + Windows portable jobs with cache + per-branch concurrency cancel.
+- `.github/workflows/release.yml`
+  - tag-driven/manual portable packaging and release publication.
 
 ## GUI Workspaces
 
@@ -127,6 +139,16 @@ rnparmor --lang zh
 rnparmor --lang ja
 ```
 
+Expected smoke output includes:
+
+```text
+status=ok
+app_version=dev
+library=...
+version=...
+i18n=ok
+```
+
 Language preset fallback order:
 
 1. `--lang`
@@ -150,6 +172,9 @@ CGO_ENABLED=0 go build -o rnparmor ./cmd/rnparmor
 
 ```powershell
 pwsh -File .\scripts\build-windows.ps1
+
+# inject app version into rnparmor.exe metadata shown by --smoke-test/About
+pwsh -File .\scripts\build-windows.ps1 -Version v1.2.3
 ```
 
 The script compiles pinned deps/librnp, builds `rnparmor.exe`, creates `out\dist\rnparmor-windows-amd64`, runs targeted tests, then:
@@ -169,6 +194,17 @@ Workflow: `.github/workflows/smoke.yml`
 - `windows-portable` job:
   - dependency cache on `out/deps`
   - full portable script + artifact upload
+  - cache key: `${{ runner.os }}-deps-v2-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
+
+Workflow: `.github/workflows/release.yml`
+
+- triggers:
+  - `push` tags matching `v*`
+  - `workflow_dispatch` (optional `tag` input)
+- jobs:
+  - `linux-portable`: build/test/package `rnparmor-linux-amd64.tar.gz`
+  - `windows-portable`: build/test/package `rnparmor-windows-amd64.zip` + `windows-report.txt`
+  - `publish-release`: on both jobs green, create/update Release and upload assets with combined checksums
 
 ## Security & Operational Boundaries
 
@@ -236,14 +272,24 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
    - 文件发布遵循防覆盖语义。
 
 4. **Windows portable 构建与 smoke 流程加固**
-   - 新增 `rnparmor.exe --smoke-test`，用于确定性冒烟检查。
-   - Windows 脚本先跑 smoke-test，再做有超时保护的 GUI 进程探针。
-   - Linux/Windows CI 作业均新增 `out/deps` 缓存。
+    - 新增 `rnparmor.exe --smoke-test`，用于确定性冒烟检查。
+   - `--smoke-test` 现会输出 `app_version=<值>`，CI 会核对版本注入结果。
+    - Windows 脚本先跑 smoke-test，再做有超时保护的 GUI 进程探针。
+    - Linux/Windows CI 作业均新增 `out/deps` 缓存。
+
+5. **自动打包发布工作流**
+   - 新增 `.github/workflows/release.yml`，在 `v*` Tag 推送或手动触发时执行。
+   - 同时构建 Linux/Windows portable 包并上传 artifact。
+   - 双平台成功后创建/更新 GitHub Release，并上传：
+     - `rnparmor-windows-amd64.zip`
+     - `rnparmor-linux-amd64.tar.gz`
+     - `windows-report.txt`
+     - `rnparmor-${TAG}-SHA256SUMS.txt`
 
 ### 架构与目录
 
 - `cmd/rnparmor/`
-  - `main.go`：MyGo 主程序、5 工作区 UI、异步会话操作。
+  - `main.go`：MyGo 主程序、5 工作区 UI、异步会话操作，以及构建注入 `appVersion` 展示/输出。
   - `i18n.go`：EN/ZH/JA 三语词典、语言解析与完整性校验。
 - `internal/rnp/`
   - `api.go`：purego 对 librnp 的 FFI 绑定。
@@ -251,7 +297,8 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
   - `ops.go`：密钥管理、文本/文件加解密签名验签、Packet/特性接口。
   - `session_test.go`：兼容测试 + 扩展测试。
 - `scripts/build-windows.ps1`：Windows portable 构建、测试、冒烟与打包。
-- `.github/workflows/smoke.yml`：Linux/Windows CI。
+- `.github/workflows/smoke.yml`：Linux/Windows CI（含同分支并发自动取消）。
+- `.github/workflows/release.yml`：Tag/手动触发的自动打包发布。
 
 ### 五大工作区说明
 
@@ -318,6 +365,16 @@ rnparmor --lang zh
 rnparmor --lang ja
 ```
 
+预期 smoke 输出含：
+
+```text
+status=ok
+app_version=dev
+library=...
+version=...
+i18n=ok
+```
+
 语言预设优先级：
 
 1. `--lang`
@@ -341,6 +398,9 @@ CGO_ENABLED=0 go build -o rnparmor ./cmd/rnparmor
 
 ```powershell
 pwsh -File .\scripts\build-windows.ps1
+
+# 注入应用版本（用于 --smoke-test / About 显示）
+pwsh -File .\scripts\build-windows.ps1 -Version v1.2.3
 ```
 
 脚本会构建钉扎依赖与 `rnp.dll`、打包 `rnparmor.exe`，并执行：
@@ -360,6 +420,17 @@ CI 文件：`.github/workflows/smoke.yml`
 - `windows-portable` 作业：
   - `out/deps` 缓存
   - portable 全流程 + artifact 上传
+  - 缓存键：`${{ runner.os }}-deps-v2-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
+
+发布文件：`.github/workflows/release.yml`
+
+- 触发条件：
+  - 推送 `v*` Tag
+  - 手动触发（可选 `tag` 输入）
+- 作业：
+  - `linux-portable`：构建/测试/打包 `rnparmor-linux-amd64.tar.gz`
+  - `windows-portable`：构建/测试/打包 `rnparmor-windows-amd64.zip` 与 `windows-report.txt`
+  - `publish-release`：双平台通过后创建/更新 Release 并上传资产与统一 SHA256
 
 ### 安全边界与注意事项
 

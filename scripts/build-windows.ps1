@@ -1,8 +1,18 @@
 # Build the Windows x64 portable directory and zip on a machine with
 # Visual Studio, CMake, Python, and Git. Does not publish a GitHub release.
 # Requires the pins in deps/pins.json. Does not search PATH for librnp.
+param(
+    [string]$Version = "dev"
+)
+
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
+
+# Timestamped stage log so CI timing is visible per stage.
+function Log([string]$Message) {
+    Write-Host ("[{0}] {1}" -f (Get-Date -Format "HH:mm:ss"), $Message)
+}
+Log "build-windows.ps1 start, version=$Version"
 
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
@@ -82,11 +92,13 @@ if (-not $py) { throw "Python is required to configure Botan" }
 Write-Host "python: $py"
 Write-Host "ninja: $ninja"
 
+Log "stage: download pinned sources"
 Get-Pinned $pins.botan.tarball (Join-Path $src "Botan-3.10.0.tar.xz") $pins.botan.sha256 $null
 Get-Pinned $pins.json_c.tarball (Join-Path $src "json-c-0.19.tar.gz") $pins.json_c.sha256 $null
 Get-Pinned $pins.zlib.tarball (Join-Path $src "zlib-1.4.tar.gz") $pins.zlib.sha256 $null
 Get-Pinned $pins.bzip2.tarball (Join-Path $src "bzip2-1.0.8.tar.gz") $pins.bzip2.sha256 $pins.bzip2.sha512
 
+Log "stage: extract sources"
 $botanSrc = Join-Path $src "Botan-3.10.0"
 if (-not (Test-Path (Join-Path $botanSrc "configure.py"))) {
     Run "tar.exe" @("-xf", (Join-Path $src "Botan-3.10.0.tar.xz"), "-C", $src)
@@ -104,6 +116,7 @@ if (-not (Test-Path (Join-Path $bzSrc "bzlib.c"))) {
     Run "tar.exe" @("-xzf", (Join-Path $src "bzip2-1.0.8.tar.gz"), "-C", $src)
 }
 
+Log "stage: fetch rnp and sexpp"
 $rnpSrc = Join-Path $src "rnp"
 if (-not (Test-Path (Join-Path $rnpSrc ".git"))) {
     Run "git.exe" @("clone", "--depth", "1", "--branch", "v0.18.1", "https://github.com/rnpgp/rnp.git", $rnpSrc)
@@ -131,7 +144,12 @@ $cmakeCommon = @(
 if ($ninja) { $cmakeCommon = @("-G", "Ninja", "-DCMAKE_MAKE_PROGRAM=$ninja") + $cmakeCommon }
 
 $botanPrefix = Join-Path $deps "botan"
+Log "stage: botan"
 if (-not (Test-Path (Join-Path $botanPrefix "include"))) {
+    # Botan is built from modular sources with Ninja so that every core is
+    # used. An amalgamation build is one huge translation unit and compiles
+    # on a single core, which exceeded the CI time limit.
+    if (-not $ninja) { throw "ninja.exe was not found; it is required for the parallel Botan build" }
     $botanArgs = @(
         (Join-Path $botanSrc "configure.py"),
         "--cc=msvc", "--os=windows", "--cpu=x86_64",
@@ -139,22 +157,18 @@ if (-not (Test-Path (Join-Path $botanPrefix "include"))) {
         "--disable-shared-library",
         "--with-msvc-runtime=MT",
         "--without-documentation",
-        "--amalgamation",
         "--with-build-dir=$(Join-Path $work 'botan')"
     )
-    if ($ninja) { $botanArgs += @("--build-tool=ninja") } else { $botanArgs += @("--build-tool=nmake") }
+    $botanArgs += @("--build-tool=ninja")
     Run $py $botanArgs
-    if ($ninja) {
-        Run $ninja @("-C", (Join-Path $work "botan"), "install")
-    } else {
-        Push-Location (Join-Path $work "botan")
-        try { Run "nmake.exe" @("install") } finally { Pop-Location }
-    }
+    Run $ninja @("-C", (Join-Path $work "botan"), "install")
 }
+Log "botan done"
 Write-Host "botan prefix:"
 Get-ChildItem -Recurse -File $botanPrefix -Include *.lib, *.dll, version.h | ForEach-Object { Write-Host $_.FullName }
 
 $jsonPrefix = Join-Path $deps "json-c"
+Log "stage: json-c"
 if (-not (Test-Path (Join-Path $jsonPrefix "lib\json-c.lib"))) {
     Run "cmake.exe" (@(
         "-S", $jsonSrc, "-B", (Join-Path $work "json-c"),
@@ -166,6 +180,7 @@ if (-not (Test-Path (Join-Path $jsonPrefix "lib\json-c.lib"))) {
 }
 
 $zlibPrefix = Join-Path $deps "zlib"
+Log "stage: zlib"
 if (-not (Test-Path (Join-Path $zlibPrefix "lib\libz.lib"))) {
     Run "cmake.exe" (@(
         "-S", $zlibSrc, "-B", (Join-Path $work "zlib"),
@@ -177,6 +192,7 @@ if (-not (Test-Path (Join-Path $zlibPrefix "lib\libz.lib"))) {
 }
 
 $bzPrefix = Join-Path $deps "bzip2"
+Log "stage: bzip2"
 if (-not (Test-Path (Join-Path $bzPrefix "lib\bz2.lib"))) {
     Run "cmake.exe" (@(
         "-S", (Join-Path $root "scripts\windows\bzip2-static"),
@@ -189,6 +205,7 @@ if (-not (Test-Path (Join-Path $bzPrefix "lib\bz2.lib"))) {
 }
 
 $rnpPrefix = Join-Path $deps "rnp"
+Log "stage: rnp"
 $rnpBuild = Join-Path $work "rnp"
 if (Test-Path $rnpBuild) { Remove-Item -Recurse -Force $rnpBuild }
 $link = "ws2_32.lib bcrypt.lib crypt32.lib user32.lib advapi32.lib"
@@ -223,13 +240,18 @@ if (-not $dll) {
     throw "rnp.dll was not produced"
 }
 Write-Host "rnp.dll $($dll.FullName)"
+Log "rnp done"
 
+Log "stage: go build (version $Version)"
 $go = (Get-Command go.exe).Source
 $env:CGO_ENABLED = "0"
 $env:GOOS = "windows"
 $env:GOARCH = "amd64"
 $exeBuilt = Join-Path $work "rnparmor.exe"
-Run $go @("build", "-trimpath", "-o", $exeBuilt, ".\cmd\rnparmor")
+# No -H windowsgui: the console subsystem keeps --smoke-test output capturable.
+$ldflags = "-s -w -X main.appVersion=$Version"
+Run $go @("build", "-trimpath", "-ldflags", $ldflags, "-o", $exeBuilt, ".\cmd\rnparmor")
+Log "go build done"
 
 if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
 New-Item -ItemType Directory -Force -Path $dist, (Join-Path $dist "licenses") | Out-Null
@@ -329,6 +351,7 @@ $env:RNPARMOR_LIBRNP = (Resolve-Path (Join-Path $dist "rnp.dll")).Path
 foreach ($name in @("LIB", "INCLUDE", "LIBPATH", "VCINSTALLDIR", "VSINSTALLDIR")) {
     Remove-Item "Env:$name" -ErrorAction SilentlyContinue
 }
+Log "stage: go test"
 $testLog = Join-Path $work "go-test.txt"
 $testErr = Join-Path $work "go-test-err.txt"
 Write-Host "go test with RNPARMOR_LIBRNP=$env:RNPARMOR_LIBRNP"
@@ -337,11 +360,18 @@ $testCmd = @("test", "-count=1", "-timeout", "20m", "./internal/loadlib/", "./in
 Get-Content $testLog, $testErr -ErrorAction SilentlyContinue
 if ($LASTEXITCODE -ne 0) { throw "go test failed: $LASTEXITCODE" }
 
+Log "go test done"
+Log "stage: smoke"
 Remove-Item Env:RNPARMOR_LIBRNP -ErrorAction SilentlyContinue
 $smokeCheck = & (Join-Path $dist "rnparmor.exe") "--smoke-test" 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "smoke-test failed: $LASTEXITCODE`n$smokeCheck"
 }
+$smokeText = $smokeCheck | Out-String
+if ($smokeText -notmatch ("(?m)^app_version=" + [regex]::Escape($Version) + "\\s*\$")) {
+    throw "smoke-test did not report app_version=$Version`n$smokeText"
+}
+Write-Host $smokeText
 
 $proc = Start-Process -FilePath (Join-Path $dist "rnparmor.exe") -WorkingDirectory $dist -PassThru -WindowStyle Hidden
 $null = Wait-Process -Id $proc.Id -Timeout 12 -ErrorAction SilentlyContinue
@@ -368,6 +398,8 @@ if ($running) {
 }
 $env:PATH = $savedPath
 
+Log "smoke done"
+Log "stage: zip"
 $os = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
 $head = (& git.exe -C $root rev-parse HEAD).Trim()
 if (Test-Path $zip) { Remove-Item -Force $zip }
@@ -376,6 +408,7 @@ $zipHash = Get-Hash $zip "SHA256"
 $listing = (Get-ChildItem -Recurse -File $dist | ForEach-Object { "{0}`t{1}" -f $_.Length, $_.FullName.Substring($dist.Length + 1) }) -join "`n"
 @"
 commit $head
+version $Version
 os $($os.ProductName) build $($os.CurrentBuild) display $($os.DisplayVersion)
 go $(& $go version)
 dll $($dll.FullName)
@@ -387,6 +420,7 @@ zip sha256 $zipHash
 files:
 $listing
 "@ | Set-Content -LiteralPath $report -Encoding utf8
+Log "zip done"
 Write-Host "ZIP $zip"
 Write-Host "SHA256 $zipHash"
 Get-Content $report

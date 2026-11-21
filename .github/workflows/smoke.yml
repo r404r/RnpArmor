@@ -7,6 +7,10 @@ on:
       - "third_party/NOTICES.md"
   workflow_dispatch:
 
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   linux:
     runs-on: ubuntu-latest
@@ -20,8 +24,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: out/deps
-          key: ${{ runner.os }}-deps-${{ hashFiles('deps/pins.json', 'scripts/build-librnp.sh') }}
+          key: ${{ runner.os }}-deps-v2-${{ hashFiles('deps/pins.json') }}
           restore-keys: |
+            ${{ runner.os }}-deps-v2-
             ${{ runner.os }}-deps-
       - name: packages
         run: sudo apt-get update && sudo apt-get install -y build-essential cmake python3 zlib1g-dev libbz2-dev pkg-config patchelf
@@ -53,8 +58,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: out/deps
-          key: ${{ runner.os }}-deps-${{ hashFiles('deps/pins.json', 'scripts/build-windows.ps1') }}
+          key: ${{ runner.os }}-deps-v2-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}
           restore-keys: |
+            ${{ runner.os }}-deps-v2-
             ${{ runner.os }}-deps-
       - name: build, test, and zip
         shell: pwsh
