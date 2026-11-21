@@ -19,6 +19,7 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, focused on a 
    - Real-time language switch from the top bar (`English | 中文 | 日本語`).
    - Language preset by `--lang en|zh|ja`, `RNPARMOR_LANG`, or system `LANG`.
    - Added a **menu-less standalone About page** (no workspace tabs in About view), showing:
+     - Application Version: injected at build time (`appVersion`, e.g., `v0.0.1` or `dev`)
      - Author: `r404r (https://github.com/r404r)`
      - Repository URL: `https://github.com/r404r/RnpArmor`
      - RNP upstream: `https://github.com/rnpgp/rnp` + current `librnp` version
@@ -43,7 +44,7 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, focused on a 
    - Non-overwrite output semantics for file publishing.
 
 4. **Windows portable build + smoke flow hardening**
-    - `rnparmor.exe --smoke-test` added for deterministic CI smoke checks.
+   - `rnparmor.exe --smoke-test` added for deterministic CI smoke checks.
    - `--smoke-test` now also prints `app_version=<value>` and is validated by CI.
    - Windows script smoke path now runs headless smoke-test first, then bounded GUI probe.
    - CI dependency cache added (`out/deps`) for Linux and Windows jobs.
@@ -250,6 +251,7 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
    - 顶部栏可即时切换 `English | 中文 | 日本語`。
    - 语言可由 `--lang en|zh|ja`、`RNPARMOR_LANG`、`LANG` 预设。
    - 新增 **无菜单独立 About 页面**（About 视图不显示工作区 Tab 菜单），展示：
+     - 应用版本：构建期注入的应用版本号（`appVersion`，例如 `v0.0.1` 或 `dev`）
      - 作者：`r404r (https://github.com/r404r)`
      - 仓库地址：`https://github.com/r404r/RnpArmor`
      - RNP 上游地址：`https://github.com/rnpgp/rnp` 与当前 `librnp` 版本
@@ -272,10 +274,10 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
    - 文件发布遵循防覆盖语义。
 
 4. **Windows portable 构建与 smoke 流程加固**
-    - 新增 `rnparmor.exe --smoke-test`，用于确定性冒烟检查。
+   - 新增 `rnparmor.exe --smoke-test`，用于确定性冒烟检查。
    - `--smoke-test` 现会输出 `app_version=<值>`，CI 会核对版本注入结果。
-    - Windows 脚本先跑 smoke-test，再做有超时保护的 GUI 进程探针。
-    - Linux/Windows CI 作业均新增 `out/deps` 缓存。
+   - Windows 脚本先跑 smoke-test，再做有超时保护的 GUI 进程探针。
+   - Linux/Windows CI 作业均新增 `out/deps` 缓存。
 
 5. **自动打包发布工作流**
    - 新增 `.github/workflows/release.yml`，在 `v*` Tag 推送或手动触发时执行。

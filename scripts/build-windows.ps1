@@ -368,7 +368,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "smoke-test failed: $LASTEXITCODE`n$smokeCheck"
 }
 $smokeText = $smokeCheck | Out-String
-if ($smokeText -notmatch ("(?m)^app_version=" + [regex]::Escape($Version) + "\\s*\$")) {
+if ($smokeText -notmatch ('(?m)^app_version=' + [regex]::Escape($Version) + '\s*$')) {
     throw "smoke-test did not report app_version=$Version`n$smokeText"
 }
 Write-Host $smokeText

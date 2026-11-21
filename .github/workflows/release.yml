@@ -77,6 +77,9 @@ jobs:
           cp third_party/licenses/json-c-COPYING out/dist/rnparmor-linux-amd64/licenses/
           cp third_party/licenses/mygo-MIT.txt out/dist/rnparmor-linux-amd64/licenses/
           cp third_party/licenses/purego-Apache-2.0.txt out/dist/rnparmor-linux-amd64/licenses/
+          smoke_out="$(./out/dist/rnparmor-linux-amd64/rnparmor --smoke-test)"
+          echo "$smoke_out"
+          echo "$smoke_out" | grep -Fx "app_version=${{ steps.tag.outputs.value }}"
           tar -C out/dist -czf out/rnparmor-linux-amd64.tar.gz rnparmor-linux-amd64
       - uses: actions/upload-artifact@v4
         with:
@@ -164,9 +167,14 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           TAG='${{ steps.tag.outputs.value }}'
+          if [[ ! "$TAG" =~ ^v ]]; then
+            echo "refusing to publish non-version tag: $TAG" >&2
+            exit 1
+          fi
           cd out/release
           assets=(
             rnparmor-windows-amd64.zip
