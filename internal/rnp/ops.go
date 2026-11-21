@@ -997,10 +997,9 @@ func (s *Session) keySummaryFromHandle(key uintptr) (KeySummary, error) {
 	}
 	out.KeyID = takeAllocatedCString(p)
 
-	if err := bound.check("key_get_primary_uid", bound.keyPrimaryID(key, &p)); err != nil {
-		return out, err
+	if bound.keyPrimaryID(key, &p) == 0 && p != 0 {
+		out.PrimaryUID = takeAllocatedCString(p)
 	}
-	out.PrimaryUID = takeAllocatedCString(p)
 
 	if err := bound.check("key_get_alg", bound.keyAlg(key, &p)); err != nil {
 		return out, err
@@ -1023,8 +1022,10 @@ func (s *Session) keySummaryFromHandle(key uintptr) (KeySummary, error) {
 	if err := bound.check("key_have_secret", bound.keySecret(key, &out.HasSecret)); err != nil {
 		return out, err
 	}
-	if err := bound.check("key_is_locked", bound.keyLocked(key, &out.IsLocked)); err != nil {
-		return out, err
+	if out.HasSecret {
+		if err := bound.check("key_is_locked", bound.keyLocked(key, &out.IsLocked)); err != nil {
+			return out, err
+		}
 	}
 	if err := bound.check("key_is_revoked", bound.keyRevoked(key, &out.IsRevoked)); err != nil {
 		return out, err
