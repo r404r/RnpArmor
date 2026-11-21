@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"runtime"
 	"sync"
 
@@ -26,6 +27,71 @@ type VerifyResult struct {
 	Status          uint32
 	StatusText      string
 	IdentityTrusted bool
+	SignerKeyID     string
+	SignerFingerprint string
+	CreatedUnix     uint32
+	ExpiresUnix     uint32
+	HashAlg         string
+}
+
+type KeySummary struct {
+	Fingerprint string
+	KeyID       string
+	PrimaryUID  string
+	Algorithm   string
+	CreatedUnix uint32
+	ExpiresUnix uint32
+	HasSecret   bool
+	IsLocked    bool
+	IsRevoked   bool
+	CanSign     bool
+	CanEncrypt  bool
+	CanCertify  bool
+}
+
+type KeyGenRequest struct {
+	UserID        string
+	PrimaryAlg    string
+	PrimaryBits   int
+	PrimaryCurve  string
+	SubkeyAlg     string
+	SubkeyBits    int
+	SubkeyCurve   string
+	HashAlg       string
+	SymmCipher    string
+	S2KIterations uint32
+	ExpirationSec uint32
+}
+
+type EncryptOptions struct {
+	RecipientFprints []string
+	Password         string
+	SignerFprint     string
+	Cipher           string
+	Compression      string
+	CompressionLevel int
+	Armor            bool
+}
+
+type SignMode string
+
+const (
+	SignModeCleartext SignMode = "cleartext"
+	SignModeDetached  SignMode = "detached"
+	SignModeInline    SignMode = "inline"
+)
+
+type DecryptVerifyResult struct {
+	Plaintext string
+	Verify    VerifyResult
+}
+
+func defaultAlg(v, d string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return d
+	}
+	return strings.ToUpper(v)
 }
 
 // Session is the only owner of one rnp_ffi_t. Do and the methods that call

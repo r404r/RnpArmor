@@ -332,17 +332,20 @@ foreach ($name in @("LIB", "INCLUDE", "LIBPATH", "VCINSTALLDIR", "VSINSTALLDIR")
 $testLog = Join-Path $work "go-test.txt"
 $testErr = Join-Path $work "go-test-err.txt"
 Write-Host "go test with RNPARMOR_LIBRNP=$env:RNPARMOR_LIBRNP"
-$testProc = Start-Process -FilePath $go -WorkingDirectory $root -Wait -PassThru -NoNewWindow `
-    -ArgumentList "test -count=1 -timeout 20m ./internal/loadlib/ ./internal/rnp/" `
-    -RedirectStandardOutput $testLog -RedirectStandardError $testErr
+$testCmd = @("test", "-count=1", "-timeout", "20m", "./internal/loadlib/", "./internal/rnp/")
+& $go @testCmd 1> $testLog 2> $testErr
 Get-Content $testLog, $testErr -ErrorAction SilentlyContinue
-if ($testProc.ExitCode -ne 0) { throw "go test failed: $($testProc.ExitCode)" }
+if ($LASTEXITCODE -ne 0) { throw "go test failed: $LASTEXITCODE" }
 
 Remove-Item Env:RNPARMOR_LIBRNP -ErrorAction SilentlyContinue
-$smokeOut = Join-Path $work "smoke-out.txt"
-$smokeErr = Join-Path $work "smoke-err.txt"
-$proc = Start-Process -FilePath (Join-Path $dist "rnparmor.exe") -WorkingDirectory $dist -PassThru -WindowStyle Hidden -RedirectStandardOutput $smokeOut -RedirectStandardError $smokeErr
-$running = -not $proc.WaitForExit(12000)
+$smokeCheck = & (Join-Path $dist "rnparmor.exe") "--smoke-test" 2>&1
+if ($LASTEXITCODE -ne 0) {
+    throw "smoke-test failed: $LASTEXITCODE`n$smokeCheck"
+}
+
+$proc = Start-Process -FilePath (Join-Path $dist "rnparmor.exe") -WorkingDirectory $dist -PassThru -WindowStyle Hidden
+$null = Wait-Process -Id $proc.Id -Timeout 12 -ErrorAction SilentlyContinue
+$running = -not $proc.HasExited
 $window = 0
 try {
     Add-Type @"

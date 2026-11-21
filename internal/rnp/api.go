@@ -71,7 +71,42 @@ type api struct {
 	verCount     func(op uintptr, n *uintptr) uint32
 	verAt        func(op uintptr, idx uintptr, sig *uintptr) uint32
 	verStatus    func(sig uintptr) uint32
+	verCreate    func(op *uintptr, ffi, in, out uintptr) uint32
+	verSigHash   func(sig uintptr, hash *uintptr) uint32
+	verSigKey    func(sig uintptr, key *uintptr) uint32
+	verSigTimes  func(sig uintptr, created, expires *uint32) uint32
 	verDestroy   func(op uintptr) uint32
+	iterCreate   func(ffi uintptr, it *uintptr, typ string) uint32
+	iterNext     func(it uintptr, id *uintptr) uint32
+	iterDestroy  func(it uintptr) uint32
+	locateKey    func(ffi uintptr, typ, id string, key *uintptr) uint32
+	genJSON      func(ffi uintptr, json string, results *uintptr) uint32
+	importKeys   func(ffi, in uintptr, flags uint32, results *uintptr) uint32
+	keyExport    func(key, out uintptr, flags uint32) uint32
+	keyExportRev func(key, out uintptr, flags uint32, hash, code, reason string) uint32
+	keyRemove    func(key uintptr, flags uint32) uint32
+	keyToJSON    func(key uintptr, flags uint32, result *uintptr) uint32
+	keyFprint    func(key uintptr, fprint *uintptr) uint32
+	keyKeyID     func(key uintptr, keyid *uintptr) uint32
+	keyAlg       func(key uintptr, alg *uintptr) uint32
+	keyPrimaryID func(key uintptr, uid *uintptr) uint32
+	keyCreation  func(key uintptr, ts *uint32) uint32
+	keyExpiry    func(key uintptr, sec *uint32) uint32
+	keySetExpiry func(key uintptr, sec uint32) uint32
+	keySecret    func(key uintptr, have *bool) uint32
+	keyLocked    func(key uintptr, locked *bool) uint32
+	keyRevoked   func(key uintptr, revoked *bool) uint32
+	keyUsage     func(key uintptr, usage string, allowed *bool) uint32
+	encPassword  func(op uintptr, pass, s2kHash string, iterations uintptr, s2kCipher string) uint32
+	encSign      func(op, key uintptr, sig *uintptr) uint32
+	encCompress  func(op uintptr, alg string, level int32) uint32
+	signCreate   func(op *uintptr, ffi, in, out uintptr) uint32
+	signClear    func(op *uintptr, ffi, in, out uintptr) uint32
+	signCompress func(op uintptr, alg string, level int32) uint32
+	dumpToOutput func(in, out uintptr, flags uint32) uint32
+	dumpToJSON   func(in uintptr, flags uint32, result *uintptr) uint32
+	features     func(typ string, result *uintptr) uint32
+	supports     func(typ, name string, supported *bool) uint32
 	saveKeys     func(ffi uintptr, format string, out uintptr, flags uint32) uint32
 	loadKeys     func(ffi uintptr, format string, in uintptr, flags uint32) uint32
 }
@@ -139,11 +174,46 @@ func bind(handle uintptr) error {
 		reg(&bound.signExec, "rnp_op_sign_execute")
 		reg(&bound.signDestroy, "rnp_op_sign_destroy")
 		reg(&bound.verDetached, "rnp_op_verify_detached_create")
+		reg(&bound.verCreate, "rnp_op_verify_create")
 		reg(&bound.verExec, "rnp_op_verify_execute")
 		reg(&bound.verCount, "rnp_op_verify_get_signature_count")
 		reg(&bound.verAt, "rnp_op_verify_get_signature_at")
 		reg(&bound.verStatus, "rnp_op_verify_signature_get_status")
+		reg(&bound.verSigHash, "rnp_op_verify_signature_get_hash")
+		reg(&bound.verSigKey, "rnp_op_verify_signature_get_key")
+		reg(&bound.verSigTimes, "rnp_op_verify_signature_get_times")
 		reg(&bound.verDestroy, "rnp_op_verify_destroy")
+		reg(&bound.iterCreate, "rnp_identifier_iterator_create")
+		reg(&bound.iterNext, "rnp_identifier_iterator_next")
+		reg(&bound.iterDestroy, "rnp_identifier_iterator_destroy")
+		reg(&bound.locateKey, "rnp_locate_key")
+		reg(&bound.genJSON, "rnp_generate_key_json")
+		reg(&bound.importKeys, "rnp_import_keys")
+		reg(&bound.keyExport, "rnp_key_export")
+		reg(&bound.keyExportRev, "rnp_key_export_revocation")
+		reg(&bound.keyRemove, "rnp_key_remove")
+		reg(&bound.keyToJSON, "rnp_key_to_json")
+		reg(&bound.keyFprint, "rnp_key_get_fprint")
+		reg(&bound.keyKeyID, "rnp_key_get_keyid")
+		reg(&bound.keyAlg, "rnp_key_get_alg")
+		reg(&bound.keyPrimaryID, "rnp_key_get_primary_uid")
+		reg(&bound.keyCreation, "rnp_key_get_creation")
+		reg(&bound.keyExpiry, "rnp_key_get_expiration")
+		reg(&bound.keySetExpiry, "rnp_key_set_expiration")
+		reg(&bound.keySecret, "rnp_key_have_secret")
+		reg(&bound.keyLocked, "rnp_key_is_locked")
+		reg(&bound.keyRevoked, "rnp_key_is_revoked")
+		reg(&bound.keyUsage, "rnp_key_allows_usage")
+		reg(&bound.encPassword, "rnp_op_encrypt_add_password")
+		reg(&bound.encSign, "rnp_op_encrypt_add_signature")
+		reg(&bound.encCompress, "rnp_op_encrypt_set_compression")
+		reg(&bound.signCreate, "rnp_op_sign_create")
+		reg(&bound.signClear, "rnp_op_sign_cleartext_create")
+		reg(&bound.signCompress, "rnp_op_sign_set_compression")
+		reg(&bound.dumpToOutput, "rnp_dump_packets_to_output")
+		reg(&bound.dumpToJSON, "rnp_dump_packets_to_json")
+		reg(&bound.features, "rnp_supported_features")
+		reg(&bound.supports, "rnp_supports_feature")
 		reg(&bound.saveKeys, "rnp_save_keys")
 		reg(&bound.loadKeys, "rnp_load_keys")
 		if passCB == 0 {
