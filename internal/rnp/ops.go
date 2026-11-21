@@ -418,11 +418,13 @@ func (s *Session) GenerateKeyWithSpec(ctx context.Context, req KeyGenRequest) (K
 			"hash":       hashAlg,
 			"protection": protect,
 		}
-		if req.PrimaryBits > 0 {
+		if req.PrimaryBits > 0 && (primaryAlg == "RSA" || primaryAlg == "DSA" || primaryAlg == "ELGAMAL") {
 			primary["length"] = req.PrimaryBits
 		}
-		if c := normalizeCurve(req.PrimaryCurve); c != "" {
-			primary["curve"] = c
+		if primaryAlg == "ECDSA" || primaryAlg == "ECDH" || primaryAlg == "SM2" {
+			if c := normalizeCurve(req.PrimaryCurve); c != "" {
+				primary["curve"] = c
+			}
 		}
 		if req.ExpirationSec > 0 {
 			primary["expiration"] = req.ExpirationSec
@@ -446,13 +448,15 @@ func (s *Session) GenerateKeyWithSpec(ctx context.Context, req KeyGenRequest) (K
 			"usage":      []string{"encrypt"},
 			"protection": protect,
 		}
-		if req.SubkeyBits > 0 {
+		if req.SubkeyBits > 0 && (subAlg == "RSA" || subAlg == "DSA" || subAlg == "ELGAMAL") {
 			sub["length"] = req.SubkeyBits
 		}
-		if c := normalizeCurve(req.SubkeyCurve); c != "" {
-			sub["curve"] = c
-		} else if subAlg == "ECDH" {
-			sub["curve"] = "Curve25519"
+		if subAlg == "ECDH" || subAlg == "ECDSA" || subAlg == "SM2" {
+			if c := normalizeCurve(req.SubkeyCurve); c != "" {
+				sub["curve"] = c
+			} else if subAlg == "ECDH" {
+				sub["curve"] = "Curve25519"
+			}
 		}
 		if req.ExpirationSec > 0 {
 			sub["expiration"] = req.ExpirationSec
@@ -532,7 +536,7 @@ func (s *Session) ImportKeys(ctx context.Context, data []byte) (string, error) {
 		}
 		defer bound.inDestroy(in)
 		var p uintptr
-		if err := bound.check("import_keys", bound.importKeys(s.ffi, in, 0, &p)); err != nil {
+		if err := bound.check("import_keys", bound.importKeys(s.ffi, in, flagPublic|flagSecret, &p)); err != nil {
 			return err
 		}
 		out = takeAllocatedCString(p)
@@ -613,7 +617,16 @@ func (s *Session) DeleteKey(ctx context.Context, fprint string) error {
 			return err
 		}
 		defer bound.keyDestroy(key)
-		return bound.check("key_remove", bound.keyRemove(key, keyRemovePublic|keyRemoveSecret|keyRemoveSubkeys))
+		flags := keyRemovePublic
+		var hasSecret bool
+		if bound.keySecret(key, &hasSecret) == 0 && hasSecret {
+			flags |= keyRemoveSecret
+		}
+		rc := bound.keyRemove(key, flags|keyRemoveSubkeys)
+		if rc != 0 {
+			rc = bound.keyRemove(key, flags)
+		}
+		return bound.check("key_remove", rc)
 	})
 }
 
@@ -1048,7 +1061,7 @@ func (s *Session) encryptWithOpts(plain []byte, opts EncryptOptions, armor bool,
 	defer bound.encDestroy(op)
 
 	hasRecipient := false
-	if len(opts.RecipientFprints) == 0 && s.encKey != 0 {
+	if len(opts.RecipientFprints) == 0 && strings.TrimSpace(opts.Password) == "" && s.encKey != 0 {
 		if err := bound.check("encrypt", bound.encRecipient(op, s.encKey)); err != nil {
 			return nil, err
 		}

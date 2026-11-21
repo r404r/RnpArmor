@@ -729,7 +729,7 @@ func TestFileOptsDumpAndFeatures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(dumpJSON, "packets") {
+	if !strings.Contains(dumpJSON, "header") || !strings.Contains(dumpJSON, "tag") {
 		t.Fatalf("unexpected packet json: %s", dumpJSON)
 	}
 
