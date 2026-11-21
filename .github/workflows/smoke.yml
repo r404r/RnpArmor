@@ -1,0 +1,69 @@
+name: smoke
+
+on:
+  pull_request:
+    paths-ignore:
+      - "README.md"
+      - "third_party/NOTICES.md"
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+      - name: cache deps
+        uses: actions/cache@v4
+        with:
+          path: out/deps
+          key: ${{ runner.os }}-deps-${{ hashFiles('deps/pins.json', 'scripts/build-librnp.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+      - name: packages
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake python3 zlib1g-dev libbz2-dev pkg-config patchelf
+      - name: build pinned librnp
+        run: bash scripts/build-librnp.sh
+      - name: test
+        env:
+          RNPARMOR_LIBRNP: ${{ github.workspace }}/out/lib/librnp.so
+          # The race detector needs cgo enabled in the toolchain. The
+          # program itself does not use cgo. checkptr is disabled only
+          # because indexing librnp's C buffers fails that check; the
+          # race detector itself stays on.
+          CGO_ENABLED: "1"
+        run: go test -race -gcflags=all=-d=checkptr=0 ./...
+      - name: build window without cgo
+        env:
+          CGO_ENABLED: "0"
+        run: go build -o /tmp/rnparmor ./cmd/rnparmor
+
+  windows-portable:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+      - name: cache deps
+        uses: actions/cache@v4
+        with:
+          path: out/deps
+          key: ${{ runner.os }}-deps-${{ hashFiles('deps/pins.json', 'scripts/build-windows.ps1') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+      - name: build, test, and zip
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rnparmor-windows-amd64
+          path: |
+            out/rnparmor-windows-amd64.zip
+            out/windows-report.txt
+          if-no-files-found: error
+          retention-days: 30
