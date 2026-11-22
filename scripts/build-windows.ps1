@@ -1,32 +1,20 @@
-# Build the Windows x64 portable directory and zip on a machine with
-# Visual Studio, CMake, Python, and Git. Does not publish a GitHub release.
-# Requires the pins in deps/pins.json. Does not search PATH for librnp.
+# Build Windows x64 portable outputs in staged mode:
+#   -Stage deps    : build/cache Botan/json-c/zlib/bzip2 into out/deps
+#   -Stage rnp     : build librnp (rnp.dll) into out/win-build/rnp-dll
+#   -Stage package : build rnparmor.exe, run tests/smoke, package zip/report
+#   -Stage all     : deps + rnp + package (default)
 param(
-    [string]$Version = "dev"
+    [string]$Version = "dev",
+    [ValidateSet("all", "deps", "rnp", "package")]
+    [string]$Stage = "all"
 )
 
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-# Timestamped stage log so CI timing is visible per stage.
 function Log([string]$Message) {
     Write-Host ("[{0}] {1}" -f (Get-Date -Format "HH:mm:ss"), $Message)
 }
-Log "build-windows.ps1 start, version=$Version"
-
-$root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-Set-Location $root
-$pins = Get-Content -Raw -Path (Join-Path $root "deps\pins.json") | ConvertFrom-Json
-if ($pins.rnp.commit -ne "aad1892e4d8423398a0b973bd0a7e4544c359afc") { throw "rnp pin mismatch" }
-if ($pins.rnp.do_not_use -notcontains "v0.18.0") { throw "v0.18.0 must stay rejected" }
-
-$src = Join-Path $root "out\src"
-$deps = Join-Path $root "out\deps"
-$work = Join-Path $root "out\win-build"
-$dist = Join-Path $root "out\dist\rnparmor-windows-amd64"
-$zip = Join-Path $root "out\rnparmor-windows-amd64.zip"
-$report = Join-Path $root "out\windows-report.txt"
-New-Item -ItemType Directory -Force -Path $src, $deps, $work | Out-Null
 
 function Run([string]$File, [string[]]$CommandArgs) {
     Write-Host "+ $File $($CommandArgs -join ' ')"
@@ -40,8 +28,15 @@ function Get-Hash([string]$Path, [string]$Algo) {
 
 function Get-Pinned([string]$Url, [string]$Dest, [string]$Sha256, [string]$Sha512) {
     if (-not (Test-Path -LiteralPath $Dest)) {
-        Write-Host "download $Url"
-        Run "curl.exe" @("-fsSL", "--retry", "3", "-o", $Dest, $Url)
+        Log "download $Url"
+        Run "curl.exe" @(
+            "-fsSL",
+            "--retry", "3",
+            "--connect-timeout", "30",
+            "--max-time", "300",
+            "-o", $Dest,
+            $Url
+        )
     }
     if ($Sha256) {
         $got = Get-Hash $Dest "SHA256"
@@ -54,13 +49,21 @@ function Get-Pinned([string]$Url, [string]$Dest, [string]$Sha256, [string]$Sha51
 }
 
 function Import-VcVars {
-    if (Get-Command cl.exe -ErrorAction SilentlyContinue) { return }
+    if (Get-Command cl.exe -ErrorAction SilentlyContinue) {
+        $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+        if (Test-Path $vswhere) {
+            return (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+        }
+        return ""
+    }
+
     $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
     if (-not (Test-Path $vswhere)) { throw "vswhere.exe is missing" }
     $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
     if (-not $vs) { throw "Visual Studio C++ toolset not found" }
+
     $bat = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
-    Write-Host "vcvars $bat"
+    Log "vcvars $bat"
     $lines = cmd /c "`"$bat`" >nul && set"
     foreach ($line in $lines) {
         $pair = $line -split "=", 2
@@ -68,250 +71,435 @@ function Import-VcVars {
             Set-Item -Path "Env:$($pair[0])" -Value $pair[1]
         }
     }
-    if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) { throw "cl.exe is not on PATH after vcvars64" }
+    if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+        throw "cl.exe is not on PATH after vcvars64"
+    }
+    return $vs
 }
 
 function Find-Ninja([string]$VsRoot) {
     $cmd = Get-Command ninja.exe -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
-    $known = Join-Path $VsRoot "Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"
-    if (Test-Path $known) { return $known }
+
+    if ($VsRoot) {
+        $known = Join-Path $VsRoot "Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"
+        if (Test-Path $known) { return $known }
+    }
     return $null
 }
 
-Import-VcVars
+function Resolve-Python {
+    foreach ($cand in @("py.exe", "python.exe")) {
+        $c = Get-Command $cand -ErrorAction SilentlyContinue
+        if ($c) { return $c.Source }
+    }
+    return $null
+}
+
+function Parse-BotanModules([string]$ModuleFile) {
+    if (-not (Test-Path -LiteralPath $ModuleFile)) {
+        throw "Botan modules file missing: $ModuleFile"
+    }
+
+    $modules = @()
+    foreach ($raw in (Get-Content -LiteralPath $ModuleFile)) {
+        $line = ($raw -split "#", 2)[0].Trim()
+        if (-not $line) { continue }
+        if ($line -notmatch '^[a-z0-9_]+$') {
+            throw "invalid Botan module token: '$line'"
+        }
+        $modules += $line
+    }
+
+    if ($modules.Count -eq 0) {
+        throw "Botan modules file is empty after stripping comments"
+    }
+
+    $dup = $modules | Group-Object | Where-Object { $_.Count -gt 1 }
+    if ($dup) {
+        $names = ($dup | ForEach-Object { $_.Name }) -join ", "
+        throw "duplicate Botan modules: $names"
+    }
+
+    return $modules
+}
+
+function Get-BotanLib([string]$BotanPrefix) {
+    $libDir = Join-Path $BotanPrefix "lib"
+    if (-not (Test-Path $libDir)) { return $null }
+    return (Get-ChildItem -Path $libDir -Filter "*.lib" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match "botan" } |
+        Select-Object -First 1)
+}
+
+function Test-DepsHot(
+    [string]$DepsRoot,
+    [string]$BotanPrefix,
+    [string]$JsonPrefix,
+    [string]$ZlibPrefix,
+    [string]$BzPrefix
+) {
+    $botanHeader = Join-Path $BotanPrefix "include\botan-3\botan\version.h"
+    $botanLib = Get-BotanLib $BotanPrefix
+
+    $must = @(
+        $botanHeader,
+        (Join-Path $JsonPrefix "lib\json-c.lib"),
+        (Join-Path $ZlibPrefix "lib\libz.lib"),
+        (Join-Path $BzPrefix "lib\bz2.lib"),
+        (Join-Path $DepsRoot "licenses\botan-license.txt"),
+        (Join-Path $DepsRoot "licenses\json-c-COPYING"),
+        (Join-Path $DepsRoot "licenses\zlib-LICENSE"),
+        (Join-Path $DepsRoot "licenses\bzip2-LICENSE")
+    )
+
+    foreach ($m in $must) {
+        if (-not (Test-Path -LiteralPath $m)) { return $false }
+    }
+    if (-not $botanLib) { return $false }
+    return $true
+}
+
+function Resolve-LicensePath([string]$DepsLicensesDir, [string]$Name, [string]$Fallback) {
+    $fromCache = Join-Path $DepsLicensesDir $Name
+    if (Test-Path -LiteralPath $fromCache) { return $fromCache }
+    if (Test-Path -LiteralPath $Fallback) { return $Fallback }
+    throw "license file missing: $Name"
+}
+
+function Ensure-RnpSources(
+    [string]$SrcRoot,
+    [object]$Pins
+) {
+    Log "stage: fetch rnp and sexpp"
+    $rnpSrc = Join-Path $SrcRoot "rnp"
+    if (-not (Test-Path (Join-Path $rnpSrc ".git"))) {
+        Run "git.exe" @("clone", "--depth", "1", "--branch", "v0.18.1", "https://github.com/rnpgp/rnp.git", $rnpSrc)
+    }
+    $rnpHead = (& git.exe -C $rnpSrc rev-parse HEAD).Trim()
+    if ($rnpHead -ne $Pins.rnp.commit) { throw "rnp HEAD mismatch: $rnpHead" }
+
+    $sexpp = Join-Path $rnpSrc "src\libsexpp"
+    if (-not (Test-Path (Join-Path $sexpp ".git"))) {
+        if (Test-Path $sexpp) { Remove-Item -Recurse -Force $sexpp }
+        Run "git.exe" @("clone", "https://github.com/rnpgp/sexpp.git", $sexpp)
+    }
+    Run "git.exe" @("-C", $sexpp, "fetch", "--depth", "1", "origin", $Pins.rnp.sexpp_commit)
+    Run "git.exe" @("-C", $sexpp, "checkout", "--detach", "FETCH_HEAD")
+    $sexppHead = (& git.exe -C $sexpp rev-parse HEAD).Trim()
+    if ($sexppHead -ne $Pins.rnp.sexpp_commit) { throw "sexpp HEAD mismatch: $sexppHead" }
+
+    return $rnpSrc
+}
+
+Log "build-windows.ps1 start, stage=$Stage, version=$Version"
+
+$root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+Set-Location $root
+$pins = Get-Content -Raw -Path (Join-Path $root "deps\pins.json") | ConvertFrom-Json
+if ($pins.rnp.commit -ne "aad1892e4d8423398a0b973bd0a7e4544c359afc") { throw "rnp pin mismatch" }
+if ($pins.rnp.do_not_use -notcontains "v0.18.0") { throw "v0.18.0 must stay rejected" }
+
+if ($env:GITHUB_ACTIONS -eq "true") {
+    try {
+        Add-MpPreference -ExclusionPath $root -ErrorAction Stop
+        Log "best-effort Defender exclusion added for: $root"
+    } catch {
+        Log "best-effort Defender exclusion skipped: $($_.Exception.Message)"
+    }
+}
+
+$src = Join-Path $root "out\src"
+$deps = Join-Path $root "out\deps"
+$work = Join-Path $root "out\win-build"
+$dist = Join-Path $root "out\dist\rnparmor-windows-amd64"
+$zip = Join-Path $root "out\rnparmor-windows-amd64.zip"
+$report = Join-Path $root "out\windows-report.txt"
+$rnpDllDir = Join-Path $work "rnp-dll"
+$rnpDllPath = Join-Path $rnpDllDir "rnp.dll"
+New-Item -ItemType Directory -Force -Path $src, $deps, $work, $rnpDllDir | Out-Null
+
+$vsRoot = Import-VcVars
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
-$vsRoot = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+if (-not $vsRoot -and (Test-Path $vswhere)) {
+    $vsRoot = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+}
 $ninja = Find-Ninja $vsRoot
-$py = $null
-foreach ($cand in @("py.exe", "python.exe")) {
-    $c = Get-Command $cand -ErrorAction SilentlyContinue
-    if ($c) { $py = $c.Source; break }
-}
+$py = Resolve-Python
 if (-not $py) { throw "Python is required to configure Botan" }
-Write-Host "python: $py"
-Write-Host "ninja: $ninja"
-
-Log "stage: download pinned sources"
-Get-Pinned $pins.botan.tarball (Join-Path $src "Botan-3.10.0.tar.xz") $pins.botan.sha256 $null
-Get-Pinned $pins.json_c.tarball (Join-Path $src "json-c-0.19.tar.gz") $pins.json_c.sha256 $null
-Get-Pinned $pins.zlib.tarball (Join-Path $src "zlib-1.4.tar.gz") $pins.zlib.sha256 $null
-Get-Pinned $pins.bzip2.tarball (Join-Path $src "bzip2-1.0.8.tar.gz") $pins.bzip2.sha256 $pins.bzip2.sha512
-
-Log "stage: extract sources"
-$botanSrc = Join-Path $src "Botan-3.10.0"
-if (-not (Test-Path (Join-Path $botanSrc "configure.py"))) {
-    Run "tar.exe" @("-xf", (Join-Path $src "Botan-3.10.0.tar.xz"), "-C", $src)
-}
-$jsonSrc = Join-Path $src "json-c-0.19"
-if (-not (Test-Path (Join-Path $jsonSrc "CMakeLists.txt"))) {
-    Run "tar.exe" @("-xzf", (Join-Path $src "json-c-0.19.tar.gz"), "-C", $src)
-}
-$zlibSrc = Join-Path $src "zlib-1.4"
-if (-not (Test-Path (Join-Path $zlibSrc "CMakeLists.txt"))) {
-    Run "tar.exe" @("-xzf", (Join-Path $src "zlib-1.4.tar.gz"), "-C", $src)
-}
-$bzSrc = Join-Path $src "bzip2-1.0.8"
-if (-not (Test-Path (Join-Path $bzSrc "bzlib.c"))) {
-    Run "tar.exe" @("-xzf", (Join-Path $src "bzip2-1.0.8.tar.gz"), "-C", $src)
-}
-
-Log "stage: fetch rnp and sexpp"
-$rnpSrc = Join-Path $src "rnp"
-if (-not (Test-Path (Join-Path $rnpSrc ".git"))) {
-    Run "git.exe" @("clone", "--depth", "1", "--branch", "v0.18.1", "https://github.com/rnpgp/rnp.git", $rnpSrc)
-}
-$rnpHead = (& git.exe -C $rnpSrc rev-parse HEAD).Trim()
-if ($rnpHead -ne $pins.rnp.commit) { throw "rnp HEAD $rnpHead" }
-$sexpp = Join-Path $rnpSrc "src\libsexpp"
-if (-not (Test-Path (Join-Path $sexpp ".git"))) {
-    if (Test-Path $sexpp) { Remove-Item -Recurse -Force $sexpp }
-    Run "git.exe" @("clone", "https://github.com/rnpgp/sexpp.git", $sexpp)
-}
-Run "git.exe" @("-C", $sexpp, "fetch", "--depth", "1", "origin", $pins.rnp.sexpp_commit)
-Run "git.exe" @("-C", $sexpp, "checkout", "--detach", "FETCH_HEAD")
-$sexppHead = (& git.exe -C $sexpp rev-parse HEAD).Trim()
-if ($sexppHead -ne $pins.rnp.sexpp_commit) { throw "sexpp HEAD $sexppHead" }
+if (-not $ninja) { throw "ninja.exe was not found; it is required for Windows dependency builds" }
+Log "python: $py"
+Log "ninja: $ninja"
 
 $toolchain = Join-Path $root "scripts\windows\msvc-mt.cmake"
 $cmakeCommon = @(
+    "-G", "Ninja",
+    "-DCMAKE_MAKE_PROGRAM=$ninja",
     "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW",
     "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
     "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
     "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
     "-DCMAKE_BUILD_TYPE=Release"
 )
-if ($ninja) { $cmakeCommon = @("-G", "Ninja", "-DCMAKE_MAKE_PROGRAM=$ninja") + $cmakeCommon }
+
+$botanSrc = Join-Path $src "Botan-3.10.0"
+$jsonSrc = Join-Path $src "json-c-0.19"
+$zlibSrc = Join-Path $src "zlib-1.4"
+$bzSrc = Join-Path $src "bzip2-1.0.8"
 
 $botanPrefix = Join-Path $deps "botan"
-Log "stage: botan"
-if (-not (Test-Path (Join-Path $botanPrefix "include"))) {
-    # Botan is built from modular sources with Ninja so that every core is
-    # used. An amalgamation build is one huge translation unit and compiles
-    # on a single core, which exceeded the CI time limit.
-    if (-not $ninja) { throw "ninja.exe was not found; it is required for the parallel Botan build" }
-    $botanArgs = @(
-        (Join-Path $botanSrc "configure.py"),
-        "--cc=msvc", "--os=windows", "--cpu=x86_64",
-        "--prefix=$botanPrefix",
-        "--disable-shared-library",
-        "--with-msvc-runtime=MT",
-        "--without-documentation",
-        "--with-build-dir=$(Join-Path $work 'botan')"
-    )
-    $botanArgs += @("--build-tool=ninja")
-    Run $py $botanArgs
-    Run $ninja @("-C", (Join-Path $work "botan"), "install")
-}
-Log "botan done"
-Write-Host "botan prefix:"
-Get-ChildItem -Recurse -File $botanPrefix -Include *.lib, *.dll, version.h | ForEach-Object { Write-Host $_.FullName }
-
 $jsonPrefix = Join-Path $deps "json-c"
-Log "stage: json-c"
-if (-not (Test-Path (Join-Path $jsonPrefix "lib\json-c.lib"))) {
-    Run "cmake.exe" (@(
-        "-S", $jsonSrc, "-B", (Join-Path $work "json-c"),
-        "-DCMAKE_INSTALL_PREFIX=$jsonPrefix",
-        "-DBUILD_SHARED_LIBS=OFF", "-DBUILD_TESTING=OFF", "-DDISABLE_WERROR=ON"
-    ) + $cmakeCommon)
-    Run "cmake.exe" @("--build", (Join-Path $work "json-c"), "--config", "Release")
-    Run "cmake.exe" @("--install", (Join-Path $work "json-c"), "--config", "Release")
-}
-
 $zlibPrefix = Join-Path $deps "zlib"
-Log "stage: zlib"
-if (-not (Test-Path (Join-Path $zlibPrefix "lib\libz.lib"))) {
-    Run "cmake.exe" (@(
-        "-S", $zlibSrc, "-B", (Join-Path $work "zlib"),
-        "-DCMAKE_INSTALL_PREFIX=$zlibPrefix",
-        "-DZLIB_BUILD_SHARED=OFF", "-DZLIB_BUILD_TESTING=OFF"
-    ) + $cmakeCommon)
-    Run "cmake.exe" @("--build", (Join-Path $work "zlib"), "--config", "Release")
-    Run "cmake.exe" @("--install", (Join-Path $work "zlib"), "--config", "Release")
-}
-
 $bzPrefix = Join-Path $deps "bzip2"
-Log "stage: bzip2"
-if (-not (Test-Path (Join-Path $bzPrefix "lib\bz2.lib"))) {
-    Run "cmake.exe" (@(
-        "-S", (Join-Path $root "scripts\windows\bzip2-static"),
-        "-B", (Join-Path $work "bzip2"),
-        "-DCMAKE_INSTALL_PREFIX=$bzPrefix",
-        "-DBZIP2_SRC=$bzSrc"
-    ) + $cmakeCommon)
-    Run "cmake.exe" @("--build", (Join-Path $work "bzip2"), "--config", "Release")
-    Run "cmake.exe" @("--install", (Join-Path $work "bzip2"), "--config", "Release")
-}
+$depsLicenses = Join-Path $deps "licenses"
 
-$rnpPrefix = Join-Path $deps "rnp"
-Log "stage: rnp"
-$rnpBuild = Join-Path $work "rnp"
-if (Test-Path $rnpBuild) { Remove-Item -Recurse -Force $rnpBuild }
-$link = "ws2_32.lib bcrypt.lib crypt32.lib user32.lib advapi32.lib"
-Run "cmake.exe" (@(
-    "-S", $rnpSrc, "-B", $rnpBuild,
-    "-DCMAKE_INSTALL_PREFIX=$rnpPrefix",
-    "-DBUILD_SHARED_LIBS=ON",
-    "-DBUILD_TESTING=OFF",
-    "-DDOWNLOAD_GTEST=OFF",
-    "-DENABLE_DOC=OFF",
-    "-DENABLE_CRYPTO_REFRESH=OFF",
-    "-DENABLE_PQC=OFF",
-    "-DWITH_SEXP_CLI=OFF",
-    "-DCRYPTO_BACKEND=botan",
-    "-DBOTAN_ROOT_DIR=$botanPrefix",
-    "-DCMAKE_PREFIX_PATH=$jsonPrefix;$zlibPrefix;$bzPrefix",
-    "-DZLIB_LIBRARY=$(Join-Path $zlibPrefix 'lib\libz.lib')",
-    "-DZLIB_INCLUDE_DIR=$(Join-Path $zlibPrefix 'include')",
-    "-DZLIB_USE_STATIC_LIBS=ON",
-    "-DBZIP2_LIBRARY=$(Join-Path $bzPrefix 'lib\bz2.lib')",
-    "-DBZIP2_LIBRARIES=$(Join-Path $bzPrefix 'lib\bz2.lib')",
-    "-DBZIP2_INCLUDE_DIR=$(Join-Path $bzPrefix 'include')",
-    "-DBZIP2_INCLUDE_DIRS=$(Join-Path $bzPrefix 'include')",
-    "-DCMAKE_SHARED_LINKER_FLAGS=$link",
-    "-DCMAKE_EXE_LINKER_FLAGS=$link"
-) + $cmakeCommon)
-Run "cmake.exe" @("--build", $rnpBuild, "--config", "Release")
+function Build-Deps {
+    Log "stage: deps"
 
-$dll = Get-ChildItem -Path $rnpBuild -Recurse -Filter "rnp.dll" | Where-Object { $_.FullName -notmatch "examples|tests" } | Select-Object -First 1
-if (-not $dll) {
-    Get-ChildItem -Path $rnpBuild -Recurse -Filter "*.dll" | ForEach-Object { Write-Host $_.FullName }
-    throw "rnp.dll was not produced"
-}
-Write-Host "rnp.dll $($dll.FullName)"
-Log "rnp done"
-
-Log "stage: go build (version $Version)"
-$go = (Get-Command go.exe).Source
-$env:CGO_ENABLED = "0"
-$env:GOOS = "windows"
-$env:GOARCH = "amd64"
-$exeBuilt = Join-Path $work "rnparmor.exe"
-# No -H windowsgui: the console subsystem keeps --smoke-test output capturable.
-$ldflags = "-s -w -X main.appVersion=$Version"
-Run $go @("build", "-trimpath", "-ldflags", $ldflags, "-o", $exeBuilt, ".\cmd\rnparmor")
-Log "go build done"
-
-if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
-New-Item -ItemType Directory -Force -Path $dist, (Join-Path $dist "licenses") | Out-Null
-Copy-Item $exeBuilt (Join-Path $dist "rnparmor.exe")
-Copy-Item $dll.FullName (Join-Path $dist "rnp.dll")
-Copy-Item (Join-Path $root "third_party\licenses\rnp-LICENSE.md") (Join-Path $dist "licenses\rnp-LICENSE.md")
-Copy-Item (Join-Path $root "third_party\licenses\sexpp-LICENSE.md") (Join-Path $dist "licenses\sexpp-LICENSE.md")
-Copy-Item (Join-Path $botanSrc "license.txt") (Join-Path $dist "licenses\botan-license.txt")
-Copy-Item (Join-Path $jsonSrc "COPYING") (Join-Path $dist "licenses\json-c-COPYING")
-Copy-Item (Join-Path $zlibSrc "LICENSE") (Join-Path $dist "licenses\zlib-LICENSE")
-Copy-Item (Join-Path $bzSrc "LICENSE") (Join-Path $dist "licenses\bzip2-LICENSE")
-Copy-Item (Join-Path $root "third_party\licenses\mygo-MIT.txt") (Join-Path $dist "licenses\mygo-MIT.txt")
-Copy-Item (Join-Path $root "third_party\licenses\purego-Apache-2.0.txt") (Join-Path $dist "licenses\purego-Apache-2.0.txt")
-
-$dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
-if (-not $dumpbin) { throw "dumpbin.exe is missing; refusing to guess DLL dependencies" }
-$depReport = New-Object System.Text.StringBuilder
-$unknown = @()
-$allow = @{
-    "kernel32.dll" = $true; "kernelbase.dll" = $true; "ntdll.dll" = $true
-    "user32.dll" = $true; "gdi32.dll" = $true; "gdiplus.dll" = $true
-    "advapi32.dll" = $true; "shell32.dll" = $true; "shlwapi.dll" = $true
-    "ole32.dll" = $true; "oleaut32.dll" = $true; "combase.dll" = $true
-    "comdlg32.dll" = $true; "rpcrt4.dll" = $true; "sechost.dll" = $true
-    "bcrypt.dll" = $true; "bcryptprimitives.dll" = $true; "crypt32.dll" = $true
-    "ncrypt.dll" = $true; "ws2_32.dll" = $true; "wsock32.dll" = $true
-    "iphlpapi.dll" = $true; "dnsapi.dll" = $true; "imm32.dll" = $true
-    "userenv.dll" = $true; "version.dll" = $true; "winmm.dll" = $true
-    "dwmapi.dll" = $true; "uxtheme.dll" = $true; "shcore.dll" = $true
-    "d3d11.dll" = $true; "dxgi.dll" = $true; "d3dcompiler_47.dll" = $true
-    "dwrite.dll" = $true; "d2d1.dll" = $true; "oleacc.dll" = $true
-    "usp10.dll" = $true; "normaliz.dll" = $true; "psapi.dll" = $true
-    "powrprof.dll" = $true; "setupapi.dll" = $true; "cfgmgr32.dll" = $true
-    "hid.dll" = $true; "winhttp.dll" = $true; "secur32.dll" = $true
-    "netapi32.dll" = $true; "mpr.dll" = $true; "wtsapi32.dll" = $true
-    "propsys.dll" = $true; "msimg32.dll" = $true; "comctl32.dll" = $true
-    "msvcrt.dll" = $true; "wintrust.dll" = $true; "imagehlp.dll" = $true
-    "dbghelp.dll" = $true; "nsi.dll" = $true; "mswsock.dll" = $true
-    "sspicli.dll" = $true; "profapi.dll" = $true; "cryptbase.dll" = $true
-    "ucrtbase.dll" = $true; "winspool.drv" = $true; "avrt.dll" = $true
-    "mmdevapi.dll" = $true; "wldp.dll" = $true
-}
-foreach ($bin in @((Join-Path $dist "rnparmor.exe"), (Join-Path $dist "rnp.dll"))) {
-    $text = & dumpbin.exe /nologo /dependents $bin | Out-String
-    [void]$depReport.AppendLine("==== $(Split-Path $bin -Leaf) ====")
-    [void]$depReport.AppendLine($text.TrimEnd())
-    foreach ($line in ($text -split "`r?`n")) {
-        $t = $line.Trim()
-        if ($t -notmatch '^(?i)[A-Za-z0-9_.-]+\.(dll|drv)$') { continue }
-        $name = $t.ToLower()
-        if ($allow.ContainsKey($name)) { continue }
-        if ($name -like "api-ms-win-*" -or $name -like "ext-ms-*") { continue }
-        $unknown += "$name from $(Split-Path $bin -Leaf)"
+    if (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix) {
+        Log "deps hot cache hit: artifacts + licenses found in out/deps; skip dependency downloads/extract/build"
+        return
     }
+
+    Log "stage: download pinned sources"
+    Get-Pinned $pins.botan.tarball (Join-Path $src "Botan-3.10.0.tar.xz") $pins.botan.sha256 $null
+    Get-Pinned $pins.json_c.tarball (Join-Path $src "json-c-0.19.tar.gz") $pins.json_c.sha256 $null
+    Get-Pinned $pins.zlib.tarball (Join-Path $src "zlib-1.4.tar.gz") $pins.zlib.sha256 $null
+    Get-Pinned $pins.bzip2.tarball (Join-Path $src "bzip2-1.0.8.tar.gz") $pins.bzip2.sha256 $pins.bzip2.sha512
+
+    Log "stage: extract sources"
+    if (-not (Test-Path (Join-Path $botanSrc "configure.py"))) {
+        Run "tar.exe" @("-xf", (Join-Path $src "Botan-3.10.0.tar.xz"), "-C", $src)
+    }
+    if (-not (Test-Path (Join-Path $jsonSrc "CMakeLists.txt"))) {
+        Run "tar.exe" @("-xzf", (Join-Path $src "json-c-0.19.tar.gz"), "-C", $src)
+    }
+    if (-not (Test-Path (Join-Path $zlibSrc "CMakeLists.txt"))) {
+        Run "tar.exe" @("-xzf", (Join-Path $src "zlib-1.4.tar.gz"), "-C", $src)
+    }
+    if (-not (Test-Path (Join-Path $bzSrc "bzlib.c"))) {
+        Run "tar.exe" @("-xzf", (Join-Path $src "bzip2-1.0.8.tar.gz"), "-C", $src)
+    }
+
+    Log "stage: botan"
+    $botanHeader = Join-Path $botanPrefix "include\botan-3\botan\version.h"
+    $botanLib = Get-BotanLib $botanPrefix
+    if ((-not (Test-Path $botanHeader)) -or (-not $botanLib)) {
+        $modules = Parse-BotanModules (Join-Path $root "scripts\windows\botan3-modules.txt")
+        $botanModules = $modules -join ","
+        Log "botan modules count: $($modules.Count)"
+        $botanArgs = @(
+            (Join-Path $botanSrc "configure.py"),
+            "--cc=msvc", "--os=windows", "--cpu=x86_64",
+            "--prefix=$botanPrefix",
+            "--build-targets=static",
+            "--disable-shared-library",
+            "--minimized-build",
+            "--enable-modules=$botanModules",
+            "--no-install-python-module",
+            "--without-documentation",
+            "--with-msvc-runtime=MT",
+            "--build-tool=ninja",
+            "--with-build-dir=$(Join-Path $work 'botan')"
+        )
+        Run $py $botanArgs
+        Run $ninja @("-C", (Join-Path $work "botan"), "install")
+        $botanLib = Get-BotanLib $botanPrefix
+        if (-not $botanLib) { throw "Botan static library not found after build" }
+    }
+
+    Log "stage: json-c"
+    if (-not (Test-Path (Join-Path $jsonPrefix "lib\json-c.lib"))) {
+        Run "cmake.exe" (@(
+            "-S", $jsonSrc, "-B", (Join-Path $work "json-c"),
+            "-DCMAKE_INSTALL_PREFIX=$jsonPrefix",
+            "-DBUILD_SHARED_LIBS=OFF", "-DBUILD_TESTING=OFF", "-DDISABLE_WERROR=ON"
+        ) + $cmakeCommon)
+        Run "cmake.exe" @("--build", (Join-Path $work "json-c"), "--config", "Release")
+        Run "cmake.exe" @("--install", (Join-Path $work "json-c"), "--config", "Release")
+    }
+
+    Log "stage: zlib"
+    if (-not (Test-Path (Join-Path $zlibPrefix "lib\libz.lib"))) {
+        Run "cmake.exe" (@(
+            "-S", $zlibSrc, "-B", (Join-Path $work "zlib"),
+            "-DCMAKE_INSTALL_PREFIX=$zlibPrefix",
+            "-DZLIB_BUILD_SHARED=OFF", "-DZLIB_BUILD_TESTING=OFF"
+        ) + $cmakeCommon)
+        Run "cmake.exe" @("--build", (Join-Path $work "zlib"), "--config", "Release")
+        Run "cmake.exe" @("--install", (Join-Path $work "zlib"), "--config", "Release")
+    }
+
+    Log "stage: bzip2"
+    if (-not (Test-Path (Join-Path $bzPrefix "lib\bz2.lib"))) {
+        Run "cmake.exe" (@(
+            "-S", (Join-Path $root "scripts\windows\bzip2-static"),
+            "-B", (Join-Path $work "bzip2"),
+            "-DCMAKE_INSTALL_PREFIX=$bzPrefix",
+            "-DBZIP2_SRC=$bzSrc"
+        ) + $cmakeCommon)
+        Run "cmake.exe" @("--build", (Join-Path $work "bzip2"), "--config", "Release")
+        Run "cmake.exe" @("--install", (Join-Path $work "bzip2"), "--config", "Release")
+    }
+
+    Log "stage: cache dependency licenses"
+    New-Item -ItemType Directory -Force -Path $depsLicenses | Out-Null
+    Copy-Item (Join-Path $botanSrc "license.txt") (Join-Path $depsLicenses "botan-license.txt") -Force
+    Copy-Item (Join-Path $jsonSrc "COPYING") (Join-Path $depsLicenses "json-c-COPYING") -Force
+    Copy-Item (Join-Path $zlibSrc "LICENSE") (Join-Path $depsLicenses "zlib-LICENSE") -Force
+    Copy-Item (Join-Path $bzSrc "LICENSE") (Join-Path $depsLicenses "bzip2-LICENSE") -Force
+
+    if (-not (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix)) {
+        throw "deps stage finished but cache artifacts are incomplete"
+    }
+    Log "deps done"
 }
-$depPath = Join-Path $dist "DEPENDENCIES.txt"
-Set-Content -LiteralPath $depPath -Value $depReport.ToString() -Encoding utf8
-if ($unknown.Count -gt 0) {
-    throw ("unexpected DLL imports, not bundled and not in the Windows system allowlist:`n" + ($unknown -join "`n"))
+
+function Build-Rnp {
+    Log "stage: rnp"
+
+    if (-not (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix)) {
+        throw "dependency cache is incomplete; run -Stage deps first"
+    }
+
+    $rnpSrc = Ensure-RnpSources -SrcRoot $src -Pins $pins
+
+    $rnpBuild = Join-Path $work "rnp"
+    if (Test-Path $rnpBuild) { Remove-Item -Recurse -Force $rnpBuild }
+
+    $link = "ws2_32.lib bcrypt.lib crypt32.lib user32.lib advapi32.lib"
+    Run "cmake.exe" (@(
+        "-S", $rnpSrc, "-B", $rnpBuild,
+        "-DCMAKE_INSTALL_PREFIX=$(Join-Path $deps 'rnp')",
+        "-DBUILD_SHARED_LIBS=ON",
+        "-DBUILD_TESTING=OFF",
+        "-DDOWNLOAD_GTEST=OFF",
+        "-DENABLE_DOC=OFF",
+        "-DENABLE_CRYPTO_REFRESH=OFF",
+        "-DENABLE_PQC=OFF",
+        "-DWITH_SEXP_CLI=OFF",
+        "-DCRYPTO_BACKEND=botan",
+        "-DBOTAN_ROOT_DIR=$botanPrefix",
+        "-DCMAKE_PREFIX_PATH=$jsonPrefix;$zlibPrefix;$bzPrefix",
+        "-DZLIB_LIBRARY=$(Join-Path $zlibPrefix 'lib\libz.lib')",
+        "-DZLIB_INCLUDE_DIR=$(Join-Path $zlibPrefix 'include')",
+        "-DZLIB_USE_STATIC_LIBS=ON",
+        "-DBZIP2_LIBRARY=$(Join-Path $bzPrefix 'lib\bz2.lib')",
+        "-DBZIP2_LIBRARIES=$(Join-Path $bzPrefix 'lib\bz2.lib')",
+        "-DBZIP2_INCLUDE_DIR=$(Join-Path $bzPrefix 'include')",
+        "-DBZIP2_INCLUDE_DIRS=$(Join-Path $bzPrefix 'include')",
+        "-DCMAKE_SHARED_LINKER_FLAGS=$link",
+        "-DCMAKE_EXE_LINKER_FLAGS=$link"
+    ) + $cmakeCommon)
+
+    Run "cmake.exe" @("--build", $rnpBuild, "--config", "Release", "--target", "librnp")
+
+    $dll = Get-ChildItem -Path $rnpBuild -Recurse -Filter "rnp.dll" |
+        Where-Object { $_.FullName -notmatch "examples|tests" } |
+        Select-Object -First 1
+    if (-not $dll) {
+        Get-ChildItem -Path $rnpBuild -Recurse -Filter "*.dll" | ForEach-Object { Write-Host $_.FullName }
+        throw "rnp.dll was not produced"
+    }
+
+    Copy-Item -Force $dll.FullName $rnpDllPath
+    Log "rnp.dll cached at $rnpDllPath"
+    Write-Host "rnp.dll sha256 $(Get-Hash $rnpDllPath 'SHA256')"
+    Log "rnp done"
 }
+
+function Build-Package {
+    Log "stage: package"
+
+    if (-not (Test-Path -LiteralPath $rnpDllPath)) {
+        $rnpBuild = Join-Path $work "rnp"
+        if (Test-Path $rnpBuild) {
+            $dll = Get-ChildItem -Path $rnpBuild -Recurse -Filter "rnp.dll" |
+                Where-Object { $_.FullName -notmatch "examples|tests" } |
+                Select-Object -First 1
+            if ($dll) {
+                Copy-Item -Force $dll.FullName $rnpDllPath
+            }
+        }
+    }
+    if (-not (Test-Path -LiteralPath $rnpDllPath)) {
+        throw "rnp.dll not found at $rnpDllPath; run -Stage rnp first"
+    }
+
+    $goCmd = Get-Command go.exe -ErrorAction SilentlyContinue
+    if (-not $goCmd) { throw "go.exe is required for package stage" }
+    $go = $goCmd.Source
+
+    Log "stage: go build (version $Version)"
+    $env:CGO_ENABLED = "0"
+    $env:GOOS = "windows"
+    $env:GOARCH = "amd64"
+    $exeBuilt = Join-Path $work "rnparmor.exe"
+    $ldflags = "-s -w -X main.appVersion=$Version"
+    Run $go @("build", "-trimpath", "-ldflags", $ldflags, "-o", $exeBuilt, ".\cmd\rnparmor")
+    Log "go build done"
+
+    if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
+    New-Item -ItemType Directory -Force -Path $dist, (Join-Path $dist "licenses") | Out-Null
+
+    Copy-Item $exeBuilt (Join-Path $dist "rnparmor.exe")
+    Copy-Item $rnpDllPath (Join-Path $dist "rnp.dll")
+    Copy-Item (Join-Path $root "third_party\licenses\rnp-LICENSE.md") (Join-Path $dist "licenses\rnp-LICENSE.md")
+    Copy-Item (Join-Path $root "third_party\licenses\sexpp-LICENSE.md") (Join-Path $dist "licenses\sexpp-LICENSE.md")
+    Copy-Item (Resolve-LicensePath $depsLicenses "botan-license.txt" (Join-Path $botanSrc "license.txt")) (Join-Path $dist "licenses\botan-license.txt")
+    Copy-Item (Resolve-LicensePath $depsLicenses "json-c-COPYING" (Join-Path $jsonSrc "COPYING")) (Join-Path $dist "licenses\json-c-COPYING")
+    Copy-Item (Resolve-LicensePath $depsLicenses "zlib-LICENSE" (Join-Path $zlibSrc "LICENSE")) (Join-Path $dist "licenses\zlib-LICENSE")
+    Copy-Item (Resolve-LicensePath $depsLicenses "bzip2-LICENSE" (Join-Path $bzSrc "LICENSE")) (Join-Path $dist "licenses\bzip2-LICENSE")
+    Copy-Item (Join-Path $root "third_party\licenses\mygo-MIT.txt") (Join-Path $dist "licenses\mygo-MIT.txt")
+    Copy-Item (Join-Path $root "third_party\licenses\purego-Apache-2.0.txt") (Join-Path $dist "licenses\purego-Apache-2.0.txt")
+
+    $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
+    if (-not $dumpbin) { throw "dumpbin.exe is missing; refusing to guess DLL dependencies" }
+    $depReport = New-Object System.Text.StringBuilder
+    $unknown = @()
+    $allow = @{
+        "kernel32.dll" = $true; "kernelbase.dll" = $true; "ntdll.dll" = $true
+        "user32.dll" = $true; "gdi32.dll" = $true; "gdiplus.dll" = $true
+        "advapi32.dll" = $true; "shell32.dll" = $true; "shlwapi.dll" = $true
+        "ole32.dll" = $true; "oleaut32.dll" = $true; "combase.dll" = $true
+        "comdlg32.dll" = $true; "rpcrt4.dll" = $true; "sechost.dll" = $true
+        "bcrypt.dll" = $true; "bcryptprimitives.dll" = $true; "crypt32.dll" = $true
+        "ncrypt.dll" = $true; "ws2_32.dll" = $true; "wsock32.dll" = $true
+        "iphlpapi.dll" = $true; "dnsapi.dll" = $true; "imm32.dll" = $true
+        "userenv.dll" = $true; "version.dll" = $true; "winmm.dll" = $true
+        "dwmapi.dll" = $true; "uxtheme.dll" = $true; "shcore.dll" = $true
+        "d3d11.dll" = $true; "dxgi.dll" = $true; "d3dcompiler_47.dll" = $true
+        "dwrite.dll" = $true; "d2d1.dll" = $true; "oleacc.dll" = $true
+        "usp10.dll" = $true; "normaliz.dll" = $true; "psapi.dll" = $true
+        "powrprof.dll" = $true; "setupapi.dll" = $true; "cfgmgr32.dll" = $true
+        "hid.dll" = $true; "winhttp.dll" = $true; "secur32.dll" = $true
+        "netapi32.dll" = $true; "mpr.dll" = $true; "wtsapi32.dll" = $true
+        "propsys.dll" = $true; "msimg32.dll" = $true; "comctl32.dll" = $true
+        "msvcrt.dll" = $true; "wintrust.dll" = $true; "imagehlp.dll" = $true
+        "dbghelp.dll" = $true; "nsi.dll" = $true; "mswsock.dll" = $true
+        "sspicli.dll" = $true; "profapi.dll" = $true; "cryptbase.dll" = $true
+        "ucrtbase.dll" = $true; "winspool.drv" = $true; "avrt.dll" = $true
+        "mmdevapi.dll" = $true; "wldp.dll" = $true
+    }
+
+    foreach ($bin in @((Join-Path $dist "rnparmor.exe"), (Join-Path $dist "rnp.dll"))) {
+        $text = & dumpbin.exe /nologo /dependents $bin | Out-String
+        [void]$depReport.AppendLine("==== $(Split-Path $bin -Leaf) ====")
+        [void]$depReport.AppendLine($text.TrimEnd())
+        foreach ($line in ($text -split "`r?`n")) {
+            $t = $line.Trim()
+            if ($t -notmatch '^(?i)[A-Za-z0-9_.-]+\.(dll|drv)$') { continue }
+            $name = $t.ToLower()
+            if ($allow.ContainsKey($name)) { continue }
+            if ($name -like "api-ms-win-*" -or $name -like "ext-ms-*") { continue }
+            $unknown += "$name from $(Split-Path $bin -Leaf)"
+        }
+    }
+    $depPath = Join-Path $dist "DEPENDENCIES.txt"
+    Set-Content -LiteralPath $depPath -Value $depReport.ToString() -Encoding utf8
+    if ($unknown.Count -gt 0) {
+        throw ("unexpected DLL imports, not bundled and not in the Windows system allowlist:`n" + ($unknown -join "`n"))
+    }
 
 @"
 RnpArmor Windows x64 portable directory.
@@ -332,53 +520,58 @@ Chinese input and high-DPI were not tested. An in-flight librnp call cannot be
 cancelled; cancellation only discards output after the call returns.
 "@ | Set-Content -LiteralPath (Join-Path $dist "PORTABLE.txt") -Encoding utf8
 
-Push-Location $dist
-try {
-    $files = Get-ChildItem -File -Recurse | Where-Object { $_.Name -ne "SHA256SUMS" } | ForEach-Object {
-        $_.FullName.Substring($dist.Length + 1)
-    } | Sort-Object
-    $lines = foreach ($rel in $files) {
-        $h = Get-Hash (Join-Path $dist $rel) "SHA256"
-        "{0}  {1}" -f $h, ($rel -replace '\\', '/')
+    Push-Location $dist
+    try {
+        $files = Get-ChildItem -File -Recurse | Where-Object { $_.Name -ne "SHA256SUMS" } | ForEach-Object {
+            $_.FullName.Substring($dist.Length + 1)
+        } | Sort-Object
+
+        $lines = foreach ($rel in $files) {
+            $h = Get-Hash (Join-Path $dist $rel) "SHA256"
+            "{0}  {1}" -f $h, ($rel -replace '\\', '/')
+        }
+        Set-Content -LiteralPath (Join-Path $dist "SHA256SUMS") -Value ($lines -join "`n") -Encoding ascii
+    } finally {
+        Pop-Location
     }
-    Set-Content -LiteralPath (Join-Path $dist "SHA256SUMS") -Value ($lines -join "`n") -Encoding ascii
-} finally { Pop-Location }
 
-# Tests use only the packaged DLL. PATH cannot supply a substitute.
-$savedPath = $env:PATH
-$env:PATH = "$env:SystemRoot\System32"
-$env:RNPARMOR_LIBRNP = (Resolve-Path (Join-Path $dist "rnp.dll")).Path
-foreach ($name in @("LIB", "INCLUDE", "LIBPATH", "VCINSTALLDIR", "VSINSTALLDIR")) {
-    Remove-Item "Env:$name" -ErrorAction SilentlyContinue
-}
-Log "stage: go test"
-$testLog = Join-Path $work "go-test.txt"
-$testErr = Join-Path $work "go-test-err.txt"
-Write-Host "go test with RNPARMOR_LIBRNP=$env:RNPARMOR_LIBRNP"
-$testCmd = @("test", "-count=1", "-timeout", "20m", "./internal/loadlib/", "./internal/rnp/")
-& $go @testCmd 1> $testLog 2> $testErr
-Get-Content $testLog, $testErr -ErrorAction SilentlyContinue
-if ($LASTEXITCODE -ne 0) { throw "go test failed: $LASTEXITCODE" }
+    # Tests use only the packaged DLL. PATH cannot supply a substitute.
+    $savedPath = $env:PATH
+    try {
+        $env:PATH = "$env:SystemRoot\System32"
+        $env:RNPARMOR_LIBRNP = (Resolve-Path (Join-Path $dist "rnp.dll")).Path
+        foreach ($name in @("LIB", "INCLUDE", "LIBPATH", "VCINSTALLDIR", "VSINSTALLDIR")) {
+            Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+        }
 
-Log "go test done"
-Log "stage: smoke"
-Remove-Item Env:RNPARMOR_LIBRNP -ErrorAction SilentlyContinue
-$smokeCheck = & (Join-Path $dist "rnparmor.exe") "--smoke-test" 2>&1
-if ($LASTEXITCODE -ne 0) {
-    throw "smoke-test failed: $LASTEXITCODE`n$smokeCheck"
-}
-$smokeText = $smokeCheck | Out-String
-if ($smokeText -notmatch ('(?m)^app_version=' + [regex]::Escape($Version) + '\s*$')) {
-    throw "smoke-test did not report app_version=$Version`n$smokeText"
-}
-Write-Host $smokeText
+        Log "stage: go test"
+        $testLog = Join-Path $work "go-test.txt"
+        $testErr = Join-Path $work "go-test-err.txt"
+        Write-Host "go test with RNPARMOR_LIBRNP=$env:RNPARMOR_LIBRNP"
+        $testCmd = @("test", "-count=1", "-timeout", "20m", "./internal/loadlib/", "./internal/rnp/")
+        & $go @testCmd 1> $testLog 2> $testErr
+        Get-Content $testLog, $testErr -ErrorAction SilentlyContinue
+        if ($LASTEXITCODE -ne 0) { throw "go test failed: $LASTEXITCODE" }
+        Log "go test done"
 
-$proc = Start-Process -FilePath (Join-Path $dist "rnparmor.exe") -WorkingDirectory $dist -PassThru -WindowStyle Hidden
-$null = Wait-Process -Id $proc.Id -Timeout 12 -ErrorAction SilentlyContinue
-$running = -not $proc.HasExited
-$window = 0
-try {
-    Add-Type @"
+        Log "stage: smoke"
+        Remove-Item Env:RNPARMOR_LIBRNP -ErrorAction SilentlyContinue
+        $smokeCheck = & (Join-Path $dist "rnparmor.exe") "--smoke-test" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "smoke-test failed: $LASTEXITCODE`n$smokeCheck"
+        }
+        $smokeText = $smokeCheck | Out-String
+        if ($smokeText -notmatch ('(?m)^app_version=' + [regex]::Escape($Version) + '\s*$')) {
+            throw "smoke-test did not report app_version=$Version`n$smokeText"
+        }
+        Write-Host $smokeText
+
+        $proc = Start-Process -FilePath (Join-Path $dist "rnparmor.exe") -WorkingDirectory $dist -PassThru -WindowStyle Hidden
+        $null = Wait-Process -Id $proc.Id -Timeout 12 -ErrorAction SilentlyContinue
+        $running = -not $proc.HasExited
+        $window = 0
+        try {
+            Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public class RnpArmorWin {
@@ -386,32 +579,38 @@ public class RnpArmorWin {
   public static extern IntPtr FindWindow(string cls, string title);
 }
 "@
-    $window = [RnpArmorWin]::FindWindow($null, "RnpArmor")
-} catch {
-    Write-Host "FindWindow unavailable: $_"
-}
-if ($running) {
-    Stop-Process -Id $proc.Id -Force
-    $smokeState = "process still running after 12s; stopped"
-} else {
-    $smokeState = "process exited $($proc.ExitCode)"
-}
-$env:PATH = $savedPath
+            $window = [RnpArmorWin]::FindWindow($null, "RnpArmor")
+        } catch {
+            Write-Host "FindWindow unavailable: $_"
+        }
+        if ($running) {
+            Stop-Process -Id $proc.Id -Force
+            $smokeState = "process still running after 12s; stopped"
+        } else {
+            $smokeState = "process exited $($proc.ExitCode)"
+        }
 
-Log "smoke done"
-Log "stage: zip"
-$os = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
-$head = (& git.exe -C $root rev-parse HEAD).Trim()
-if (Test-Path $zip) { Remove-Item -Force $zip }
-Run "tar.exe" @("-a", "-c", "-f", $zip, "-C", (Split-Path $dist -Parent), (Split-Path $dist -Leaf))
-$zipHash = Get-Hash $zip "SHA256"
-$listing = (Get-ChildItem -Recurse -File $dist | ForEach-Object { "{0}`t{1}" -f $_.Length, $_.FullName.Substring($dist.Length + 1) }) -join "`n"
+        Log "smoke done"
+    } finally {
+        $env:PATH = $savedPath
+    }
+
+    Log "stage: zip"
+    $os = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+    $head = (& git.exe -C $root rev-parse HEAD).Trim()
+    if (Test-Path $zip) { Remove-Item -Force $zip }
+    Run "tar.exe" @("-a", "-c", "-f", $zip, "-C", (Split-Path $dist -Parent), (Split-Path $dist -Leaf))
+    $zipHash = Get-Hash $zip "SHA256"
+    $listing = (Get-ChildItem -Recurse -File $dist | ForEach-Object {
+        "{0}`t{1}" -f $_.Length, $_.FullName.Substring($dist.Length + 1)
+    }) -join "`n"
+
 @"
 commit $head
 version $Version
 os $($os.ProductName) build $($os.CurrentBuild) display $($os.DisplayVersion)
 go $(& $go version)
-dll $($dll.FullName)
+dll $rnpDllPath
 RNPARMOR_LIBRNP during tests: packaged rnp.dll, PATH=$env:SystemRoot\System32
 go test: passed
 smoke: $smokeState
@@ -420,7 +619,23 @@ zip sha256 $zipHash
 files:
 $listing
 "@ | Set-Content -LiteralPath $report -Encoding utf8
-Log "zip done"
-Write-Host "ZIP $zip"
-Write-Host "SHA256 $zipHash"
-Get-Content $report
+
+    Log "zip done"
+    Write-Host "ZIP $zip"
+    Write-Host "SHA256 $zipHash"
+    Get-Content $report
+}
+
+switch ($Stage) {
+    "deps" { Build-Deps }
+    "rnp" { Build-Rnp }
+    "package" { Build-Package }
+    "all" {
+        Build-Deps
+        Build-Rnp
+        Build-Package
+    }
+    default { throw "unsupported stage: $Stage" }
+}
+
+Log "build-windows.ps1 finished, stage=$Stage"

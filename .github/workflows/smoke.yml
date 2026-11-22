@@ -24,9 +24,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: out/deps
-          key: ${{ runner.os }}-deps-v2-${{ hashFiles('deps/pins.json') }}
+          key: ${{ runner.os }}-deps-v3-${{ hashFiles('deps/pins.json', 'scripts/build-librnp.sh') }}
           restore-keys: |
-            ${{ runner.os }}-deps-v2-
+            ${{ runner.os }}-deps-v3-
             ${{ runner.os }}-deps-
       - name: packages
         run: sudo apt-get update && sudo apt-get install -y build-essential cmake python3 zlib1g-dev libbz2-dev pkg-config patchelf
@@ -55,16 +55,29 @@ jobs:
         with:
           go-version: "1.27.4"
       - name: cache deps
-        uses: actions/cache@v4
+        id: cache-deps
+        uses: actions/cache/restore@v4
         with:
           path: out/deps
-          key: ${{ runner.os }}-deps-v2-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}
+          key: ${{ runner.os }}-deps-v3-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}
           restore-keys: |
-            ${{ runner.os }}-deps-v2-
+            ${{ runner.os }}-deps-v3-
             ${{ runner.os }}-deps-
-      - name: build, test, and zip
+      - name: build deps (botan, json-c, zlib, bzip2)
         shell: pwsh
-        run: ./scripts/build-windows.ps1
+        run: ./scripts/build-windows.ps1 -Stage deps
+      - name: save deps cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: out/deps
+          key: ${{ runner.os }}-deps-v3-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}
+      - name: build librnp (rnp.dll)
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Stage rnp
+      - name: build, test, smoke, and zip
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Stage package
       - uses: actions/upload-artifact@v4
         with:
           name: rnparmor-windows-amd64

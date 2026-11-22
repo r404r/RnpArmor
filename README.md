@@ -172,13 +172,33 @@ CGO_ENABLED=0 go build -o rnparmor ./cmd/rnparmor
 ### Windows (portable)
 
 ```powershell
+# one-shot (compatible): deps + rnp + package
 pwsh -File .\scripts\build-windows.ps1
+
+# staged mode (for CI observability / caching)
+pwsh -File .\scripts\build-windows.ps1 -Stage deps
+pwsh -File .\scripts\build-windows.ps1 -Stage rnp
+pwsh -File .\scripts\build-windows.ps1 -Stage package
 
 # inject app version into rnparmor.exe metadata shown by --smoke-test/About
 pwsh -File .\scripts\build-windows.ps1 -Version v1.2.3
+
+# stage + version together
+pwsh -File .\scripts\build-windows.ps1 -Stage package -Version v1.2.3
 ```
 
-The script compiles pinned deps/librnp, builds `rnparmor.exe`, creates `out\dist\rnparmor-windows-amd64`, runs targeted tests, then:
+Windows dependency build uses a minimized Botan static module list from
+`scripts/windows/botan3-modules.txt` (one module per line, comments allowed),
+matching `rnpgp/rnp v0.18.1` requirements while avoiding unnecessary CLI/tests
+and non-OpenPGP modules in CI.
+
+`scripts/build-windows.ps1` now supports stage execution:
+
+1. `deps`: build/cache Botan + json-c + zlib + bzip2 into `out/deps` (with cached licenses)
+2. `rnp`: build `librnp` and cache `rnp.dll` to `out/win-build/rnp-dll/rnp.dll`
+3. `package`: build `rnparmor.exe`, run tests/smoke/probe, and produce zip/report
+
+The package stage creates `out\dist\rnparmor-windows-amd64` and executes:
 
 1. executes `rnparmor.exe --smoke-test`
 2. runs a bounded GUI process probe
@@ -193,9 +213,9 @@ Workflow: `.github/workflows/smoke.yml`
   - dependency cache on `out/deps`
   - pinned librnp build + test matrix
 - `windows-portable` job:
-  - dependency cache on `out/deps`
-  - full portable script + artifact upload
-  - cache key: `${{ runner.os }}-deps-v2-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
+  - dependency cache on `out/deps` with `actions/cache/restore` + post-deps `actions/cache/save`
+  - staged Windows flow (`deps` -> `rnp` -> `package`) for per-phase timing visibility
+  - cache key: `${{ runner.os }}-deps-v3-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
 
 Workflow: `.github/workflows/release.yml`
 
@@ -399,13 +419,32 @@ CGO_ENABLED=0 go build -o rnparmor ./cmd/rnparmor
 #### Windows（portable）
 
 ```powershell
+# 一键（兼容旧习惯）：deps + rnp + package
 pwsh -File .\scripts\build-windows.ps1
+
+# 分阶段（便于 CI 观测耗时与缓存）
+pwsh -File .\scripts\build-windows.ps1 -Stage deps
+pwsh -File .\scripts\build-windows.ps1 -Stage rnp
+pwsh -File .\scripts\build-windows.ps1 -Stage package
 
 # 注入应用版本（用于 --smoke-test / About 显示）
 pwsh -File .\scripts\build-windows.ps1 -Version v1.2.3
+
+# 分阶段 + 版本注入
+pwsh -File .\scripts\build-windows.ps1 -Stage package -Version v1.2.3
 ```
 
-脚本会构建钉扎依赖与 `rnp.dll`、打包 `rnparmor.exe`，并执行：
+Windows 依赖构建采用 `scripts/windows/botan3-modules.txt` 中的 Botan
+最小静态模块清单（每行一个模块，支持注释），对齐 `rnpgp/rnp v0.18.1`
+所需能力，避免在 CI 中编译不必要的 CLI/测试与非 OpenPGP 模块。
+
+`scripts/build-windows.ps1` 现支持分阶段执行：
+
+1. `deps`：构建/缓存 Botan + json-c + zlib + bzip2 到 `out/deps`（含许可证缓存）
+2. `rnp`：构建 `librnp`，并将 `rnp.dll` 缓存到 `out/win-build/rnp-dll/rnp.dll`
+3. `package`：构建 `rnparmor.exe`、执行测试/冒烟/GUI 探针并产出 zip/report
+
+`package` 阶段会生成 `out\dist\rnparmor-windows-amd64`，并执行：
 
 1. `rnparmor.exe --smoke-test`
 2. 带超时保护的 GUI 进程探针
@@ -420,9 +459,9 @@ CI 文件：`.github/workflows/smoke.yml`
   - `out/deps` 缓存
   - pinned librnp 构建 + 测试矩阵
 - `windows-portable` 作业：
-  - `out/deps` 缓存
-  - portable 全流程 + artifact 上传
-  - 缓存键：`${{ runner.os }}-deps-v2-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
+  - `out/deps` 缓存（`actions/cache/restore` + deps 阶段后 `actions/cache/save`）
+  - Windows 分阶段流水线（`deps` -> `rnp` -> `package`），可直接观测各阶段耗时
+  - 缓存键：`${{ runner.os }}-deps-v3-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
 
 发布文件：`.github/workflows/release.yml`
 
