@@ -4,6 +4,7 @@ on:
   pull_request:
     paths-ignore:
       - "README.md"
+      - "README.zh-CN.md"
       - "third_party/NOTICES.md"
   workflow_dispatch:
 
