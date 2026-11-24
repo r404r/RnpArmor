@@ -124,6 +124,66 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangZH: "就绪",
 		LangJA: "準備完了",
 	},
+	"menu.file": {
+		LangEN: "File",
+		LangZH: "文件",
+		LangJA: "ファイル",
+	},
+	"menu.file.close": {
+		LangEN: "Close Window",
+		LangZH: "关闭窗口",
+		LangJA: "ウィンドウを閉じる",
+	},
+	"menu.file.quit": {
+		LangEN: "Quit",
+		LangZH: "退出",
+		LangJA: "終了",
+	},
+	"menu.workspace": {
+		LangEN: "Workspace",
+		LangZH: "工作区",
+		LangJA: "ワークスペース",
+	},
+	"menu.workspace.keys": {
+		LangEN: "Keys",
+		LangZH: "钥匙圈与生成",
+		LangJA: "鍵リングと生成",
+	},
+	"menu.workspace.text": {
+		LangEN: "Text Studio",
+		LangZH: "文本加解密与签名",
+		LangJA: "テキスト暗号/署名",
+	},
+	"menu.workspace.file": {
+		LangEN: "File Workbench",
+		LangZH: "文件加解密与签名",
+		LangJA: "ファイル暗号/署名",
+	},
+	"menu.workspace.packet": {
+		LangEN: "Packet & Features",
+		LangZH: "Packet 检视与算法特性",
+		LangJA: "パケット解析と機能",
+	},
+	"menu.workspace.portable": {
+		LangEN: "Portable Keyring",
+		LangZH: "便携钥匙圈存储",
+		LangJA: "ポータブル鍵リング",
+	},
+	"menu.language": {
+		LangEN: "Language",
+		LangZH: "语言",
+		LangJA: "言語",
+	},
+	"menu.help": {
+		LangEN: "Help",
+		LangZH: "帮助",
+		LangJA: "ヘルプ",
+	},
+	"menu.help.about": {
+		LangEN: "About",
+		LangZH: "关于",
+		LangJA: "概要",
+	},
 	"label.language": {
 		LangEN: "Language",
 		LangZH: "语言",
@@ -145,9 +205,14 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangJA: "← 戻る",
 	},
 	"about.no_menu_hint": {
-		LangEN: "Menu-less About page: workspace tabs are hidden in this view.",
-		LangZH: "无菜单 About 页面：该视图下工作区菜单已隐藏。",
-		LangJA: "メニューなし About ページ: この画面ではワークスペースタブは非表示です。",
+		LangEN: "Standalone About window (no menu): workspace controls are intentionally hidden.",
+		LangZH: "独立 About 子窗口（无菜单）：工作区功能控件在此视图中被隐藏。",
+		LangJA: "独立した About 子ウィンドウ（メニューなし）: この画面ではワークスペース機能を非表示にしています。",
+	},
+	"btn.close": {
+		LangEN: "Close",
+		LangZH: "关闭",
+		LangJA: "閉じる",
 	},
 	"about.app_version": {
 		LangEN: "Application Version",

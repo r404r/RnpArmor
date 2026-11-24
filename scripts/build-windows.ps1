@@ -664,7 +664,7 @@ function Build-Package {
     $env:GOOS = "windows"
     $env:GOARCH = "amd64"
     $exeBuilt = Join-Path $work "rnparmor.exe"
-    $ldflags = "-s -w -X main.appVersion=$Version"
+    $ldflags = "-s -w -H=windowsgui -X main.appVersion=$Version"
     Run $go @("build", "-trimpath", "-ldflags", $ldflags, "-o", $exeBuilt, ".\cmd\rnparmor")
 
     if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
@@ -684,6 +684,20 @@ function Build-Package {
 
     $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
     if (-not $dumpbin) { throw "dumpbin.exe is missing; refusing to guess DLL dependencies" }
+
+    $headerText = & dumpbin.exe /nologo /headers (Join-Path $dist "rnparmor.exe") | Out-String
+    $subsystemLine = ""
+    foreach ($line in ($headerText -split "`r?`n")) {
+        if ($line -match '(?i)\bsubsystem\b') {
+            $subsystemLine = $line.Trim()
+            break
+        }
+    }
+    if ($headerText -notmatch '(?im)^\s*[0-9a-f]+\s+subsystem\s+.*\bWindows\s+GUI\b') {
+        throw "rnparmor.exe subsystem is not Windows GUI (expected -H=windowsgui); dumpbin line: $subsystemLine"
+    }
+    Log "rnparmor.exe subsystem: $subsystemLine"
+
     $depReport = New-Object System.Text.StringBuilder
     $unknown = @()
     $allow = @{
@@ -777,7 +791,7 @@ cancelled; cancellation only discards output after the call returns.
         $testLog = Join-Path $work "go-test.txt"
         $testErr = Join-Path $work "go-test-err.txt"
         Write-Host "go test with RNPARMOR_LIBRNP=$env:RNPARMOR_LIBRNP"
-        $testCmd = @("test", "-count=1", "-timeout", "20m", "./internal/loadlib/", "./internal/rnp/")
+        $testCmd = @("test", "-count=1", "-timeout", "20m", "./internal/loadlib/", "./internal/rnp/", "./cmd/rnparmor/")
         $prevNative = $PSNativeCommandUseErrorActionPreference
         try {
             $PSNativeCommandUseErrorActionPreference = $false
@@ -804,19 +818,38 @@ cancelled; cancellation only discards output after the call returns.
 
         Log "smoke"
         Remove-Item Env:RNPARMOR_LIBRNP -ErrorAction SilentlyContinue
-        $prevNative = $PSNativeCommandUseErrorActionPreference
-        try {
-            $PSNativeCommandUseErrorActionPreference = $false
-            $smokeCheck = & (Join-Path $dist "rnparmor.exe") "--smoke-test" 2>&1
-        } finally {
-            $PSNativeCommandUseErrorActionPreference = $prevNative
+        $smokeOut = Join-Path $work "smoke-out.txt"
+        if (Test-Path -LiteralPath $smokeOut) {
+            Remove-Item -LiteralPath $smokeOut -Force
         }
-        if ($LASTEXITCODE -ne 0) {
-            throw "smoke-test failed: $LASTEXITCODE`n$smokeCheck"
+        $smokeErr = Join-Path $work "smoke-err.txt"
+        if (Test-Path -LiteralPath $smokeErr) {
+            Remove-Item -LiteralPath $smokeErr -Force
         }
-        $smokeText = $smokeCheck | Out-String
+        $smokeProc = Start-Process -FilePath (Join-Path $dist "rnparmor.exe") `
+            -ArgumentList @("--smoke-test", "--smoke-out", "`"$smokeOut`"") `
+            -WorkingDirectory $dist `
+            -RedirectStandardError $smokeErr `
+            -NoNewWindow -Wait -PassThru
+        if ($smokeProc.ExitCode -ne 0) {
+            $smokeErrText = ""
+            if (Test-Path -LiteralPath $smokeErr) {
+                $smokeErrText = Get-Content -LiteralPath $smokeErr -ErrorAction SilentlyContinue | Out-String
+            }
+            throw "smoke-test failed: $($smokeProc.ExitCode)`n$smokeErrText"
+        }
+        if (-not (Test-Path -LiteralPath $smokeOut)) {
+            throw "smoke-test did not produce smoke-out file: $smokeOut"
+        }
+        $smokeText = Get-Content -LiteralPath $smokeOut -Raw
         if ($smokeText -notmatch ('(?m)^app_version=' + [regex]::Escape($Version) + '\s*$')) {
             throw "smoke-test did not report app_version=$Version`n$smokeText"
+        }
+        if ($smokeText -notmatch '(?m)^status=ok\s*$') {
+            throw "smoke-test did not report status=ok`n$smokeText"
+        }
+        if ($smokeText -notmatch '(?m)^i18n=ok\s*$') {
+            throw "smoke-test did not report i18n=ok`n$smokeText"
         }
         Write-Host $smokeText
 
@@ -872,6 +905,7 @@ dll $rnpDllPath
 RNPARMOR_LIBRNP during tests: packaged rnp.dll, PATH=$env:SystemRoot\System32
 go test: passed
 smoke: $smokeState
+subsystem: $subsystemLine
 FindWindow RnpArmor: $window
 zip sha256 $zipHash
 files:

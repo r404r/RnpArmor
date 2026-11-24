@@ -8,7 +8,7 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
 
 ## 功能总览
 
-1. **MyGo 五大工作区 GUI + 中/日/英三语实时切换**
+1. **MyGo 五大工作区 GUI + 原生 4 组三语菜单栏 + 独立 About 子窗口**
    - 工作区：
      - 钥匙圈与生成
      - 文本加解密与签名验签
@@ -16,16 +16,16 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
      - Packet 检视与算法特性
      - 便携钥匙圈存储
    - 三语词典位于 `cmd/rnparmor/i18n.go`，零外部依赖。
-   - 顶部栏可即时切换 `English | 中文 | 日本語`。
+   - 主窗口挂载原生 4 组三语菜单栏（文件 / 工作区 / 语言 / 帮助）：
+     - 文件：打开会话、加载钥匙圈、保存钥匙圈、退出。
+     - 工作区：5 个单选菜单项，与工作区 Tab 双向联动。
+     - 语言：三语单选项（`English`、`中文`、`日本語`），切换后实时刷新菜单栏、主窗口与 About 子窗口。
+     - 帮助：打开独立 About 子窗口（关于）。
    - 语言可由 `--lang en|zh|ja`、`RNPARMOR_LANG`、`LANG` 预设。
-   - 新增 **无菜单独立 About 页面**（About 视图不显示工作区 Tab 菜单），展示：
-     - 应用版本：构建期注入的应用版本号（`appVersion`，例如 `v0.0.1` 或 `dev`）
-     - 作者：`r404r (https://github.com/r404r)`
-     - 仓库地址：`https://github.com/r404r/RnpArmor`
-     - RNP 上游地址：`https://github.com/rnpgp/rnp` 与当前 `librnp` 版本
-     - 本地动态库路径：当前 `rnp.dll` / `librnp.so` 绝对路径
-     - 密钥库地址：当前便携工作区路径与 `pubring.gpg`/`secring.gpg` 存在状态
-     - 运行时栈：MyGo / purego / Botan 版本
+   - **独立无菜单非模态 About 子窗口（`580×520`）**：
+     - 单实例聚焦、固定尺寸、无菜单栏（非 macOS 平台调用 `SetMenu(nil)`）、带关闭按钮。
+     - 关闭 About 窗口不影响主窗口；主窗口关闭时联动关闭 About 窗口；语言切换时窗口标题与内容同步刷新。
+     - 展示应用版本（`appVersion`，如 `v0.0.1` 或 `dev`）、作者（`r404r (https://github.com/r404r)`）、仓库地址（`https://github.com/r404r/RnpArmor`）、RNP 上游地址与 `librnp` 版本、本地动态库路径（`rnp.dll` / `librnp.so`）、密钥库目录（便携工作区路径及 `pubring.gpg`/`secring.gpg` 存在状态）与 GUI 框架/运行时栈（MyGo / purego / Botan 版本）。
 
 2. **`internal/rnp` 能力扩展**
    - 补齐密钥迭代/定位、导入导出、删除、JSON 导出。
@@ -41,14 +41,15 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
    - 仅支持显式路径钥匙圈读写，不依赖默认钥匙圈。
    - 文件发布遵循防覆盖语义。
 
-4. **Windows portable 构建与 smoke 流程加固**
-   - 新增 `rnparmor.exe --smoke-test`，用于确定性冒烟检查。
-   - `--smoke-test` 现会输出 `app_version=<值>`，CI 会核对版本注入结果。
-   - Windows 脚本先跑 smoke-test，再做有超时保护的 GUI 进程探针。
-   - Linux/Windows CI 作业均新增 `out/deps` 缓存。
+4. **Windows portable 构建、GUI 子系统与 smoke 流程加固**
+   - Windows 构建使用 `-H=windowsgui`（Windows GUI 子系统），双击启动不弹出黑色控制台窗口。
+   - `scripts/build-windows.ps1` 通过 `dumpbin /headers` 校验 PE 子系统为 `Windows GUI` 并记录于 `windows-report.txt`。
+   - `rnparmor.exe --smoke-test` 支持 `--smoke-out <path>` 将冒烟结果写入文件，便于 `-H=windowsgui` 产物在 CI 中进行确定性校验。
+   - Windows 脚本先执行 `--smoke-test --smoke-out`，再做有超时保护的 GUI 进程探针。
+   - Linux/Windows CI 作业均配置 `out/deps` 缓存。
 
 5. **自动打包发布工作流**
-   - 新增 `.github/workflows/release.yml`，在 `v*` Tag 推送或手动触发时执行。
+   - `.github/workflows/release.yml` 在 `v*` Tag 推送或手动触发时执行。
    - 同时构建 Linux/Windows portable 包并上传 artifact。
    - 双平台成功后创建/更新 GitHub Release，并上传：
      - `rnparmor-windows-amd64.zip`
@@ -59,14 +60,15 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
 ## 架构与目录
 
 - `cmd/rnparmor/`
-  - `main.go`：MyGo 主程序、5 工作区 UI、异步会话操作，以及构建注入 `appVersion` 展示/输出。
+  - `main.go`：MyGo 主程序、原生 4 组菜单栏、5 工作区 UI、`580×520` 非模态 About 子窗口、异步会话操作、`--smoke-out` 及构建注入 `appVersion` 展示/输出。
   - `i18n.go`：EN/ZH/JA 三语词典、语言解析与完整性校验。
+  - `main_test.go`：冒烟输出与文件写入、菜单模板结构及状态联动单元测试。
 - `internal/rnp/`
   - `api.go`：purego 对 librnp 的 FFI 绑定。
   - `session.go`：会话生命周期、口令回调控制、数据模型。
   - `ops.go`：密钥管理、文本/文件加解密签名验签、Packet/特性接口。
   - `session_test.go`：兼容测试 + 扩展测试。
-- `scripts/build-windows.ps1`：Windows portable 构建、测试、冒烟与打包。
+- `scripts/build-windows.ps1`：Windows `-H=windowsgui` portable 构建、PE 子系统与 DLL 导入校验、测试、`--smoke-out` 冒烟与打包。
 - `.github/workflows/smoke.yml`：Linux/Windows CI（含同分支并发自动取消）。
 - `.github/workflows/release.yml`：Tag/手动触发的自动打包发布。
 
@@ -105,14 +107,12 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
 - 显式目录读写钥匙圈。
 - 口令仅在会话操作期间以内存形式使用。
 
-### 6）无菜单 About 页面
+### 6）原生 4 组菜单栏与独立 About 子窗口
 
-- 从顶部 About 按钮进入。
-- About 视图中按设计隐藏工作区 Tab 导航菜单。
-- 页面仅提供：
-  - 返回按钮（`← Back`）与语言切换器
-  - 作者/仓库/RNP 上游/本地库路径/密钥库目录/运行时栈等只读信息
-- 明确提示不会读取系统默认钥匙圈。
+- 主窗口顶部原生菜单栏包含 4 组：文件（打开会话 / 加载与保存钥匙圈 / 退出）、工作区（5 个工作区单选联动）、语言（`English` / `中文` / `日本語` 单选实时刷新菜单与窗口）与帮助（关于）。
+- 点击「帮助 → 关于」打开 `580×520` 固定尺寸、非模态的独立无菜单子窗口（单实例聚焦、无菜单栏、带关闭按钮）。
+- 关闭 About 子窗口不影响主窗口；主窗口关闭时联动关闭 About 子窗口；切换语言时其标题与内容同步更新。
+- 仅展示只读信息（应用版本、作者、仓库、RNP 上游、本地动态库路径、便携密钥库目录及 `pubring.gpg`/`secring.gpg` 存在状态、运行时栈），并明确提示不读取系统默认钥匙圈。
 
 ## 验签语义
 
@@ -128,6 +128,9 @@ RnpArmor 默认只报告前者，不会自动推断后者。
 ```bash
 # 探测 librnp + 校验三语词典，不进入 GUI 循环
 rnparmor --smoke-test
+
+# 将冒烟输出写入指定文件（用于 Windows -H=windowsgui 构建的 CI 确定性校验）
+rnparmor --smoke-test --smoke-out out/smoke-out.txt
 
 # 强制界面语言
 rnparmor --lang en
@@ -201,14 +204,15 @@ Windows 依赖构建钉扎并打包以下组件：
 3. `small-deps`：编译并安装静态 `json-c`、`zlib`、`bzip2` 到 `out/deps`，准备 `dirent.h` 并将依赖许可证缓存至 `out/deps/licenses`
 4. `deps`：依次执行 `fetch-deps -> botan -> small-deps`
 5. `rnp`：基于缓存依赖编译 `librnp`（`rnp.dll`），并缓存至 `out/win-build/rnp-dll/rnp.dll`
-6. `package`：构建 `rnparmor.exe`、复制 `rnp.dll` 与 `licenses/`、校验 DLL 导入表（`DEPENDENCIES.txt`）、生成 `PORTABLE.txt` 与 `SHA256SUMS`、对打包后的 `rnp.dll` 执行 `go test`、运行 `--smoke-test` 与 GUI 探针并产出 zip 与报告
+6. `package`：使用 `-H=windowsgui` 构建 `rnparmor.exe`、复制 `rnp.dll` 与 `licenses/`、校验 `Windows GUI` PE 子系统（`dumpbin /headers`）与 DLL 导入表（`DEPENDENCIES.txt`）、生成 `PORTABLE.txt` 与 `SHA256SUMS`、对打包后的 `rnp.dll` 执行 `go test`、运行 `--smoke-test --smoke-out` 与 GUI 探针并产出 zip 与报告
 7. `all`：依次执行 `deps -> rnp -> package`（默认）
 
 `package` 阶段会生成 `out\dist\rnparmor-windows-amd64`，并执行：
 
-1. 将 `RNPARMOR_LIBRNP` 指向打包目录内的 `rnp.dll`、并将 `PATH` 收窄到 `System32` 后运行 `go test -count=1 -timeout 20m ./internal/loadlib/ ./internal/rnp/`
-2. 执行 `rnparmor.exe --smoke-test`（核对 `app_version=<Version>`）
-3. 执行带超时保护的 GUI 进程探针
+1. `dumpbin /headers` 校验，确认 `rnparmor.exe` 为 `Windows GUI` 子系统（记录至 `out\windows-report.txt`）
+2. 将 `RNPARMOR_LIBRNP` 指向打包目录内的 `rnp.dll`、并将 `PATH` 收窄到 `System32` 后运行 `go test -count=1 -timeout 20m ./internal/loadlib/ ./internal/rnp/ ./cmd/rnparmor/`
+3. 执行 `rnparmor.exe --smoke-test --smoke-out <path>`（核对 `status=ok`、`app_version=<Version>` 与 `i18n=ok`）
+4. 执行带超时保护的 GUI 进程探针
 
 Zip 输出：`out\rnparmor-windows-amd64.zip`（报告：`out\windows-report.txt`）。
 
@@ -244,7 +248,7 @@ Zip 输出：`out\rnparmor-windows-amd64.zip`（报告：`out\windows-report.txt
 
 ## 仓库状态说明
 
-- `fix/windows-ci-and-release` 分支（PR #3）已实现 `.github/workflows/smoke.yml` 双平台 CI 全绿，并就绪 `.github/workflows/release.yml` 用于 `v0.0.1` 发版。
+- `feat/win-gui-menu-and-about` 分支（PR #4）已通过 `.github/workflows/smoke.yml` 双平台 CI，完成 `-H=windowsgui` PE 子系统校验、主窗口原生 4 组三语菜单栏、`580×520` 独立非模态 About 子窗口及 `--smoke-out` 确定性冒烟校验。
 - Windows 桌面人工交互体验、中文输入法与高 DPI 表现仍依赖真实环境，需在 Windows 10/11 桌面环境中单独确认。
 
 ## 第三方依赖与钉扎
