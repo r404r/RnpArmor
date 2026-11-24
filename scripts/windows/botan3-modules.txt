@@ -11,7 +11,7 @@ cast128
 cbc
 cfb
 crc24
-curve25519
+x25519
 des
 dl_algo
 dl_group

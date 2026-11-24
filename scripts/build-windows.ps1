@@ -1,11 +1,14 @@
 # Build Windows x64 portable outputs in staged mode:
-#   -Stage deps    : build/cache Botan/json-c/zlib/bzip2 into out/deps
-#   -Stage rnp     : build librnp (rnp.dll) into out/win-build/rnp-dll
-#   -Stage package : build rnparmor.exe, run tests/smoke, package zip/report
-#   -Stage all     : deps + rnp + package (default)
+#   -Stage fetch-deps : download/checksum/extract Botan/json-c/zlib/bzip2 sources
+#   -Stage botan      : build/install minimized static Botan into out/deps
+#   -Stage small-deps : build/install json-c/zlib/bzip2 + cache dependency licenses
+#   -Stage deps       : fetch-deps -> botan -> small-deps
+#   -Stage rnp        : build librnp (rnp.dll) into out/win-build/rnp-dll
+#   -Stage package    : build rnparmor.exe, run tests/smoke, package zip/report
+#   -Stage all        : deps -> rnp -> package (default)
 param(
     [string]$Version = "dev",
-    [ValidateSet("all", "deps", "rnp", "package")]
+    [ValidateSet("all", "deps", "fetch-deps", "botan", "small-deps", "rnp", "package")]
     [string]$Stage = "all"
 )
 
@@ -14,6 +17,32 @@ $PSNativeCommandUseErrorActionPreference = $true
 
 function Log([string]$Message) {
     Write-Host ("[{0}] {1}" -f (Get-Date -Format "HH:mm:ss"), $Message)
+}
+
+function Sanitize-Annotation([string]$Text) {
+    if ($null -eq $Text) { return "" }
+    return ($Text -replace '[\r\n]+', ' | ')
+}
+
+function Emit-Notice([string]$Title, [string]$Message) {
+    if ($env:GITHUB_ACTIONS -eq "true") {
+        Write-Host ("::notice title={0}::{1}" -f (Sanitize-Annotation $Title), (Sanitize-Annotation $Message))
+    }
+}
+
+function Emit-Error([string]$Title, [string]$Message) {
+    if ($env:GITHUB_ACTIONS -eq "true") {
+        Write-Host ("::error title={0}::{1}" -f (Sanitize-Annotation $Title), (Sanitize-Annotation $Message))
+    }
+}
+
+function Invoke-TimedStage([string]$Name, [scriptblock]$Body) {
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    Log "stage: $Name"
+    & $Body
+    $sw.Stop()
+    Log (("stage: {0} done ({1}s)" -f $Name, [math]::Round($sw.Elapsed.TotalSeconds, 1)))
+    Emit-Notice ("stage-{0}" -f $Name) ("done in {0}s" -f [math]::Round($sw.Elapsed.TotalSeconds, 1))
 }
 
 function Run([string]$File, [string[]]$CommandArgs) {
@@ -89,11 +118,60 @@ function Find-Ninja([string]$VsRoot) {
 }
 
 function Resolve-Python {
-    foreach ($cand in @("py.exe", "python.exe")) {
-        $c = Get-Command $cand -ErrorAction SilentlyContinue
-        if ($c) { return $c.Source }
+    $candidates = @()
+    foreach ($name in @("python.exe", "py.exe")) {
+        $cmds = Get-Command $name -All -ErrorAction SilentlyContinue
+        foreach ($c in $cmds) {
+            if ($c.Source) { $candidates += $c.Source }
+        }
     }
+
+    $ordered = @()
+    foreach ($p in $candidates) {
+        if ($ordered -notcontains $p) { $ordered += $p }
+    }
+
+    foreach ($p in $ordered) {
+        if ($p -match "\\WindowsApps\\") {
+            continue
+        }
+
+        try {
+            $out = & $p "--version" 2>&1
+            $code = $LASTEXITCODE
+            $text = ($out | Out-String).Trim()
+            if ($code -eq 0 -and $text -match '^Python 3\.') {
+                return $p
+            }
+        } catch {
+            continue
+        }
+    }
+
     return $null
+}
+
+function Extract-TarWithPython([string]$ArchivePath, [string]$Destination) {
+    $pyCode = @"
+import pathlib
+import sys
+import tarfile
+
+src = pathlib.Path(sys.argv[1])
+dst = pathlib.Path(sys.argv[2])
+dst.mkdir(parents=True, exist_ok=True)
+
+with tarfile.open(src, 'r:*') as tf:
+    kwargs = {}
+    if sys.version_info >= (3, 12):
+        kwargs['filter'] = 'data'
+    try:
+        tf.extractall(dst, **kwargs)
+    except TypeError:
+        tf.extractall(dst)
+"@
+
+    Run $py @("-c", $pyCode, $ArchivePath, $Destination)
 }
 
 function Parse-BotanModules([string]$ModuleFile) {
@@ -171,7 +249,7 @@ function Ensure-RnpSources(
     [string]$SrcRoot,
     [object]$Pins
 ) {
-    Log "stage: fetch rnp and sexpp"
+    Log "fetch rnp and sexpp"
     $rnpSrc = Join-Path $SrcRoot "rnp"
     if (-not (Test-Path (Join-Path $rnpSrc ".git"))) {
         Run "git.exe" @("clone", "--depth", "1", "--branch", "v0.18.1", "https://github.com/rnpgp/rnp.git", $rnpSrc)
@@ -190,6 +268,12 @@ function Ensure-RnpSources(
     if ($sexppHead -ne $Pins.rnp.sexpp_commit) { throw "sexpp HEAD mismatch: $sexppHead" }
 
     return $rnpSrc
+}
+
+function Ensure-Extracted([string]$MarkerPath, [string]$ArchivePath) {
+    if (-not (Test-Path -LiteralPath $MarkerPath)) {
+        Extract-TarWithPython -ArchivePath $ArchivePath -Destination $src
+    }
 }
 
 Log "build-windows.ps1 start, stage=$Stage, version=$Version"
@@ -226,7 +310,7 @@ if (-not $vsRoot -and (Test-Path $vswhere)) {
 }
 $ninja = Find-Ninja $vsRoot
 $py = Resolve-Python
-if (-not $py) { throw "Python is required to configure Botan" }
+if (-not $py) { throw "Python 3 is required to extract/build dependencies" }
 if (-not $ninja) { throw "ninja.exe was not found; it is required for Windows dependency builds" }
 Log "python: $py"
 Log "ninja: $ninja"
@@ -242,6 +326,11 @@ $cmakeCommon = @(
     "-DCMAKE_BUILD_TYPE=Release"
 )
 
+$botanTar = Join-Path $src "Botan-3.10.0.tar.xz"
+$jsonTar = Join-Path $src "json-c-0.19.tar.gz"
+$zlibTar = Join-Path $src "zlib-1.4.tar.gz"
+$bzTar = Join-Path $src "bzip2-1.0.8.tar.gz"
+
 $botanSrc = Join-Path $src "Botan-3.10.0"
 $jsonSrc = Join-Path $src "json-c-0.19"
 $zlibSrc = Join-Path $src "zlib-1.4"
@@ -253,62 +342,76 @@ $zlibPrefix = Join-Path $deps "zlib"
 $bzPrefix = Join-Path $deps "bzip2"
 $depsLicenses = Join-Path $deps "licenses"
 
-function Build-Deps {
-    Log "stage: deps"
-
+function Build-FetchDeps {
     if (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix) {
-        Log "deps hot cache hit: artifacts + licenses found in out/deps; skip dependency downloads/extract/build"
+        Log "deps hot cache hit: skip fetch-deps"
         return
     }
 
-    Log "stage: download pinned sources"
-    Get-Pinned $pins.botan.tarball (Join-Path $src "Botan-3.10.0.tar.xz") $pins.botan.sha256 $null
-    Get-Pinned $pins.json_c.tarball (Join-Path $src "json-c-0.19.tar.gz") $pins.json_c.sha256 $null
-    Get-Pinned $pins.zlib.tarball (Join-Path $src "zlib-1.4.tar.gz") $pins.zlib.sha256 $null
-    Get-Pinned $pins.bzip2.tarball (Join-Path $src "bzip2-1.0.8.tar.gz") $pins.bzip2.sha256 $pins.bzip2.sha512
+    Get-Pinned $pins.botan.tarball $botanTar $pins.botan.sha256 $null
+    Get-Pinned $pins.json_c.tarball $jsonTar $pins.json_c.sha256 $null
+    Get-Pinned $pins.zlib.tarball $zlibTar $pins.zlib.sha256 $null
+    Get-Pinned $pins.bzip2.tarball $bzTar $pins.bzip2.sha256 $pins.bzip2.sha512
 
-    Log "stage: extract sources"
-    if (-not (Test-Path (Join-Path $botanSrc "configure.py"))) {
-        Run "tar.exe" @("-xf", (Join-Path $src "Botan-3.10.0.tar.xz"), "-C", $src)
-    }
-    if (-not (Test-Path (Join-Path $jsonSrc "CMakeLists.txt"))) {
-        Run "tar.exe" @("-xzf", (Join-Path $src "json-c-0.19.tar.gz"), "-C", $src)
-    }
-    if (-not (Test-Path (Join-Path $zlibSrc "CMakeLists.txt"))) {
-        Run "tar.exe" @("-xzf", (Join-Path $src "zlib-1.4.tar.gz"), "-C", $src)
-    }
-    if (-not (Test-Path (Join-Path $bzSrc "bzlib.c"))) {
-        Run "tar.exe" @("-xzf", (Join-Path $src "bzip2-1.0.8.tar.gz"), "-C", $src)
+    Ensure-Extracted -MarkerPath (Join-Path $botanSrc "configure.py") -ArchivePath $botanTar
+    Ensure-Extracted -MarkerPath (Join-Path $jsonSrc "CMakeLists.txt") -ArchivePath $jsonTar
+    Ensure-Extracted -MarkerPath (Join-Path $zlibSrc "CMakeLists.txt") -ArchivePath $zlibTar
+    Ensure-Extracted -MarkerPath (Join-Path $bzSrc "bzlib.c") -ArchivePath $bzTar
+}
+
+function Build-Botan {
+    if (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix) {
+        Log "deps hot cache hit: skip botan"
+        return
     }
 
-    Log "stage: botan"
     $botanHeader = Join-Path $botanPrefix "include\botan-3\botan\version.h"
     $botanLib = Get-BotanLib $botanPrefix
-    if ((-not (Test-Path $botanHeader)) -or (-not $botanLib)) {
-        $modules = Parse-BotanModules (Join-Path $root "scripts\windows\botan3-modules.txt")
-        $botanModules = $modules -join ","
-        Log "botan modules count: $($modules.Count)"
-        $botanArgs = @(
-            (Join-Path $botanSrc "configure.py"),
-            "--cc=msvc", "--os=windows", "--cpu=x86_64",
-            "--prefix=$botanPrefix",
-            "--build-targets=static",
-            "--disable-shared-library",
-            "--minimized-build",
-            "--enable-modules=$botanModules",
-            "--no-install-python-module",
-            "--without-documentation",
-            "--with-msvc-runtime=MT",
-            "--build-tool=ninja",
-            "--with-build-dir=$(Join-Path $work 'botan')"
-        )
-        Run $py $botanArgs
-        Run $ninja @("-C", (Join-Path $work "botan"), "install")
-        $botanLib = Get-BotanLib $botanPrefix
-        if (-not $botanLib) { throw "Botan static library not found after build" }
+    if ((Test-Path -LiteralPath $botanHeader) -and $botanLib) {
+        Log "botan already present: skip botan"
+        return
     }
 
-    Log "stage: json-c"
+    Ensure-Extracted -MarkerPath (Join-Path $botanSrc "configure.py") -ArchivePath $botanTar
+
+    $modules = Parse-BotanModules (Join-Path $root "scripts\windows\botan3-modules.txt")
+    $botanModules = $modules -join ","
+    Log "botan modules count: $($modules.Count)"
+
+    $botanArgs = @(
+        (Join-Path $botanSrc "configure.py"),
+        "--cc=msvc", "--os=windows", "--cpu=x86_64",
+        "--prefix=$botanPrefix",
+        "--build-targets=static",
+        "--disable-shared-library",
+        "--minimized-build",
+        "--enable-modules=$botanModules",
+        "--no-install-python-module",
+        "--without-documentation",
+        "--msvc-runtime=MT",
+        "--build-tool=ninja",
+        "--with-build-dir=$(Join-Path $work 'botan')"
+    )
+    Run $py $botanArgs
+    Run $ninja @("-C", (Join-Path $work "botan"), "install")
+
+    $botanLib = Get-BotanLib $botanPrefix
+    if ((-not (Test-Path -LiteralPath $botanHeader)) -or (-not $botanLib)) {
+        throw "Botan static install incomplete"
+    }
+}
+
+function Build-SmallDeps {
+    if (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix) {
+        Log "deps hot cache hit: skip small-deps"
+        return
+    }
+
+    Ensure-Extracted -MarkerPath (Join-Path $botanSrc "license.txt") -ArchivePath $botanTar
+    Ensure-Extracted -MarkerPath (Join-Path $jsonSrc "CMakeLists.txt") -ArchivePath $jsonTar
+    Ensure-Extracted -MarkerPath (Join-Path $zlibSrc "CMakeLists.txt") -ArchivePath $zlibTar
+    Ensure-Extracted -MarkerPath (Join-Path $bzSrc "bzlib.c") -ArchivePath $bzTar
+
     if (-not (Test-Path (Join-Path $jsonPrefix "lib\json-c.lib"))) {
         Run "cmake.exe" (@(
             "-S", $jsonSrc, "-B", (Join-Path $work "json-c"),
@@ -319,7 +422,6 @@ function Build-Deps {
         Run "cmake.exe" @("--install", (Join-Path $work "json-c"), "--config", "Release")
     }
 
-    Log "stage: zlib"
     if (-not (Test-Path (Join-Path $zlibPrefix "lib\libz.lib"))) {
         Run "cmake.exe" (@(
             "-S", $zlibSrc, "-B", (Join-Path $work "zlib"),
@@ -330,7 +432,6 @@ function Build-Deps {
         Run "cmake.exe" @("--install", (Join-Path $work "zlib"), "--config", "Release")
     }
 
-    Log "stage: bzip2"
     if (-not (Test-Path (Join-Path $bzPrefix "lib\bz2.lib"))) {
         Run "cmake.exe" (@(
             "-S", (Join-Path $root "scripts\windows\bzip2-static"),
@@ -342,7 +443,6 @@ function Build-Deps {
         Run "cmake.exe" @("--install", (Join-Path $work "bzip2"), "--config", "Release")
     }
 
-    Log "stage: cache dependency licenses"
     New-Item -ItemType Directory -Force -Path $depsLicenses | Out-Null
     Copy-Item (Join-Path $botanSrc "license.txt") (Join-Path $depsLicenses "botan-license.txt") -Force
     Copy-Item (Join-Path $jsonSrc "COPYING") (Join-Path $depsLicenses "json-c-COPYING") -Force
@@ -350,14 +450,17 @@ function Build-Deps {
     Copy-Item (Join-Path $bzSrc "LICENSE") (Join-Path $depsLicenses "bzip2-LICENSE") -Force
 
     if (-not (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix)) {
-        throw "deps stage finished but cache artifacts are incomplete"
+        throw "small-deps stage finished but dependency cache is incomplete"
     }
-    Log "deps done"
+}
+
+function Build-Deps {
+    Invoke-TimedStage "fetch-deps" { Build-FetchDeps }
+    Invoke-TimedStage "botan" { Build-Botan }
+    Invoke-TimedStage "small-deps" { Build-SmallDeps }
 }
 
 function Build-Rnp {
-    Log "stage: rnp"
-
     if (-not (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix)) {
         throw "dependency cache is incomplete; run -Stage deps first"
     }
@@ -405,12 +508,9 @@ function Build-Rnp {
     Copy-Item -Force $dll.FullName $rnpDllPath
     Log "rnp.dll cached at $rnpDllPath"
     Write-Host "rnp.dll sha256 $(Get-Hash $rnpDllPath 'SHA256')"
-    Log "rnp done"
 }
 
 function Build-Package {
-    Log "stage: package"
-
     if (-not (Test-Path -LiteralPath $rnpDllPath)) {
         $rnpBuild = Join-Path $work "rnp"
         if (Test-Path $rnpBuild) {
@@ -430,14 +530,13 @@ function Build-Package {
     if (-not $goCmd) { throw "go.exe is required for package stage" }
     $go = $goCmd.Source
 
-    Log "stage: go build (version $Version)"
+    Log "go build (version $Version)"
     $env:CGO_ENABLED = "0"
     $env:GOOS = "windows"
     $env:GOARCH = "amd64"
     $exeBuilt = Join-Path $work "rnparmor.exe"
     $ldflags = "-s -w -X main.appVersion=$Version"
     Run $go @("build", "-trimpath", "-ldflags", $ldflags, "-o", $exeBuilt, ".\cmd\rnparmor")
-    Log "go build done"
 
     if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
     New-Item -ItemType Directory -Force -Path $dist, (Join-Path $dist "licenses") | Out-Null
@@ -544,7 +643,7 @@ cancelled; cancellation only discards output after the call returns.
             Remove-Item "Env:$name" -ErrorAction SilentlyContinue
         }
 
-        Log "stage: go test"
+        Log "go test"
         $testLog = Join-Path $work "go-test.txt"
         $testErr = Join-Path $work "go-test-err.txt"
         Write-Host "go test with RNPARMOR_LIBRNP=$env:RNPARMOR_LIBRNP"
@@ -552,9 +651,8 @@ cancelled; cancellation only discards output after the call returns.
         & $go @testCmd 1> $testLog 2> $testErr
         Get-Content $testLog, $testErr -ErrorAction SilentlyContinue
         if ($LASTEXITCODE -ne 0) { throw "go test failed: $LASTEXITCODE" }
-        Log "go test done"
 
-        Log "stage: smoke"
+        Log "smoke"
         Remove-Item Env:RNPARMOR_LIBRNP -ErrorAction SilentlyContinue
         $smokeCheck = & (Join-Path $dist "rnparmor.exe") "--smoke-test" 2>&1
         if ($LASTEXITCODE -ne 0) {
@@ -589,17 +687,21 @@ public class RnpArmorWin {
         } else {
             $smokeState = "process exited $($proc.ExitCode)"
         }
-
-        Log "smoke done"
     } finally {
         $env:PATH = $savedPath
     }
 
-    Log "stage: zip"
+    Log "zip"
     $os = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
     $head = (& git.exe -C $root rev-parse HEAD).Trim()
     if (Test-Path $zip) { Remove-Item -Force $zip }
-    Run "tar.exe" @("-a", "-c", "-f", $zip, "-C", (Split-Path $dist -Parent), (Split-Path $dist -Leaf))
+    Push-Location (Split-Path $dist -Parent)
+    try {
+        Compress-Archive -Path (Split-Path $dist -Leaf) -DestinationPath $zip -Force
+    } finally {
+        Pop-Location
+    }
+
     $zipHash = Get-Hash $zip "SHA256"
     $listing = (Get-ChildItem -Recurse -File $dist | ForEach-Object {
         "{0}`t{1}" -f $_.Length, $_.FullName.Substring($dist.Length + 1)
@@ -620,22 +722,29 @@ files:
 $listing
 "@ | Set-Content -LiteralPath $report -Encoding utf8
 
-    Log "zip done"
     Write-Host "ZIP $zip"
     Write-Host "SHA256 $zipHash"
     Get-Content $report
 }
 
-switch ($Stage) {
-    "deps" { Build-Deps }
-    "rnp" { Build-Rnp }
-    "package" { Build-Package }
-    "all" {
-        Build-Deps
-        Build-Rnp
-        Build-Package
+try {
+    switch ($Stage) {
+        "fetch-deps" { Invoke-TimedStage "fetch-deps" { Build-FetchDeps } }
+        "botan" { Invoke-TimedStage "botan" { Build-Botan } }
+        "small-deps" { Invoke-TimedStage "small-deps" { Build-SmallDeps } }
+        "deps" { Invoke-TimedStage "deps" { Build-Deps } }
+        "rnp" { Invoke-TimedStage "rnp" { Build-Rnp } }
+        "package" { Invoke-TimedStage "package" { Build-Package } }
+        "all" {
+            Invoke-TimedStage "deps" { Build-Deps }
+            Invoke-TimedStage "rnp" { Build-Rnp }
+            Invoke-TimedStage "package" { Build-Package }
+        }
+        default { throw "unsupported stage: $Stage" }
     }
-    default { throw "unsupported stage: $Stage" }
-}
 
-Log "build-windows.ps1 finished, stage=$Stage"
+    Log "build-windows.ps1 finished, stage=$Stage"
+} catch {
+    Emit-Error ("build-windows-$Stage") $_.Exception.Message
+    throw
+}
