@@ -47,8 +47,30 @@ function Invoke-TimedStage([string]$Name, [scriptblock]$Body) {
 
 function Run([string]$File, [string[]]$CommandArgs) {
     Write-Host "+ $File $($CommandArgs -join ' ')"
-    & $File @CommandArgs
-    if ($LASTEXITCODE -ne 0) { throw "$File exited $LASTEXITCODE" }
+    $prevNative = $PSNativeCommandUseErrorActionPreference
+    $PSNativeCommandUseErrorActionPreference = $false
+    $tail = New-Object System.Collections.Generic.List[string]
+    try {
+        & $File @CommandArgs 2>&1 | ForEach-Object {
+            $line = $_.ToString()
+            Write-Host $line
+            $trim = $line.Trim()
+            if ($trim.Length -gt 0) {
+                $tail.Add($trim)
+                if ($tail.Count -gt 15) { $tail.RemoveAt(0) }
+            }
+        }
+        $code = $LASTEXITCODE
+    } finally {
+        $PSNativeCommandUseErrorActionPreference = $prevNative
+    }
+
+    if ($code -ne 0) {
+        $take = [Math]::Min(5, $CommandArgs.Count)
+        $headArgs = if ($take -gt 0) { ($CommandArgs[0..($take - 1)] -join ' ') } else { "" }
+        $ctx = if ($tail.Count -gt 0) { ($tail -join ' | ') } else { "no output" }
+        throw "$File $headArgs exited $code :: $ctx"
+    }
 }
 
 function Get-Hash([string]$Path, [string]$Algo) {
@@ -210,6 +232,32 @@ function Get-BotanLib([string]$BotanPrefix) {
         Select-Object -First 1)
 }
 
+function Get-ZlibLib([string]$ZlibPrefix) {
+    $libDir = Join-Path $ZlibPrefix "lib"
+    if (-not (Test-Path $libDir)) { return $null }
+    $libs = Get-ChildItem -Path $libDir -Filter "*.lib" -ErrorAction SilentlyContinue
+    if (-not $libs) { return $null }
+
+    foreach ($pat in @('^libz.*\.lib$', '^zlib.*\.lib$', '^z.*\.lib$')) {
+        $hit = $libs | Where-Object { $_.Name -imatch $pat } | Select-Object -First 1
+        if ($hit) { return $hit }
+    }
+    return $null
+}
+
+function Get-JsonCLib([string]$JsonPrefix) {
+    $libDir = Join-Path $JsonPrefix "lib"
+    if (-not (Test-Path $libDir)) { return $null }
+    $libs = Get-ChildItem -Path $libDir -Filter "*.lib" -ErrorAction SilentlyContinue
+    if (-not $libs) { return $null }
+
+    foreach ($name in @('json-c.lib', 'json-c-static.lib')) {
+        $hit = $libs | Where-Object { $_.Name -ieq $name } | Select-Object -First 1
+        if ($hit) { return $hit }
+    }
+    return $null
+}
+
 function Test-DepsHot(
     [string]$DepsRoot,
     [string]$BotanPrefix,
@@ -219,11 +267,11 @@ function Test-DepsHot(
 ) {
     $botanHeader = Join-Path $BotanPrefix "include\botan-3\botan\version.h"
     $botanLib = Get-BotanLib $BotanPrefix
+    $zlibLib = Get-ZlibLib $ZlibPrefix
+    $jsonCLib = Get-JsonCLib $JsonPrefix
 
     $must = @(
         $botanHeader,
-        (Join-Path $JsonPrefix "lib\json-c.lib"),
-        (Join-Path $ZlibPrefix "lib\libz.lib"),
         (Join-Path $BzPrefix "lib\bz2.lib"),
         (Join-Path $DepsRoot "licenses\botan-license.txt"),
         (Join-Path $DepsRoot "licenses\json-c-COPYING"),
@@ -234,7 +282,7 @@ function Test-DepsHot(
     foreach ($m in $must) {
         if (-not (Test-Path -LiteralPath $m)) { return $false }
     }
-    if (-not $botanLib) { return $false }
+    if ((-not $botanLib) -or (-not $zlibLib) -or (-not $jsonCLib)) { return $false }
     return $true
 }
 
@@ -319,6 +367,8 @@ $toolchain = Join-Path $root "scripts\windows\msvc-mt.cmake"
 $cmakeCommon = @(
     "-G", "Ninja",
     "-DCMAKE_MAKE_PROGRAM=$ninja",
+    "-DCMAKE_C_COMPILER=cl.exe",
+    "-DCMAKE_CXX_COMPILER=cl.exe",
     "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW",
     "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
     "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
@@ -412,7 +462,7 @@ function Build-SmallDeps {
     Ensure-Extracted -MarkerPath (Join-Path $zlibSrc "CMakeLists.txt") -ArchivePath $zlibTar
     Ensure-Extracted -MarkerPath (Join-Path $bzSrc "bzlib.c") -ArchivePath $bzTar
 
-    if (-not (Test-Path (Join-Path $jsonPrefix "lib\json-c.lib"))) {
+    if (-not (Get-JsonCLib $jsonPrefix)) {
         Run "cmake.exe" (@(
             "-S", $jsonSrc, "-B", (Join-Path $work "json-c"),
             "-DCMAKE_INSTALL_PREFIX=$jsonPrefix",
@@ -422,7 +472,7 @@ function Build-SmallDeps {
         Run "cmake.exe" @("--install", (Join-Path $work "json-c"), "--config", "Release")
     }
 
-    if (-not (Test-Path (Join-Path $zlibPrefix "lib\libz.lib"))) {
+    if (-not (Get-ZlibLib $zlibPrefix)) {
         Run "cmake.exe" (@(
             "-S", $zlibSrc, "-B", (Join-Path $work "zlib"),
             "-DCMAKE_INSTALL_PREFIX=$zlibPrefix",
@@ -466,6 +516,10 @@ function Build-Rnp {
     }
 
     $rnpSrc = Ensure-RnpSources -SrcRoot $src -Pins $pins
+    $zlibLib = Get-ZlibLib $zlibPrefix
+    if (-not $zlibLib) { throw "zlib static library not found under $zlibPrefix\lib" }
+    $jsonCLib = Get-JsonCLib $jsonPrefix
+    if (-not $jsonCLib) { throw "json-c static library not found under $jsonPrefix\lib" }
 
     $rnpBuild = Join-Path $work "rnp"
     if (Test-Path $rnpBuild) { Remove-Item -Recurse -Force $rnpBuild }
@@ -484,7 +538,8 @@ function Build-Rnp {
         "-DCRYPTO_BACKEND=botan",
         "-DBOTAN_ROOT_DIR=$botanPrefix",
         "-DCMAKE_PREFIX_PATH=$jsonPrefix;$zlibPrefix;$bzPrefix",
-        "-DZLIB_LIBRARY=$(Join-Path $zlibPrefix 'lib\libz.lib')",
+        "-DJSON-C_LIBRARY=$($jsonCLib.FullName)",
+        "-DZLIB_LIBRARY=$($zlibLib.FullName)",
         "-DZLIB_INCLUDE_DIR=$(Join-Path $zlibPrefix 'include')",
         "-DZLIB_USE_STATIC_LIBS=ON",
         "-DBZIP2_LIBRARY=$(Join-Path $bzPrefix 'lib\bz2.lib')",
