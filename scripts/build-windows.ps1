@@ -557,36 +557,66 @@ function Build-Rnp {
     $rnpBuild = Join-Path $work "rnp"
     if (Test-Path $rnpBuild) { Remove-Item -Recurse -Force $rnpBuild }
 
-    $link = "ws2_32.lib bcrypt.lib crypt32.lib user32.lib advapi32.lib"
-    Run "cmake.exe" (@(
-        "-S", $rnpSrc, "-B", $rnpBuild,
-        "-DCMAKE_INSTALL_PREFIX=$(To-CMakePath (Join-Path $deps 'rnp'))",
-        "-DBUILD_SHARED_LIBS=ON",
-        "-DBUILD_TESTING=OFF",
-        "-DDOWNLOAD_GTEST=OFF",
-        "-DENABLE_DOC=OFF",
-        "-DENABLE_CRYPTO_REFRESH=OFF",
-        "-DENABLE_PQC=OFF",
-        "-DWITH_SEXP_CLI=OFF",
-        "-DCRYPTO_BACKEND=botan",
-        "-DBOTAN_ROOT_DIR=$(To-CMakePath $botanPrefix)",
-        "-DCMAKE_PREFIX_PATH=$((To-CMakePath $jsonPrefix) + ';' + (To-CMakePath $zlibPrefix) + ';' + (To-CMakePath $bzPrefix))",
-        "-DDIRENT_INCLUDE_DIR=$(To-CMakePath $direntInclude)",
-        "-DGETOPT_INCLUDE_DIR=$(To-CMakePath $direntInclude)",
-        "-DGETOPT_LIBRARY=kernel32.lib",
-        "-DJSON-C_LIBRARY=$(To-CMakePath $jsonCLib.FullName)",
-        "-DZLIB_LIBRARY=$(To-CMakePath $zlibLib.FullName)",
-        "-DZLIB_INCLUDE_DIR=$(To-CMakePath (Join-Path $zlibPrefix 'include'))",
-        "-DZLIB_USE_STATIC_LIBS=ON",
-        "-DBZIP2_LIBRARY=$(To-CMakePath (Join-Path $bzPrefix 'lib\bz2.lib'))",
-        "-DBZIP2_LIBRARIES=$(To-CMakePath (Join-Path $bzPrefix 'lib\bz2.lib'))",
-        "-DBZIP2_INCLUDE_DIR=$(To-CMakePath (Join-Path $bzPrefix 'include'))",
-        "-DBZIP2_INCLUDE_DIRS=$(To-CMakePath (Join-Path $bzPrefix 'include'))",
-        "-DCMAKE_SHARED_LINKER_FLAGS=$link",
-        "-DCMAKE_EXE_LINKER_FLAGS=$link"
-    ) + $cmakeCommon)
+    $rnpCompatInclude = Join-Path $work "rnp-compat-include"
+    New-Item -ItemType Directory -Force -Path $rnpCompatInclude | Out-Null
+    Copy-Item (Join-Path $direntInclude "dirent.h") (Join-Path $rnpCompatInclude "dirent.h") -Force
+@"
+#ifndef RNPARMOR_RNP_COMPAT_GETOPT_H
+#define RNPARMOR_RNP_COMPAT_GETOPT_H
 
-    Run "cmake.exe" @("--build", $rnpBuild, "--config", "Release", "--target", "librnp")
+/*
+ * Minimal placeholder header for Windows librnp build.
+ * It exists only to satisfy uniwin.h -> getoptwin.h include checks.
+ * The --target librnp build does not consume getopt symbols.
+ */
+
+#endif /* RNPARMOR_RNP_COMPAT_GETOPT_H */
+"@ | Set-Content -LiteralPath (Join-Path $rnpCompatInclude "getopt.h") -Encoding ascii
+
+    $link = "ws2_32.lib bcrypt.lib crypt32.lib user32.lib advapi32.lib"
+    $savedInclude = $env:INCLUDE
+    try {
+        $compat = (To-CMakePath $rnpCompatInclude)
+        if ([string]::IsNullOrEmpty($savedInclude)) {
+            $env:INCLUDE = $rnpCompatInclude
+        } else {
+            $env:INCLUDE = "$rnpCompatInclude;$savedInclude"
+        }
+
+        Run "cmake.exe" (@(
+            "-S", $rnpSrc, "-B", $rnpBuild,
+            "-DCMAKE_INSTALL_PREFIX=$(To-CMakePath (Join-Path $deps 'rnp'))",
+            "-DBUILD_SHARED_LIBS=ON",
+            "-DBUILD_TESTING=OFF",
+            "-DDOWNLOAD_GTEST=OFF",
+            "-DENABLE_DOC=OFF",
+            "-DENABLE_CRYPTO_REFRESH=OFF",
+            "-DENABLE_PQC=OFF",
+            "-DWITH_SEXP_CLI=OFF",
+            "-DCRYPTO_BACKEND=botan",
+            "-DBOTAN_ROOT_DIR=$(To-CMakePath $botanPrefix)",
+            "-DCMAKE_PREFIX_PATH=$((To-CMakePath $jsonPrefix) + ';' + (To-CMakePath $zlibPrefix) + ';' + (To-CMakePath $bzPrefix))",
+            "-DDIRENT_INCLUDE_DIR=$compat",
+            "-DGETOPT_INCLUDE_DIR=$compat",
+            "-DGETOPT_LIBRARY=kernel32.lib",
+            "-DCMAKE_C_STANDARD_INCLUDE_DIRECTORIES=$compat",
+            "-DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES=$compat",
+            "-DJSON-C_LIBRARY=$(To-CMakePath $jsonCLib.FullName)",
+            "-DZLIB_LIBRARY=$(To-CMakePath $zlibLib.FullName)",
+            "-DZLIB_INCLUDE_DIR=$(To-CMakePath (Join-Path $zlibPrefix 'include'))",
+            "-DZLIB_USE_STATIC_LIBS=ON",
+            "-DBZIP2_LIBRARY=$(To-CMakePath (Join-Path $bzPrefix 'lib\bz2.lib'))",
+            "-DBZIP2_LIBRARIES=$(To-CMakePath (Join-Path $bzPrefix 'lib\bz2.lib'))",
+            "-DBZIP2_INCLUDE_DIR=$(To-CMakePath (Join-Path $bzPrefix 'include'))",
+            "-DBZIP2_INCLUDE_DIRS=$(To-CMakePath (Join-Path $bzPrefix 'include'))",
+            "-DCMAKE_SHARED_LINKER_FLAGS=$link",
+            "-DCMAKE_EXE_LINKER_FLAGS=$link"
+        ) + $cmakeCommon)
+
+        Run "cmake.exe" @("--build", $rnpBuild, "--config", "Release", "--target", "librnp")
+    } finally {
+        $env:INCLUDE = $savedInclude
+    }
 
     $dll = Get-ChildItem -Path $rnpBuild -Recurse -Filter "rnp.dll" |
         Where-Object { $_.FullName -notmatch "examples|tests" } |
