@@ -74,7 +74,8 @@ run_cmd() {
   local name="$1"
   shift
   local log
-  log=$(mktemp -t rnparmor-macos-cmd.XXXXXX.log)
+  mkdir -p "$work"
+  log=$(mktemp "$work/cmd.XXXXXX")
   LAST_LOG="$log"
   CURRENT_CMD="$name"
   echo "+ $name"
@@ -164,8 +165,20 @@ deps_stage() {
   rm -rf "$botan_build" "$botan_prefix"
   mkdir -p "$botan_prefix"
   local modules_csv
-  modules_csv=$(grep -v '^\s*#' "$botan_mod_file" | sed '/^\s*$/d' | paste -sd, -)
-  run_cmd "botan configure" python3 "$botan_src/configure.py" \
+  modules_csv=$(python3 - "$botan_mod_file" <<'PY'
+import sys
+mods = []
+with open(sys.argv[1], 'r', encoding='utf-8', newline='') as f:
+    for raw in f:
+        line = raw.split('#', 1)[0].strip()
+        if line:
+            mods.append(line)
+print(','.join(mods))
+PY
+)
+  mkdir -p "$botan_build"
+  run_cmd "botan configure" bash -c 'cd "$1" && shift && exec "$@"' _ "$botan_build" \
+    python3 "$botan_src/configure.py" \
     --cc=clang --os=darwin --cpu=arm64 \
     --prefix="$botan_prefix" \
     --build-targets=static \
@@ -174,9 +187,10 @@ deps_stage() {
     --enable-modules="$modules_csv" \
     --no-install-python-module \
     --without-documentation \
-    --extra-cxxflags="-fPIC"
-  run_cmd "botan make" make -C "$botan_src" -j"$(sysctl -n hw.ncpu)"
-  run_cmd "botan install" make -C "$botan_src" install
+    --extra-cxxflags="-fPIC" \
+    --with-build-dir="$botan_build"
+  run_cmd "botan make" make -C "$botan_build" -j"$(sysctl -n hw.ncpu)"
+  run_cmd "botan install" make -C "$botan_build" install
   echo "$botan_mod_sha" > "$botan_stamp"
 
   local json_src="$src/json-c-0.19"
@@ -343,7 +357,8 @@ package_stage() {
   grep -Eq '^i18n=ok$' <<<"$smoke_out"
 
   local dmg_stage
-  dmg_stage=$(mktemp -d -t rnparmor-dmg-stage.XXXXXX)
+  mkdir -p "$work"
+  dmg_stage=$(mktemp -d "$work/dmg-stage.XXXXXX")
   cp -R "$app_root" "$dmg_stage/RnpArmor.app"
   ln -s /Applications "$dmg_stage/Applications"
   local dmg="$root/out/rnparmor-macos-arm64.dmg"
