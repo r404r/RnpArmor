@@ -57,5 +57,14 @@
     "sha256": "fde194236f6d5434f136ea0a0627f6cc9d26af8b96e9f1e1c7d8c82cd90f4f24",
     "git_tag_commit": "e27d332089247f04e89854a2e60a3af2ec4e430f",
     "note": "rnp v0.18.1 docs/installation.adoc 写 Botan-3.10.0。SHA-256 取自 botan.randombit.net/releases/sha256sums.txt 中 Botan-3.10.0.tar.xz 那一行。git tag 3.10.0 指向的提交另行记录，发行包以 tarball 哈希为准。"
+  },
+  "dirent": {
+    "version": "1.24",
+    "license": "MIT",
+    "source": "https://github.com/tronkko/dirent",
+    "header_url": "https://raw.githubusercontent.com/tronkko/dirent/1.24/include/dirent.h",
+    "header_sha256": "7383044a375d481ac8ad7ec2f43151263eca792f085001a8020cc590114a06a6",
+    "license_url": "https://raw.githubusercontent.com/tronkko/dirent/1.24/LICENSE",
+    "license_sha256": "2f414f6c48e8c25ffb5d03cddd6043b3b613187f758d0a6964ca2ad7ed749e50"
   }
 }

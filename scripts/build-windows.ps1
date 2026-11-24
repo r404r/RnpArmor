@@ -289,7 +289,9 @@ function Test-DepsHot(
 
     $must = @(
         (Join-Path $BzPrefix "lib\bz2.lib"),
+        (Join-Path $DepsRoot "dirent\include\dirent.h"),
         (Join-Path $DepsRoot "licenses\botan-license.txt"),
+        (Join-Path $DepsRoot "licenses\dirent-LICENSE"),
         (Join-Path $DepsRoot "licenses\json-c-COPYING"),
         (Join-Path $DepsRoot "licenses\zlib-LICENSE"),
         (Join-Path $DepsRoot "licenses\bzip2-LICENSE")
@@ -406,6 +408,11 @@ $botanPrefix = Join-Path $deps "botan"
 $jsonPrefix = Join-Path $deps "json-c"
 $zlibPrefix = Join-Path $deps "zlib"
 $bzPrefix = Join-Path $deps "bzip2"
+$direntSrcDir = Join-Path $src "dirent-1.24"
+$direntHeaderSrc = Join-Path $direntSrcDir "dirent.h"
+$direntLicenseSrc = Join-Path $direntSrcDir "LICENSE"
+$direntPrefix = Join-Path $deps "dirent"
+$direntInclude = Join-Path $direntPrefix "include"
 $depsLicenses = Join-Path $deps "licenses"
 $botanModulesFile = Join-Path $root "scripts\windows\botan3-modules.txt"
 $botanModulesHash = Get-Hash $botanModulesFile "SHA256"
@@ -421,6 +428,9 @@ function Build-FetchDeps {
     Get-Pinned $pins.json_c.tarball $jsonTar $pins.json_c.sha256 $null
     Get-Pinned $pins.zlib.tarball $zlibTar $pins.zlib.sha256 $null
     Get-Pinned $pins.bzip2.tarball $bzTar $pins.bzip2.sha256 $pins.bzip2.sha512
+    New-Item -ItemType Directory -Force -Path $direntSrcDir | Out-Null
+    Get-Pinned $pins.dirent.header_url $direntHeaderSrc $pins.dirent.header_sha256 $null
+    Get-Pinned $pins.dirent.license_url $direntLicenseSrc $pins.dirent.license_sha256 $null
 
     Ensure-Extracted -MarkerPath (Join-Path $botanSrc "configure.py") -ArchivePath $botanTar
     Ensure-Extracted -MarkerPath (Join-Path $jsonSrc "CMakeLists.txt") -ArchivePath $jsonTar
@@ -478,6 +488,9 @@ function Build-SmallDeps {
     Ensure-Extracted -MarkerPath (Join-Path $jsonSrc "CMakeLists.txt") -ArchivePath $jsonTar
     Ensure-Extracted -MarkerPath (Join-Path $zlibSrc "CMakeLists.txt") -ArchivePath $zlibTar
     Ensure-Extracted -MarkerPath (Join-Path $bzSrc "bzlib.c") -ArchivePath $bzTar
+    New-Item -ItemType Directory -Force -Path $direntSrcDir | Out-Null
+    Get-Pinned $pins.dirent.header_url $direntHeaderSrc $pins.dirent.header_sha256 $null
+    Get-Pinned $pins.dirent.license_url $direntLicenseSrc $pins.dirent.license_sha256 $null
 
     if (-not (Get-JsonCLib $jsonPrefix)) {
         Run "cmake.exe" (@(
@@ -511,7 +524,10 @@ function Build-SmallDeps {
     }
 
     New-Item -ItemType Directory -Force -Path $depsLicenses | Out-Null
+    New-Item -ItemType Directory -Force -Path $direntInclude | Out-Null
+    Copy-Item $direntHeaderSrc (Join-Path $direntInclude "dirent.h") -Force
     Copy-Item (Join-Path $botanSrc "license.txt") (Join-Path $depsLicenses "botan-license.txt") -Force
+    Copy-Item $direntLicenseSrc (Join-Path $depsLicenses "dirent-LICENSE") -Force
     Copy-Item (Join-Path $jsonSrc "COPYING") (Join-Path $depsLicenses "json-c-COPYING") -Force
     Copy-Item (Join-Path $zlibSrc "LICENSE") (Join-Path $depsLicenses "zlib-LICENSE") -Force
     Copy-Item (Join-Path $bzSrc "LICENSE") (Join-Path $depsLicenses "bzip2-LICENSE") -Force
@@ -555,6 +571,9 @@ function Build-Rnp {
         "-DCRYPTO_BACKEND=botan",
         "-DBOTAN_ROOT_DIR=$(To-CMakePath $botanPrefix)",
         "-DCMAKE_PREFIX_PATH=$((To-CMakePath $jsonPrefix) + ';' + (To-CMakePath $zlibPrefix) + ';' + (To-CMakePath $bzPrefix))",
+        "-DDIRENT_INCLUDE_DIR=$(To-CMakePath $direntInclude)",
+        "-DGETOPT_INCLUDE_DIR=$(To-CMakePath $direntInclude)",
+        "-DGETOPT_LIBRARY=kernel32.lib",
         "-DJSON-C_LIBRARY=$(To-CMakePath $jsonCLib.FullName)",
         "-DZLIB_LIBRARY=$(To-CMakePath $zlibLib.FullName)",
         "-DZLIB_INCLUDE_DIR=$(To-CMakePath (Join-Path $zlibPrefix 'include'))",
@@ -618,6 +637,7 @@ function Build-Package {
     Copy-Item (Join-Path $root "third_party\licenses\rnp-LICENSE.md") (Join-Path $dist "licenses\rnp-LICENSE.md")
     Copy-Item (Join-Path $root "third_party\licenses\sexpp-LICENSE.md") (Join-Path $dist "licenses\sexpp-LICENSE.md")
     Copy-Item (Resolve-LicensePath $depsLicenses "botan-license.txt" (Join-Path $botanSrc "license.txt")) (Join-Path $dist "licenses\botan-license.txt")
+    Copy-Item (Resolve-LicensePath $depsLicenses "dirent-LICENSE" $direntLicenseSrc) (Join-Path $dist "licenses\dirent-LICENSE")
     Copy-Item (Resolve-LicensePath $depsLicenses "json-c-COPYING" (Join-Path $jsonSrc "COPYING")) (Join-Path $dist "licenses\json-c-COPYING")
     Copy-Item (Resolve-LicensePath $depsLicenses "zlib-LICENSE" (Join-Path $zlibSrc "LICENSE")) (Join-Path $dist "licenses\zlib-LICENSE")
     Copy-Item (Resolve-LicensePath $depsLicenses "bzip2-LICENSE" (Join-Path $bzSrc "LICENSE")) (Join-Path $dist "licenses\bzip2-LICENSE")
