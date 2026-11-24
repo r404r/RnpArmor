@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -144,6 +145,9 @@ func main() {
 			Height:  780,
 			Content: ui.View(st.view),
 		})
+		w.OnClosed(func() {
+			st.closeAboutWindow()
+		})
 		st.mainWin = w
 		st.applyMainMenu()
 	})
@@ -204,7 +208,10 @@ func (s *uiState) setLang(l Lang) {
 }
 
 func (s *uiState) selectTab(i int) {
-	s.tab = i
+	if s.tab != i {
+		s.tab = i
+		s.applyMainMenu()
+	}
 	s.invalidateAll()
 	if s.mainWin != nil && !s.mainWin.IsDestroyed() {
 		s.mainWin.Focus()
@@ -224,16 +231,22 @@ func (s *uiState) openAboutWindow() {
 		return
 	}
 	opts := mygo.WindowOptions{
-		Title:   s.tr("title.about"),
-		Width:   860,
-		Height:  700,
-		Content: ui.View(s.viewAboutWindow),
+		Title:           s.tr("title.about"),
+		Width:           580,
+		Height:          520,
+		Modal:           false,
+		DisableResize:   true,
+		DisableMaximize: true,
+		DisableMinimize: true,
+		Content:         ui.View(s.viewAboutWindow),
 	}
 	if s.mainWin != nil && !s.mainWin.IsDestroyed() {
 		opts.Parent = s.mainWin
 	}
 	w := mygo.NewWindow(opts)
-	w.SetMenu(nil)
+	if runtime.GOOS != "darwin" {
+		w.SetMenu(nil)
+	}
 	w.OnClosed(func() {
 		s.aboutWin = nil
 		s.invalidateAll()
@@ -273,7 +286,9 @@ func (s *uiState) menuTemplate() []*mygo.MenuItem {
 	for _, item := range wsItems {
 		tab := item.tab
 		workspaceMenu = append(workspaceMenu, &mygo.MenuItem{
-			Label: s.tr(item.key),
+			Label:   s.tr(item.key),
+			Type:    mygo.MenuItemRadio,
+			Checked: s.tab == tab,
 			Click: func(*mygo.MenuItem, *mygo.Window) {
 				s.selectTab(tab)
 			},
@@ -291,7 +306,9 @@ func (s *uiState) menuTemplate() []*mygo.MenuItem {
 		{
 			Label: s.tr("menu.file"),
 			Submenu: []*mygo.MenuItem{
-				{Label: s.tr("menu.file.close"), Click: func(*mygo.MenuItem, *mygo.Window) { s.closeMainWindow() }},
+				{Label: s.tr("btn.open_session"), Click: func(*mygo.MenuItem, *mygo.Window) { s.run("action.open_session", s.openSession) }},
+				{Label: s.tr("btn.load_keyring"), Click: func(*mygo.MenuItem, *mygo.Window) { s.run("action.load_keyring", s.loadKeyring) }},
+				{Label: s.tr("btn.save_keyring"), Click: func(*mygo.MenuItem, *mygo.Window) { s.run("action.save_keyring", s.saveKeyring) }},
 				mygo.Separator(),
 				{Label: s.tr("menu.file.quit"), Click: func(*mygo.MenuItem, *mygo.Window) { mygo.App.Quit() }},
 			},
@@ -317,7 +334,12 @@ func (s *uiState) applyMainMenu() {
 	if s.mainWin == nil || s.mainWin.IsDestroyed() {
 		return
 	}
-	s.mainWin.SetMenu(mygo.NewMenu(s.menuTemplate()))
+	menu := mygo.NewMenu(s.menuTemplate())
+	if runtime.GOOS == "darwin" {
+		mygo.App.SetMenu(menu)
+		return
+	}
+	s.mainWin.SetMenu(menu)
 }
 
 func (s *uiState) view(c *ui.Context) {
@@ -331,6 +353,7 @@ func (s *uiState) view(c *ui.Context) {
 		})
 		ui.Divider(c)
 
+		prevTab := s.tab
 		ui.Tabs(c, &s.tab,
 			s.tr("tab.keys"),
 			s.tr("tab.text"),
@@ -338,6 +361,9 @@ func (s *uiState) view(c *ui.Context) {
 			s.tr("tab.packet"),
 			s.tr("tab.portable"),
 		).Value("workspaces")
+		if s.tab != prevTab {
+			s.applyMainMenu()
+		}
 
 		ui.Scroll(c).Fill().Children(func() {
 			switch s.tab {

@@ -44,9 +44,38 @@ func TestMenuTemplateLayoutAndRadioLanguage(t *testing.T) {
 	if got := items[0].Label; got != Tr(LangEN, "menu.file") {
 		t.Fatalf("menu[0] label = %q", got)
 	}
+	if got := len(items[0].Submenu); got != 5 {
+		t.Fatalf("file submenu count = %d, want 5", got)
+	}
+	if items[0].Submenu[0].Label != Tr(LangEN, "btn.open_session") {
+		t.Fatalf("file[0] label = %q", items[0].Submenu[0].Label)
+	}
+	if items[0].Submenu[1].Label != Tr(LangEN, "btn.load_keyring") {
+		t.Fatalf("file[1] label = %q", items[0].Submenu[1].Label)
+	}
+	if items[0].Submenu[2].Label != Tr(LangEN, "btn.save_keyring") {
+		t.Fatalf("file[2] label = %q", items[0].Submenu[2].Label)
+	}
+	if items[0].Submenu[3].Type != mygo.MenuItemSeparator {
+		t.Fatalf("file[3] type = %q, want separator", items[0].Submenu[3].Type)
+	}
+	if items[0].Submenu[4].Label != Tr(LangEN, "menu.file.quit") {
+		t.Fatalf("file[4] label = %q", items[0].Submenu[4].Label)
+	}
+
 	if got := len(items[1].Submenu); got != 5 {
 		t.Fatalf("workspace submenu count = %d, want 5", got)
 	}
+	for i, it := range items[1].Submenu {
+		if it.Type != mygo.MenuItemRadio {
+			t.Fatalf("workspace submenu item %d type = %q, want radio", i, it.Type)
+		}
+		wantChecked := i == 0
+		if it.Checked != wantChecked {
+			t.Fatalf("workspace submenu item %d checked = %v, want %v at default tab 0", i, it.Checked, wantChecked)
+		}
+	}
+
 	if got := len(items[2].Submenu); got != 3 {
 		t.Fatalf("language submenu count = %d, want 3", got)
 	}
@@ -54,9 +83,29 @@ func TestMenuTemplateLayoutAndRadioLanguage(t *testing.T) {
 		if it.Type != mygo.MenuItemRadio {
 			t.Fatalf("language submenu item %d type = %q, want radio", i, it.Type)
 		}
+		wantChecked := i == LangIndex(LangEN)
+		if it.Checked != wantChecked {
+			t.Fatalf("language submenu item %d checked = %v, want %v", i, it.Checked, wantChecked)
+		}
 	}
 	if got := len(items[3].Submenu); got != 1 {
 		t.Fatalf("help submenu count = %d, want 1", got)
+	}
+
+	s.tab = 3
+	s.langIdx = LangIndex(LangJA)
+	items = s.menuTemplate()
+	for i, it := range items[1].Submenu {
+		wantChecked := i == 3
+		if it.Checked != wantChecked {
+			t.Fatalf("workspace submenu item %d checked = %v, want %v when tab=3", i, it.Checked, wantChecked)
+		}
+	}
+	for i, it := range items[2].Submenu {
+		wantChecked := i == LangIndex(LangJA)
+		if it.Checked != wantChecked {
+			t.Fatalf("language submenu item %d checked = %v, want %v when lang=ja", i, it.Checked, wantChecked)
+		}
 	}
 }
 
