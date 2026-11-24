@@ -4,7 +4,7 @@
 
 RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工具，提供 Windows 10/11 便携版与安装版（`rnparmor.exe` + `rnp.dll`）、macOS Apple Silicon（`arm64`）`.app`/`.dmg` 应用包以及 Linux（`amd64`）便携构建与测试链路。
 
-> 许可状态：**项目自身许可证尚未选定**。分发包中均包含第三方许可证文本。
+> 许可证：**Apache License, Version 2.0**（[`LICENSE`](LICENSE)）。第三方声明与许可文本见 [`third_party/NOTICES.md`](third_party/NOTICES.md) 及各平台分发包（Windows 与 Linux 位于 `LICENSE` 与 `licenses/`，macOS 位于 `RnpArmor.app/Contents/Resources/LICENSE` 与 `licenses/`）。
 
 ## 功能总览
 
@@ -192,7 +192,7 @@ bash scripts/build-macos.sh --stage package --version v0.0.1
 
 - `deps`：按 `scripts/windows/botan3-modules.txt` 的 57 个模块清单编译静态 `Botan 3.10.0`（写入 `.modules-sha256` 校验印记）与静态 `json-c 0.19` 到 `out/deps`。
 - `rnp`：构建 `librnp.dylib`（install name 为 `@loader_path/librnp.dylib`），静态链接 Botan 与 `json-c`，动态链接 macOS 系统自带 `/usr/lib/libz` 与 `/usr/lib/libbz2` 以及 `-framework Security`（通过 `otool -L` 校验无外部 Homebrew 等非系统路径依赖）。
-- `package`：构建 `CGO_ENABLED=0 GOOS=darwin GOARCH=arm64` 的 `rnparmor`，组装 `out/dist/RnpArmor.app`（`Contents/MacOS/rnparmor`、`Contents/MacOS/librnp.dylib`、`Contents/Resources/SHA256SUMS` 与 `Contents/Resources/licenses/`），执行 ad-hoc 签名与 `codesign --verify --deep --strict`，运行 `go test` 与 `--smoke-test`，最终通过 `hdiutil create` 生成 `out/rnparmor-macos-arm64.dmg`。
+- `package`：构建 `CGO_ENABLED=0 GOOS=darwin GOARCH=arm64` 的 `rnparmor`，组装 `out/dist/RnpArmor.app`（`Contents/MacOS/rnparmor`、`Contents/MacOS/librnp.dylib`、`Contents/Resources/LICENSE`、`Contents/Resources/SHA256SUMS` 与 `Contents/Resources/licenses/`），执行 ad-hoc 签名与 `codesign --verify --deep --strict`，运行 `go test` 与 `--smoke-test`，最终通过 `hdiutil create` 生成 `out/rnparmor-macos-arm64.dmg`。
 
 > macOS Gatekeeper 提示：`RnpArmor.app` 仅作 ad-hoc 签名且**未经过 Apple 公证**。首次在访达中打开可能触发 Gatekeeper 安全提示（如遇提示，可通过右键 → 打开或在「系统设置 → 隐私与安全性」中放行）。
 
@@ -233,7 +233,7 @@ Windows 依赖构建钉扎并打包以下组件：
 3. `small-deps`：编译并安装静态 `json-c`、`zlib`、`bzip2` 到 `out/deps`，准备 `dirent.h` 并将依赖许可证缓存至 `out/deps/licenses`
 4. `deps`：依次执行 `fetch-deps -> botan -> small-deps`
 5. `rnp`：基于缓存依赖编译 `librnp`（`rnp.dll`），并缓存至 `out/win-build/rnp-dll/rnp.dll`
-6. `package`：使用 `-H=windowsgui` 构建 `rnparmor.exe`、复制 `rnp.dll` 与 `licenses/`、校验 `Windows GUI` PE 子系统（`dumpbin /headers`）与 DLL 导入表（`DEPENDENCIES.txt`）、生成 `PORTABLE.txt` 与 `SHA256SUMS`、对打包后的 `rnp.dll` 执行 `go test`、运行 `--smoke-test --smoke-out` 与 GUI 探针并产出便携 zip、Inno Setup 6 安装包与报告
+6. `package`：使用 `-H=windowsgui` 构建 `rnparmor.exe`、复制 `rnp.dll`、`LICENSE` 与 `licenses/`、校验 `Windows GUI` PE 子系统（`dumpbin /headers`）与 DLL 导入表（`DEPENDENCIES.txt`）、生成 `PORTABLE.txt` 与 `SHA256SUMS`、对打包后的 `rnp.dll` 执行 `go test`、运行 `--smoke-test --smoke-out` 与 GUI 探针并产出便携 zip、Inno Setup 6 安装包与报告
 7. `all`：依次执行 `deps -> rnp -> package`（默认）
 
 `package` 阶段会生成 `out\dist\rnparmor-windows-amd64`，使用 `packaging/windows/rnparmor.iss` 与 Inno Setup 6（`ISCC.exe`）打包安装程序，并执行：
@@ -283,8 +283,15 @@ Windows 依赖构建钉扎并打包以下组件：
 
 ## 仓库状态说明
 
-- `feat/multiplatform-release` 分支（PR #5）已实现 `.github/workflows/smoke.yml` 三平台 CI（`linux` / `windows-portable` / `macos-arm64`）全绿，并就绪 `.github/workflows/release.yml` 用于 `v0.0.1` 多平台发版。
+- `v0.0.1` 多平台版本已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）；项目现已正式采用 Apache License, Version 2.0（[`LICENSE`](LICENSE)），后续发布版本将随包分发该许可证。
 - 桌面端人工交互体验（Windows 10/11 中文输入法、高 DPI 与安装程序流程，以及 macOS Apple Silicon 首次启动未公证 Gatekeeper 提示）仍依赖真实桌面环境，需在专门手工测试中确认。
+
+## 许可证
+
+- RnpArmor 本身采用 **Apache License, Version 2.0**（`Copyright 2026 r404r`），全文见 [`LICENSE`](LICENSE)。
+- 各平台分发包内许可证路径：
+  - Windows（`rnparmor-windows-amd64.zip`、`rnparmor-windows-amd64-setup.exe`）与 Linux（`rnparmor-linux-amd64.tar.gz`）：包根目录下的 `LICENSE` 与 `licenses/`。
+  - macOS（`rnparmor-macos-arm64.dmg` / `RnpArmor.app`）：`RnpArmor.app/Contents/Resources/LICENSE` 与 `RnpArmor.app/Contents/Resources/licenses/`。
 
 ## 第三方依赖与钉扎
 
@@ -292,4 +299,4 @@ Windows 依赖构建钉扎并打包以下组件：
 
 - `deps/pins.json`
 - `third_party/NOTICES.md`
-- portable 包 `licenses/`
+- 分发包内 `LICENSE` 与 `licenses/`

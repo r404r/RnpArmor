@@ -71,6 +71,7 @@ jobs:
           cp -L out/lib/libbotan-3.so.10 out/dist/rnparmor-linux-amd64/libbotan-3.so.10
           cp -L out/lib/libjson-c.so.5 out/dist/rnparmor-linux-amd64/libjson-c.so.5
           cp out/lib/SHA256SUMS out/dist/rnparmor-linux-amd64/SHA256SUMS
+          cp LICENSE out/dist/rnparmor-linux-amd64/LICENSE
           cp third_party/licenses/rnp-LICENSE.md out/dist/rnparmor-linux-amd64/licenses/
           cp third_party/licenses/sexpp-LICENSE.md out/dist/rnparmor-linux-amd64/licenses/
           cp third_party/licenses/botan-license.txt out/dist/rnparmor-linux-amd64/licenses/

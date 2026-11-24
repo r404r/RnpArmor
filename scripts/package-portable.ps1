@@ -9,6 +9,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$rootLicense = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\LICENSE"))
 
 foreach ($p in @($Exe, $LibDir, $OutDir)) {
     if (-not [System.IO.Path]::IsPathRooted($p)) {
@@ -59,12 +60,15 @@ foreach ($f in $files) {
     Copy-Item -LiteralPath $f -Destination (Join-Path $OutDir ([System.IO.Path]::GetFileName($f)))
 }
 Copy-Item -LiteralPath $sumsPath -Destination (Join-Path $OutDir "SHA256SUMS")
+if (Test-Path -LiteralPath $rootLicense -PathType Leaf) {
+    Copy-Item -LiteralPath $rootLicense -Destination (Join-Path $OutDir "LICENSE")
+}
 
 $note = @"
 RnpArmor portable directory.
 Start rnparmor.exe from this folder. It loads rnp.dll beside the executable.
 Do not put real keys in this test build.
-RnpArmor itself has no chosen license. Third-party notices are in licenses\ if this copy step is followed by build-windows.ps1.
+RnpArmor is licensed under the Apache License, Version 2.0 (see LICENSE). Third-party notices are in licenses\ if this copy step is followed by build-windows.ps1.
 This script only copies an already built exe and DLL. It does not prove Windows 10 or 11.
 "@
 Set-Content -LiteralPath (Join-Path $OutDir "PORTABLE.txt") -Value $note -Encoding utf8
