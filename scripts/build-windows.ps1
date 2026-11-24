@@ -77,6 +77,10 @@ function Get-Hash([string]$Path, [string]$Algo) {
     return (Get-FileHash -Algorithm $Algo -LiteralPath $Path).Hash.ToLower()
 }
 
+function To-CMakePath([string]$Path) {
+    return ($Path -replace '\\', '/')
+}
+
 function Get-Pinned([string]$Url, [string]$Dest, [string]$Sha256, [string]$Sha512) {
     if (-not (Test-Path -LiteralPath $Dest)) {
         Log "download $Url"
@@ -366,12 +370,12 @@ Log "ninja: $ninja"
 $toolchain = Join-Path $root "scripts\windows\msvc-mt.cmake"
 $cmakeCommon = @(
     "-G", "Ninja",
-    "-DCMAKE_MAKE_PROGRAM=$ninja",
+    "-DCMAKE_MAKE_PROGRAM=$(To-CMakePath $ninja)",
     "-DCMAKE_C_COMPILER=cl.exe",
     "-DCMAKE_CXX_COMPILER=cl.exe",
     "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW",
     "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
-    "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
+    "-DCMAKE_TOOLCHAIN_FILE=$(To-CMakePath $toolchain)",
     "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
     "-DCMAKE_BUILD_TYPE=Release"
 )
@@ -465,7 +469,7 @@ function Build-SmallDeps {
     if (-not (Get-JsonCLib $jsonPrefix)) {
         Run "cmake.exe" (@(
             "-S", $jsonSrc, "-B", (Join-Path $work "json-c"),
-            "-DCMAKE_INSTALL_PREFIX=$jsonPrefix",
+            "-DCMAKE_INSTALL_PREFIX=$(To-CMakePath $jsonPrefix)",
             "-DBUILD_SHARED_LIBS=OFF", "-DBUILD_TESTING=OFF", "-DDISABLE_WERROR=ON"
         ) + $cmakeCommon)
         Run "cmake.exe" @("--build", (Join-Path $work "json-c"), "--config", "Release")
@@ -475,7 +479,7 @@ function Build-SmallDeps {
     if (-not (Get-ZlibLib $zlibPrefix)) {
         Run "cmake.exe" (@(
             "-S", $zlibSrc, "-B", (Join-Path $work "zlib"),
-            "-DCMAKE_INSTALL_PREFIX=$zlibPrefix",
+            "-DCMAKE_INSTALL_PREFIX=$(To-CMakePath $zlibPrefix)",
             "-DZLIB_BUILD_SHARED=OFF", "-DZLIB_BUILD_TESTING=OFF"
         ) + $cmakeCommon)
         Run "cmake.exe" @("--build", (Join-Path $work "zlib"), "--config", "Release")
@@ -486,8 +490,8 @@ function Build-SmallDeps {
         Run "cmake.exe" (@(
             "-S", (Join-Path $root "scripts\windows\bzip2-static"),
             "-B", (Join-Path $work "bzip2"),
-            "-DCMAKE_INSTALL_PREFIX=$bzPrefix",
-            "-DBZIP2_SRC=$bzSrc"
+            "-DCMAKE_INSTALL_PREFIX=$(To-CMakePath $bzPrefix)",
+            "-DBZIP2_SRC:PATH=$(To-CMakePath $bzSrc)"
         ) + $cmakeCommon)
         Run "cmake.exe" @("--build", (Join-Path $work "bzip2"), "--config", "Release")
         Run "cmake.exe" @("--install", (Join-Path $work "bzip2"), "--config", "Release")
@@ -527,7 +531,7 @@ function Build-Rnp {
     $link = "ws2_32.lib bcrypt.lib crypt32.lib user32.lib advapi32.lib"
     Run "cmake.exe" (@(
         "-S", $rnpSrc, "-B", $rnpBuild,
-        "-DCMAKE_INSTALL_PREFIX=$(Join-Path $deps 'rnp')",
+        "-DCMAKE_INSTALL_PREFIX=$(To-CMakePath (Join-Path $deps 'rnp'))",
         "-DBUILD_SHARED_LIBS=ON",
         "-DBUILD_TESTING=OFF",
         "-DDOWNLOAD_GTEST=OFF",
@@ -536,16 +540,16 @@ function Build-Rnp {
         "-DENABLE_PQC=OFF",
         "-DWITH_SEXP_CLI=OFF",
         "-DCRYPTO_BACKEND=botan",
-        "-DBOTAN_ROOT_DIR=$botanPrefix",
-        "-DCMAKE_PREFIX_PATH=$jsonPrefix;$zlibPrefix;$bzPrefix",
-        "-DJSON-C_LIBRARY=$($jsonCLib.FullName)",
-        "-DZLIB_LIBRARY=$($zlibLib.FullName)",
-        "-DZLIB_INCLUDE_DIR=$(Join-Path $zlibPrefix 'include')",
+        "-DBOTAN_ROOT_DIR=$(To-CMakePath $botanPrefix)",
+        "-DCMAKE_PREFIX_PATH=$((To-CMakePath $jsonPrefix) + ';' + (To-CMakePath $zlibPrefix) + ';' + (To-CMakePath $bzPrefix))",
+        "-DJSON-C_LIBRARY=$(To-CMakePath $jsonCLib.FullName)",
+        "-DZLIB_LIBRARY=$(To-CMakePath $zlibLib.FullName)",
+        "-DZLIB_INCLUDE_DIR=$(To-CMakePath (Join-Path $zlibPrefix 'include'))",
         "-DZLIB_USE_STATIC_LIBS=ON",
-        "-DBZIP2_LIBRARY=$(Join-Path $bzPrefix 'lib\bz2.lib')",
-        "-DBZIP2_LIBRARIES=$(Join-Path $bzPrefix 'lib\bz2.lib')",
-        "-DBZIP2_INCLUDE_DIR=$(Join-Path $bzPrefix 'include')",
-        "-DBZIP2_INCLUDE_DIRS=$(Join-Path $bzPrefix 'include')",
+        "-DBZIP2_LIBRARY=$(To-CMakePath (Join-Path $bzPrefix 'lib\bz2.lib'))",
+        "-DBZIP2_LIBRARIES=$(To-CMakePath (Join-Path $bzPrefix 'lib\bz2.lib'))",
+        "-DBZIP2_INCLUDE_DIR=$(To-CMakePath (Join-Path $bzPrefix 'include'))",
+        "-DBZIP2_INCLUDE_DIRS=$(To-CMakePath (Join-Path $bzPrefix 'include'))",
         "-DCMAKE_SHARED_LINKER_FLAGS=$link",
         "-DCMAKE_EXE_LINKER_FLAGS=$link"
     ) + $cmakeCommon)
