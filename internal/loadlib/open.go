@@ -58,6 +58,11 @@ func Verify(path string) error {
 	base := filepath.Base(path)
 	sums := filepath.Join(dir, SumFile)
 	f, err := os.Open(sums)
+	if err != nil && os.IsNotExist(err) && filepath.Base(dir) == "MacOS" {
+		// macOS .app bundle layout keeps checksums in Contents/Resources.
+		sums = filepath.Join(filepath.Dir(dir), "Resources", SumFile)
+		f, err = os.Open(sums)
+	}
 	if err != nil {
 		return fmt.Errorf("%w: %s", ErrChecksum, err)
 	}

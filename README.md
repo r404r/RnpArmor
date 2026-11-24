@@ -2,9 +2,9 @@
 
 English | [简体中文](README.zh-CN.md)
 
-RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, focused on a Windows 10/11 portable distribution (`rnparmor.exe` + `rnp.dll` in one folder) while keeping Linux build/test support.
+RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, delivering Windows 10/11 portable & installer builds (`rnparmor.exe` + `rnp.dll`), macOS Apple Silicon (`arm64`) `.app`/`.dmg` bundles, and Linux (`amd64`) portable builds/tests.
 
-> License status: **project license not selected yet**. Third-party licenses are included in portable bundles.
+> License status: **project license not selected yet**. Third-party licenses are included in distributed bundles.
 
 ## Highlights
 
@@ -50,12 +50,14 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, focused on a 
    - Windows script smoke path runs `--smoke-test --smoke-out` first, then a bounded GUI probe.
    - CI dependency cache (`out/deps`) is configured for Linux and Windows jobs.
 
-5. **Automated release workflow for portable artifacts**
+5. **Automated multi-platform release workflow**
    - `.github/workflows/release.yml` runs on `push` tag `v*` and `workflow_dispatch`.
-   - Builds both Linux and Windows portable bundles and uploads them as artifacts.
+   - Builds macOS Apple Silicon (`arm64`), Linux (`amd64`), and Windows (`amd64`) artifacts.
    - Publishes/updates GitHub Release with:
-     - `rnparmor-windows-amd64.zip`
+     - `rnparmor-macos-arm64.dmg` (ad-hoc signed `RnpArmor.app`, minimum macOS 13.0)
      - `rnparmor-linux-amd64.tar.gz`
+     - `rnparmor-windows-amd64-setup.exe` (Inno Setup 6 per-user installer)
+     - `rnparmor-windows-amd64.zip` (Windows portable bundle)
      - `windows-report.txt`
      - `rnparmor-${TAG}-SHA256SUMS.txt`
 
@@ -65,17 +67,23 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, focused on a 
   - `main.go`: MyGo app entry, native 4-group menu bar, 5-workspace UI, `580×520` non-modal About child window, async session operations, `--smoke-out`, and build-time `appVersion` display/output.
   - `i18n.go`: tri-lingual catalog (EN/ZH/JA), language resolution, translation validation.
   - `main_test.go`: unit tests for smoke output generation/writing, menu template structure, and state synchronization.
+- `internal/loadlib/`
+  - `open.go`: absolute-path `librnp` resolution and `SHA256SUMS` verification before loading, including fallback from `Contents/MacOS/SHA256SUMS` to `Contents/Resources/SHA256SUMS` for macOS `.app` bundles.
 - `internal/rnp/`
   - `api.go`: purego FFI bindings to librnp APIs.
   - `session.go`: session lifecycle, passphrase callback controls, API models.
   - `ops.go`: key management + text/file crypto/sign/verify + packet/features.
   - `session_test.go`: compatibility tests + expanded integration scenarios.
 - `scripts/build-windows.ps1`
-  - builds pinned deps and `-H=windowsgui` portable output, verifies PE subsystem and DLL imports, runs tests and `--smoke-out` + GUI probe.
+  - builds pinned deps, `-H=windowsgui` portable output, and Inno Setup 6 installer (`rnparmor-windows-amd64-setup.exe`), verifies PE subsystem and DLL imports, and runs tests + `--smoke-out` + GUI probe.
+- `scripts/build-macos.sh`
+  - builds pinned static deps (`Botan 3.10.0` + `json-c 0.19`), `librnp.dylib`, and `RnpArmor.app`, runs ad-hoc `codesign --verify --deep --strict`, `go test`, and `--smoke-test`, and packages `rnparmor-macos-arm64.dmg`.
+- `packaging/windows/rnparmor.iss`
+  - Inno Setup 6 script for the Windows per-user installer (`rnparmor-windows-amd64-setup.exe`).
 - `.github/workflows/smoke.yml`
-  - Linux + Windows portable jobs with cache + per-branch concurrency cancel.
+  - `linux`, `windows-portable`, and `macos-arm64` jobs with dependency caches + per-branch concurrency cancel.
 - `.github/workflows/release.yml`
-  - tag-driven/manual portable packaging and release publication.
+  - tag-driven/manual multi-platform packaging and release publication.
 
 ## GUI Workspaces
 
@@ -172,7 +180,30 @@ CGO_ENABLED=1 go test -race -gcflags=all=-d=checkptr=0 ./...
 CGO_ENABLED=0 go build -o rnparmor ./cmd/rnparmor
 ```
 
-### Windows (portable)
+### macOS (Apple Silicon / arm64)
+
+```bash
+# one-shot: runs deps -> rnp -> package (default --stage all)
+bash scripts/build-macos.sh
+
+# staged mode (for local iteration or CI caching)
+bash scripts/build-macos.sh --stage deps
+bash scripts/build-macos.sh --stage rnp
+bash scripts/build-macos.sh --stage package
+
+# inject app version into Info.plist and binary metadata
+bash scripts/build-macos.sh --stage package --version v0.0.1
+```
+
+`scripts/build-macos.sh` targets `MACOSX_DEPLOYMENT_TARGET=13.0` (`LSMinimumSystemVersion=13.0`) on Apple Silicon (`arm64`):
+
+- `deps`: builds static `Botan 3.10.0` (using the same 57-module list in `scripts/windows/botan3-modules.txt`, stamped with `.modules-sha256`) and static `json-c 0.19` into `out/deps`.
+- `rnp`: builds `librnp.dylib` (`@loader_path/librnp.dylib`) linked statically against Botan and `json-c`, and dynamically against macOS system `/usr/lib/libz` and `/usr/lib/libbz2` plus `-framework Security` (verified via `otool -L` to avoid external Homebrew paths).
+- `package`: builds `CGO_ENABLED=0 GOOS=darwin GOARCH=arm64` `rnparmor`, assembles `out/dist/RnpArmor.app` (`Contents/MacOS/rnparmor`, `Contents/MacOS/librnp.dylib`, `Contents/Resources/SHA256SUMS`, `Contents/Resources/licenses/`), applies ad-hoc signatures and runs `codesign --verify --deep --strict`, executes `go test` and `--smoke-test`, and packages `out/rnparmor-macos-arm64.dmg` via `hdiutil create`.
+
+> macOS Gatekeeper note: `RnpArmor.app` is ad-hoc signed and **not Apple-notarized**. Opening it for the first time from Finder may trigger a Gatekeeper warning (use Control-click → Open or System Settings → Privacy & Security if prompted).
+
+### Windows (portable & installer)
 
 ```powershell
 # one-shot (compatible): runs deps -> rnp -> package (default -Stage all)
@@ -209,17 +240,17 @@ Windows dependency builds pin and bundle:
 3. `small-deps`: build and install static `json-c`, `zlib`, and `bzip2` into `out/deps`, stage `dirent.h`, and cache dependency licenses under `out/deps/licenses`
 4. `deps`: execute `fetch-deps -> botan -> small-deps`
 5. `rnp`: build `librnp` (`rnp.dll`) using cached dependencies and cache `rnp.dll` at `out/win-build/rnp-dll/rnp.dll`
-6. `package`: build `rnparmor.exe` with `-H=windowsgui`, copy `rnp.dll` and `licenses/`, verify `Windows GUI` PE subsystem (`dumpbin /headers`) and DLL imports (`DEPENDENCIES.txt`), generate `PORTABLE.txt` and `SHA256SUMS`, run `go test` against packaged `rnp.dll`, run `--smoke-test --smoke-out` and the bounded GUI probe, and produce the zip and report
+6. `package`: build `rnparmor.exe` with `-H=windowsgui`, copy `rnp.dll` and `licenses/`, verify `Windows GUI` PE subsystem (`dumpbin /headers`) and DLL imports (`DEPENDENCIES.txt`), generate `PORTABLE.txt` and `SHA256SUMS`, run `go test` against packaged `rnp.dll`, run `--smoke-test --smoke-out` and the bounded GUI probe, and produce the portable zip, Inno Setup 6 installer, and report
 7. `all`: execute `deps -> rnp -> package` (default)
 
-The `package` stage creates `out\dist\rnparmor-windows-amd64` and executes:
+The `package` stage creates `out\dist\rnparmor-windows-amd64`, builds the installer via `packaging/windows/rnparmor.iss` + Inno Setup 6 (`ISCC.exe`), and executes:
 
 1. `dumpbin /headers` check confirming `rnparmor.exe` targets the `Windows GUI` subsystem (recorded in `out\windows-report.txt`)
 2. `go test -count=1 -timeout 20m ./internal/loadlib/ ./internal/rnp/ ./cmd/rnparmor/` with `RNPARMOR_LIBRNP` pointing to the packaged `rnp.dll` and `PATH` restricted to `System32`
 3. `rnparmor.exe --smoke-test --smoke-out <path>` (verifying `status=ok`, `app_version=<Version>`, and `i18n=ok`)
 4. a bounded GUI process probe
 
-Zip output: `out\rnparmor-windows-amd64.zip` (report: `out\windows-report.txt`).
+Outputs: `out\rnparmor-windows-amd64.zip`, `out\rnparmor-windows-amd64-setup.exe` (default per-user non-admin install with `PrivilegesRequired=lowest`, Start Menu entry, optional desktop shortcut, and standard uninstaller), and `out\windows-report.txt`.
 
 ## CI
 
@@ -232,6 +263,11 @@ Workflow: `.github/workflows/smoke.yml`
   - dependency cache on `out/deps` with `actions/cache/restore@v4` before `fetch-deps` and `actions/cache/save@v4` after `small-deps`
   - staged Windows flow (`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package`) for per-stage timing observability and dependency cache reuse
   - cache key: `${{ runner.os }}-deps-v4-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
+  - uploads `out/rnparmor-windows-amd64.zip`, `out/rnparmor-windows-amd64-setup.exe`, and `out/windows-report.txt`
+- `macos-arm64` job (`runs-on: macos-15`):
+  - dependency cache on `out/deps` with key `${{ runner.os }}-arm64-deps-v1-${{ hashFiles('deps/pins.json', 'scripts/windows/botan3-modules.txt', 'scripts/build-macos.sh') }}`
+  - staged macOS flow (`deps -> save cache -> rnp -> package`)
+  - uploads `out/rnparmor-macos-arm64.dmg`
 
 Workflow: `.github/workflows/release.yml`
 
@@ -240,8 +276,9 @@ Workflow: `.github/workflows/release.yml`
   - `workflow_dispatch` (optional `tag` input)
 - jobs:
   - `linux-portable`: build/test/package `rnparmor-linux-amd64.tar.gz`
-  - `windows-portable`: uses the same `deps-v4` cache key and staged sequence (`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package -Version "${{ steps.tag.outputs.value }}"`) to produce `rnparmor-windows-amd64.zip` and `windows-report.txt`
-  - `publish-release`: on both jobs green, create/update Release and upload assets with combined checksums (`rnparmor-${TAG}-SHA256SUMS.txt`)
+  - `windows-portable`: uses the same `deps-v4` cache key and staged sequence (`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package -Version "${{ steps.tag.outputs.value }}"`) to produce `rnparmor-windows-amd64.zip`, `rnparmor-windows-amd64-setup.exe`, and `windows-report.txt`
+  - `macos-arm64` (`runs-on: macos-15`): uses the same `arm64-deps-v1` cache key and staged sequence (`deps -> save cache -> rnp -> package --version "${{ steps.tag.outputs.value }}"`) to produce `rnparmor-macos-arm64.dmg`
+  - `publish-release`: on all three platform jobs green, creates/updates GitHub Release and uploads `rnparmor-macos-arm64.dmg`, `rnparmor-linux-amd64.tar.gz`, `rnparmor-windows-amd64-setup.exe`, `rnparmor-windows-amd64.zip`, `windows-report.txt`, and `rnparmor-${TAG}-SHA256SUMS.txt`
 
 ## Security & Operational Boundaries
 
@@ -253,8 +290,8 @@ Workflow: `.github/workflows/release.yml`
 
 ## Repository Status Notes
 
-- On `feat/win-gui-menu-and-about` (PR #4), Linux and Windows portable CI (`smoke.yml`) are passing with `-H=windowsgui` PE subsystem verification, the native 4-group tri-lingual menu bar, the standalone `580×520` non-modal About child window, and `--smoke-out` CI checks.
-- Windows desktop manual UX validation and IME/high-DPI verification are still environment-dependent and must be confirmed in dedicated manual runs on Windows 10/11.
+- On `feat/multiplatform-release` (PR #5), all three CI targets (`linux`, `windows-portable`, and `macos-arm64` in `.github/workflows/smoke.yml`) are passing and `.github/workflows/release.yml` is ready for the `v0.0.1` multi-platform release.
+- Desktop manual UX validation—including Windows 10/11 Chinese IME, high-DPI, and Inno Setup installer flow, plus macOS Apple Silicon first-launch Gatekeeper handling—remains environment-dependent and must be confirmed in dedicated manual runs.
 
 ## Third-Party and Pins
 

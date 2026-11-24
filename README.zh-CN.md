@@ -2,9 +2,9 @@
 
 [English](README.md) | 简体中文
 
-RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工具，当前重点是 Windows 10/11 可解压即用的 portable 形态（同目录下 `rnparmor.exe` + `rnp.dll`），并保留 Linux 的构建与测试链路。
+RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工具，提供 Windows 10/11 便携版与安装版（`rnparmor.exe` + `rnp.dll`）、macOS Apple Silicon（`arm64`）`.app`/`.dmg` 应用包以及 Linux（`amd64`）便携构建与测试链路。
 
-> 许可状态：**项目自身许可证尚未选定**。portable 包中包含第三方许可证文本。
+> 许可状态：**项目自身许可证尚未选定**。分发包中均包含第三方许可证文本。
 
 ## 功能总览
 
@@ -48,12 +48,14 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
    - Windows 脚本先执行 `--smoke-test --smoke-out`，再做有超时保护的 GUI 进程探针。
    - Linux/Windows CI 作业均配置 `out/deps` 缓存。
 
-5. **自动打包发布工作流**
+5. **自动多平台打包发布工作流**
    - `.github/workflows/release.yml` 在 `v*` Tag 推送或手动触发时执行。
-   - 同时构建 Linux/Windows portable 包并上传 artifact。
-   - 双平台成功后创建/更新 GitHub Release，并上传：
-     - `rnparmor-windows-amd64.zip`
+   - 同时构建 macOS Apple Silicon（`arm64`）、Linux（`amd64`）与 Windows（`amd64`）产物。
+   - 三平台通过后创建/更新 GitHub Release，并上传：
+     - `rnparmor-macos-arm64.dmg`（内含 ad-hoc 签名的 `RnpArmor.app`，最低 macOS 13.0）
      - `rnparmor-linux-amd64.tar.gz`
+     - `rnparmor-windows-amd64-setup.exe`（Inno Setup 6 当前用户免管理员安装程序）
+     - `rnparmor-windows-amd64.zip`（Windows 便携包）
      - `windows-report.txt`
      - `rnparmor-${TAG}-SHA256SUMS.txt`
 
@@ -63,14 +65,18 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
   - `main.go`：MyGo 主程序、原生 4 组菜单栏、5 工作区 UI、`580×520` 非模态 About 子窗口、异步会话操作、`--smoke-out` 及构建注入 `appVersion` 展示/输出。
   - `i18n.go`：EN/ZH/JA 三语词典、语言解析与完整性校验。
   - `main_test.go`：冒烟输出与文件写入、菜单模板结构及状态联动单元测试。
+- `internal/loadlib/`
+  - `open.go`：绝对路径解析 `librnp` 并于加载前校验 `SHA256SUMS`，针对 macOS `.app` 包结构支持从 `Contents/MacOS/SHA256SUMS` 回退至 `Contents/Resources/SHA256SUMS`。
 - `internal/rnp/`
   - `api.go`：purego 对 librnp 的 FFI 绑定。
   - `session.go`：会话生命周期、口令回调控制、数据模型。
   - `ops.go`：密钥管理、文本/文件加解密签名验签、Packet/特性接口。
   - `session_test.go`：兼容测试 + 扩展测试。
-- `scripts/build-windows.ps1`：Windows `-H=windowsgui` portable 构建、PE 子系统与 DLL 导入校验、测试、`--smoke-out` 冒烟与打包。
-- `.github/workflows/smoke.yml`：Linux/Windows CI（含同分支并发自动取消）。
-- `.github/workflows/release.yml`：Tag/手动触发的自动打包发布。
+- `scripts/build-windows.ps1`：Windows `-H=windowsgui` 便携包与 Inno Setup 6 安装包（`rnparmor-windows-amd64-setup.exe`）构建、PE 子系统与 DLL 导入校验、测试、`--smoke-out` 冒烟与打包。
+- `scripts/build-macos.sh`：macOS Apple Silicon（`arm64`）构建脚本，编译静态依赖（`Botan 3.10.0` + `json-c 0.19`）与 `librnp.dylib`，组装 `RnpArmor.app` 并执行 ad-hoc `codesign --verify --deep --strict`、`go test`、`--smoke-test`，最终打包 `rnparmor-macos-arm64.dmg`。
+- `packaging/windows/rnparmor.iss`：Windows 安装程序（`rnparmor-windows-amd64-setup.exe`）的 Inno Setup 6 脚本。
+- `.github/workflows/smoke.yml`：`linux`、`windows-portable` 与 `macos-arm64` 三平台 CI（含缓存与同分支并发自动取消）。
+- `.github/workflows/release.yml`：Tag/手动触发的多平台自动打包发布。
 
 ## 五大工作区说明
 
@@ -167,7 +173,30 @@ CGO_ENABLED=1 go test -race -gcflags=all=-d=checkptr=0 ./...
 CGO_ENABLED=0 go build -o rnparmor ./cmd/rnparmor
 ```
 
-### Windows（portable）
+### macOS（Apple Silicon / arm64）
+
+```bash
+# 一键执行：按序执行 deps -> rnp -> package（默认 --stage all）
+bash scripts/build-macos.sh
+
+# 分阶段模式（便于本地迭代与 CI 缓存）
+bash scripts/build-macos.sh --stage deps
+bash scripts/build-macos.sh --stage rnp
+bash scripts/build-macos.sh --stage package
+
+# 注入版本号到 Info.plist 与二进制元数据
+bash scripts/build-macos.sh --stage package --version v0.0.1
+```
+
+`scripts/build-macos.sh` 面向 Apple Silicon（`arm64`），最低系统要求 `MACOSX_DEPLOYMENT_TARGET=13.0`（`LSMinimumSystemVersion=13.0`）：
+
+- `deps`：按 `scripts/windows/botan3-modules.txt` 的 57 个模块清单编译静态 `Botan 3.10.0`（写入 `.modules-sha256` 校验印记）与静态 `json-c 0.19` 到 `out/deps`。
+- `rnp`：构建 `librnp.dylib`（install name 为 `@loader_path/librnp.dylib`），静态链接 Botan 与 `json-c`，动态链接 macOS 系统自带 `/usr/lib/libz` 与 `/usr/lib/libbz2` 以及 `-framework Security`（通过 `otool -L` 校验无外部 Homebrew 等非系统路径依赖）。
+- `package`：构建 `CGO_ENABLED=0 GOOS=darwin GOARCH=arm64` 的 `rnparmor`，组装 `out/dist/RnpArmor.app`（`Contents/MacOS/rnparmor`、`Contents/MacOS/librnp.dylib`、`Contents/Resources/SHA256SUMS` 与 `Contents/Resources/licenses/`），执行 ad-hoc 签名与 `codesign --verify --deep --strict`，运行 `go test` 与 `--smoke-test`，最终通过 `hdiutil create` 生成 `out/rnparmor-macos-arm64.dmg`。
+
+> macOS Gatekeeper 提示：`RnpArmor.app` 仅作 ad-hoc 签名且**未经过 Apple 公证**。首次在访达中打开可能触发 Gatekeeper 安全提示（如遇提示，可通过右键 → 打开或在「系统设置 → 隐私与安全性」中放行）。
+
+### Windows（portable 与安装版）
 
 ```powershell
 # 一键（兼容旧习惯）：按序执行 deps -> rnp -> package（默认 -Stage all）
@@ -204,17 +233,17 @@ Windows 依赖构建钉扎并打包以下组件：
 3. `small-deps`：编译并安装静态 `json-c`、`zlib`、`bzip2` 到 `out/deps`，准备 `dirent.h` 并将依赖许可证缓存至 `out/deps/licenses`
 4. `deps`：依次执行 `fetch-deps -> botan -> small-deps`
 5. `rnp`：基于缓存依赖编译 `librnp`（`rnp.dll`），并缓存至 `out/win-build/rnp-dll/rnp.dll`
-6. `package`：使用 `-H=windowsgui` 构建 `rnparmor.exe`、复制 `rnp.dll` 与 `licenses/`、校验 `Windows GUI` PE 子系统（`dumpbin /headers`）与 DLL 导入表（`DEPENDENCIES.txt`）、生成 `PORTABLE.txt` 与 `SHA256SUMS`、对打包后的 `rnp.dll` 执行 `go test`、运行 `--smoke-test --smoke-out` 与 GUI 探针并产出 zip 与报告
+6. `package`：使用 `-H=windowsgui` 构建 `rnparmor.exe`、复制 `rnp.dll` 与 `licenses/`、校验 `Windows GUI` PE 子系统（`dumpbin /headers`）与 DLL 导入表（`DEPENDENCIES.txt`）、生成 `PORTABLE.txt` 与 `SHA256SUMS`、对打包后的 `rnp.dll` 执行 `go test`、运行 `--smoke-test --smoke-out` 与 GUI 探针并产出便携 zip、Inno Setup 6 安装包与报告
 7. `all`：依次执行 `deps -> rnp -> package`（默认）
 
-`package` 阶段会生成 `out\dist\rnparmor-windows-amd64`，并执行：
+`package` 阶段会生成 `out\dist\rnparmor-windows-amd64`，使用 `packaging/windows/rnparmor.iss` 与 Inno Setup 6（`ISCC.exe`）打包安装程序，并执行：
 
 1. `dumpbin /headers` 校验，确认 `rnparmor.exe` 为 `Windows GUI` 子系统（记录至 `out\windows-report.txt`）
 2. 将 `RNPARMOR_LIBRNP` 指向打包目录内的 `rnp.dll`、并将 `PATH` 收窄到 `System32` 后运行 `go test -count=1 -timeout 20m ./internal/loadlib/ ./internal/rnp/ ./cmd/rnparmor/`
 3. 执行 `rnparmor.exe --smoke-test --smoke-out <path>`（核对 `status=ok`、`app_version=<Version>` 与 `i18n=ok`）
 4. 执行带超时保护的 GUI 进程探针
 
-Zip 输出：`out\rnparmor-windows-amd64.zip`（报告：`out\windows-report.txt`）。
+输出产物：`out\rnparmor-windows-amd64.zip`、`out\rnparmor-windows-amd64-setup.exe`（默认当前用户免管理员安装 `PrivilegesRequired=lowest`，支持开始菜单快捷方式、可选桌面快捷方式与标准卸载）与 `out\windows-report.txt`。
 
 ## CI
 
@@ -227,6 +256,11 @@ Zip 输出：`out\rnparmor-windows-amd64.zip`（报告：`out\windows-report.txt
   - 使用 `actions/cache/restore@v4` 恢复 `out/deps`，并在 `small-deps` 之后执行 `actions/cache/save@v4` 保存缓存
   - CI 拆分为 `fetch-deps -> botan -> small-deps -> save cache -> rnp -> package`，以提升各阶段耗时观测性与依赖缓存复用率
   - 缓存键：`${{ runner.os }}-deps-v4-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
+  - 上传 `out/rnparmor-windows-amd64.zip`、`out/rnparmor-windows-amd64-setup.exe` 与 `out/windows-report.txt`
+- `macos-arm64` 作业（`runs-on: macos-15`）：
+  - 使用 `out/deps` 缓存，缓存键 `${{ runner.os }}-arm64-deps-v1-${{ hashFiles('deps/pins.json', 'scripts/windows/botan3-modules.txt', 'scripts/build-macos.sh') }}`
+  - 分阶段流程：`deps -> save cache -> rnp -> package`
+  - 上传 `out/rnparmor-macos-arm64.dmg`
 
 发布文件：`.github/workflows/release.yml`
 
@@ -235,8 +269,9 @@ Zip 输出：`out\rnparmor-windows-amd64.zip`（报告：`out\windows-report.txt
   - 手动触发（可选 `tag` 输入）
 - 作业：
   - `linux-portable`：构建/测试/打包 `rnparmor-linux-amd64.tar.gz`
-  - `windows-portable`：沿用相同的 `deps-v4` 缓存键与分段流水线（`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package -Version "${{ steps.tag.outputs.value }}"`），产出 `rnparmor-windows-amd64.zip` 与 `windows-report.txt`
-  - `publish-release`：双平台通过后创建/更新 Release 并上传资产与统一校验文件（`rnparmor-${TAG}-SHA256SUMS.txt`）
+  - `windows-portable`：沿用相同的 `deps-v4` 缓存键与分段流水线（`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package -Version "${{ steps.tag.outputs.value }}"`），产出 `rnparmor-windows-amd64.zip`、`rnparmor-windows-amd64-setup.exe` 与 `windows-report.txt`
+  - `macos-arm64`（`runs-on: macos-15`）：沿用相同的 `arm64-deps-v1` 缓存键与分段流水线（`deps -> save cache -> rnp -> package --version "${{ steps.tag.outputs.value }}"`），产出 `rnparmor-macos-arm64.dmg`
+  - `publish-release`：三平台均通过后创建/更新 GitHub Release，上传 `rnparmor-macos-arm64.dmg`、`rnparmor-linux-amd64.tar.gz`、`rnparmor-windows-amd64-setup.exe`、`rnparmor-windows-amd64.zip`、`windows-report.txt` 与统一校验文件 `rnparmor-${TAG}-SHA256SUMS.txt`
 
 ## 安全边界与注意事项
 
@@ -248,8 +283,8 @@ Zip 输出：`out\rnparmor-windows-amd64.zip`（报告：`out\windows-report.txt
 
 ## 仓库状态说明
 
-- `feat/win-gui-menu-and-about` 分支（PR #4）已通过 `.github/workflows/smoke.yml` 双平台 CI，完成 `-H=windowsgui` PE 子系统校验、主窗口原生 4 组三语菜单栏、`580×520` 独立非模态 About 子窗口及 `--smoke-out` 确定性冒烟校验。
-- Windows 桌面人工交互体验、中文输入法与高 DPI 表现仍依赖真实环境，需在 Windows 10/11 桌面环境中单独确认。
+- `feat/multiplatform-release` 分支（PR #5）已实现 `.github/workflows/smoke.yml` 三平台 CI（`linux` / `windows-portable` / `macos-arm64`）全绿，并就绪 `.github/workflows/release.yml` 用于 `v0.0.1` 多平台发版。
+- 桌面端人工交互体验（Windows 10/11 中文输入法、高 DPI 与安装程序流程，以及 macOS Apple Silicon 首次启动未公证 Gatekeeper 提示）仍依赖真实桌面环境，需在专门手工测试中确认。
 
 ## 第三方依赖与钉扎
 

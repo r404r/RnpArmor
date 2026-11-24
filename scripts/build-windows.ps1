@@ -891,7 +891,62 @@ public class RnpArmorWin {
         Pop-Location
     }
 
+    Log "inno setup"
+    $isccCmd = Get-Command iscc.exe -ErrorAction SilentlyContinue
+    if ($isccCmd) {
+        $iscc = $isccCmd.Source
+    } else {
+        $iscc = $null
+        $pf86 = ${env:ProgramFiles(x86)}
+        if ($pf86) {
+            $candidate = Join-Path $pf86 "Inno Setup 6\ISCC.exe"
+            if (Test-Path -LiteralPath $candidate) { $iscc = $candidate }
+        }
+        if (-not $iscc) {
+            $pf64 = $env:ProgramFiles
+            if ($pf64) {
+                $candidate = Join-Path $pf64 "Inno Setup 6\ISCC.exe"
+                if (Test-Path -LiteralPath $candidate) { $iscc = $candidate }
+            }
+        }
+    }
+    if (-not $iscc) {
+        throw "ISCC.exe not found. Install Inno Setup 6 or put iscc.exe on PATH"
+    }
+
+    $installerVer = ($Version -replace '^v', '')
+    if ($installerVer -match '^\d+\.\d+\.\d+$') {
+        $installerVerInfo = "$installerVer.0"
+    } elseif ($installerVer -match '^\d+\.\d+\.\d+\.\d+$') {
+        $installerVerInfo = $installerVer
+    } else {
+        $installerVerInfo = "0.0.0.0"
+    }
+
+    $iss = Join-Path $root "packaging\windows\rnparmor.iss"
+    if (-not (Test-Path -LiteralPath $iss)) {
+        throw "Inno Setup script missing: $iss"
+    }
+    Run $iscc @(
+        "/DAppVersion=$installerVer",
+        "/DAppVersionInfo=$installerVerInfo",
+        "/DSourceDir=$dist",
+        "/DOutputDir=$(Join-Path $root 'out')",
+        "/DOutputBaseFilename=rnparmor-windows-amd64-setup",
+        $iss
+    )
+
+    $installer = Join-Path $root "out\rnparmor-windows-amd64-setup.exe"
+    if (-not (Test-Path -LiteralPath $installer)) {
+        throw "installer not produced: $installer"
+    }
+    $installerItem = Get-Item -LiteralPath $installer
+    if ($installerItem.Length -le 0) {
+        throw "installer is empty: $installer"
+    }
+
     $zipHash = Get-Hash $zip "SHA256"
+    $installerHash = Get-Hash $installer "SHA256"
     $listing = (Get-ChildItem -Recurse -File $dist | ForEach-Object {
         "{0}`t{1}" -f $_.Length, $_.FullName.Substring($dist.Length + 1)
     }) -join "`n"
@@ -908,12 +963,15 @@ smoke: $smokeState
 subsystem: $subsystemLine
 FindWindow RnpArmor: $window
 zip sha256 $zipHash
+installer sha256 $installerHash
 files:
 $listing
 "@ | Set-Content -LiteralPath $report -Encoding utf8
 
     Write-Host "ZIP $zip"
     Write-Host "SHA256 $zipHash"
+    Write-Host "INSTALLER $installer"
+    Write-Host "INSTALLER_SHA256 $installerHash"
     Get-Content $report
 }
 

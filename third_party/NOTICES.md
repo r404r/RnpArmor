@@ -32,4 +32,13 @@ Linux 测试仍动态链接发行版的 zlib 和 bzip2，不是上面这两个�
 
 Windows portable 目录如果带上 `zlib1.dll`、`bz2.dll` 或其他非系统 DLL，必须使用那次构建实际产生的文件，并把对应许可文本放进同一个目录。不要拿这份 Linux 包里的 soname 当作 Windows DLL 文件名。
 
+macOS `.dmg`（`RnpArmor.app`）中的 `RnpArmor.app/Contents/MacOS/librnp.dylib` 静态链入钉扎的 `Botan 3.10.0`、`json-c 0.19`（及 `sexpp`），并动态链接 macOS 系统自带的 `/usr/lib/libz` 与 `/usr/lib/libbz2`（以及系统 `Security` framework）。`RnpArmor.app/Contents/Resources/licenses/` 包含下列第三方许可全文：
+
+- `rnp-LICENSE.md`
+- `sexpp-LICENSE.md`
+- `botan-license.txt`
+- `json-c-COPYING`
+- `mygo-MIT.txt`
+- `purego-Apache-2.0.txt`
+
 `scripts/build-librnp.sh` 会把 rnp、Botan、sexpp 的许可文件再复制到 `out/licenses/`。`out/` 不提交。
