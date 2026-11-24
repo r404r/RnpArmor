@@ -1,0 +1,43 @@
+name: linux-screenshot
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/capture-linux-screenshots.sh"
+      - ".github/workflows/linux-screenshot.yml"
+
+concurrency:
+  group: linux-screenshot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+      - name: cache deps
+        uses: actions/cache@v4
+        with:
+          path: out/deps
+          key: ${{ runner.os }}-deps-v3-${{ hashFiles('deps/pins.json', 'scripts/build-librnp.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-v3-
+      - name: packages
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake python3 zlib1g-dev libbz2-dev pkg-config patchelf xvfb openbox scrot xdotool wmctrl libgtk-3-0 libgl1-mesa-dri libegl1 libgles2 fonts-noto-cjk imagemagick
+      - name: build pinned librnp
+        run: bash scripts/build-librnp.sh
+      - name: build rnparmor
+        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.appVersion=dev" -o out/rnparmor ./cmd/rnparmor
+      - name: capture screenshots
+        run: bash scripts/capture-linux-screenshots.sh --bin "$PWD/out/rnparmor" --lib "$PWD/out/lib/librnp.so" --out "$PWD/out/screenshots"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rnparmor-linux-screenshots
+          path: out/screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30
