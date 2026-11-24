@@ -77,19 +77,22 @@ func slotByID(id uintptr) *slot {
 //   - The first argument is purego.CDecl so Windows 386 uses cdecl. On
 //     amd64 and arm64 Windows the platform convention is a single one;
 //     that path was not executed here.
+//   - Return type stays uintptr-sized. On Windows purego routes through
+//     syscall.NewCallbackCDecl, which rejects non-pointer-sized returns.
+//     librnp reads rnp_result_t/_Bool-compatible low byte values 0/1.
 //   - app_ctx is an integer slot id. It is not a Go pointer.
 //   - key is not stored. rnp destroys that handle when the callback returns.
 //   - pgp_context and buf are C pointers used only before return.
 //   - purego never frees the trampoline. Closing a session drops the slot.
-func passCallback(_ purego.CDecl, _, app, key, pgp, buf, bufLen uintptr) bool {
+func passCallback(_ purego.CDecl, _, app, key, pgp, buf, bufLen uintptr) uintptr {
 	if inCallback.Swap(true) {
-		return false
+		return 0
 	}
 	defer inCallback.Store(false)
 	_ = key
 	sl := slotByID(app)
 	if sl == nil {
-		return false
+		return 0
 	}
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
@@ -97,7 +100,7 @@ func passCallback(_ purego.CDecl, _, app, key, pgp, buf, bufLen uintptr) bool {
 	sl.tid = currentTID()
 	sl.lastCtx = readCString(pgp, 64)
 	if sl.cancel || len(sl.pass) == 0 || buf == 0 || uintptr(len(sl.pass))+1 > bufLen {
-		return false
+		return 0
 	}
 	dst := unsafe.Slice((*byte)(cPtr(buf)), bufLen)
 	copy(dst, sl.pass)
@@ -105,7 +108,7 @@ func passCallback(_ purego.CDecl, _, app, key, pgp, buf, bufLen uintptr) bool {
 	for i := len(sl.pass) + 1; i < len(dst); i++ {
 		dst[i] = 0
 	}
-	return true
+	return 1
 }
 
 func readCString(p uintptr, max int) string {

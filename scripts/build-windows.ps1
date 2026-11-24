@@ -778,7 +778,13 @@ cancelled; cancellation only discards output after the call returns.
         $testErr = Join-Path $work "go-test-err.txt"
         Write-Host "go test with RNPARMOR_LIBRNP=$env:RNPARMOR_LIBRNP"
         $testCmd = @("test", "-count=1", "-timeout", "20m", "./internal/loadlib/", "./internal/rnp/")
-        & $go @testCmd 1> $testLog 2> $testErr
+        $prevNative = $PSNativeCommandUseErrorActionPreference
+        try {
+            $PSNativeCommandUseErrorActionPreference = $false
+            & $go @testCmd 1> $testLog 2> $testErr
+        } finally {
+            $PSNativeCommandUseErrorActionPreference = $prevNative
+        }
         Get-Content $testLog, $testErr -ErrorAction SilentlyContinue
         if ($LASTEXITCODE -ne 0) {
             $tail = @()
@@ -798,7 +804,13 @@ cancelled; cancellation only discards output after the call returns.
 
         Log "smoke"
         Remove-Item Env:RNPARMOR_LIBRNP -ErrorAction SilentlyContinue
-        $smokeCheck = & (Join-Path $dist "rnparmor.exe") "--smoke-test" 2>&1
+        $prevNative = $PSNativeCommandUseErrorActionPreference
+        try {
+            $PSNativeCommandUseErrorActionPreference = $false
+            $smokeCheck = & (Join-Path $dist "rnparmor.exe") "--smoke-test" 2>&1
+        } finally {
+            $PSNativeCommandUseErrorActionPreference = $prevNative
+        }
         if ($LASTEXITCODE -ne 0) {
             throw "smoke-test failed: $LASTEXITCODE`n$smokeCheck"
         }

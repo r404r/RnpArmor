@@ -111,7 +111,7 @@ func TestPassphraseLifecycleAndThread(t *testing.T) {
 	if err := s.RequestPassword(ctx); !errors.Is(err, ErrClosed) {
 		t.Fatalf("after close: %v", err)
 	}
-	if passCallback(purego.CDecl{}, 0, slot, 0, 0, 0, 0) {
+	if passCallback(purego.CDecl{}, 0, slot, 0, 0, 0, 0) != 0 {
 		t.Fatal("callback succeeded after the slot was dropped")
 	}
 	if err := s.Close(); err != nil {
