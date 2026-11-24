@@ -681,6 +681,7 @@ function Build-Package {
     Copy-Item (Resolve-LicensePath $depsLicenses "bzip2-LICENSE" (Join-Path $bzSrc "LICENSE")) (Join-Path $dist "licenses\bzip2-LICENSE")
     Copy-Item (Join-Path $root "third_party\licenses\mygo-MIT.txt") (Join-Path $dist "licenses\mygo-MIT.txt")
     Copy-Item (Join-Path $root "third_party\licenses\purego-Apache-2.0.txt") (Join-Path $dist "licenses\purego-Apache-2.0.txt")
+    Copy-Item (Join-Path $root "LICENSE") (Join-Path $dist "LICENSE")
 
     $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
     if (-not $dumpbin) { throw "dumpbin.exe is missing; refusing to guess DLL dependencies" }
@@ -755,7 +756,7 @@ This copy was built for testing. Do not put real keys or passphrases in it.
 The program does not read the default keyring unless a later build adds an
 explicit directory, and this build does not.
 
-RnpArmor has no chosen project license. Third-party license texts are in licenses\.
+RnpArmor is licensed under the Apache License, Version 2.0 (see LICENSE). Third-party license texts are in licenses\.
 zlib and bzip2 are linked into rnp.dll. Their licenses are still included.
 
 A GitHub-hosted Windows runner is not a manual Windows 10 or 11 desktop test.

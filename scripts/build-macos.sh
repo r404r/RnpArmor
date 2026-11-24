@@ -334,6 +334,7 @@ package_stage() {
   cp -f "$out_bin" "$app_macos/rnparmor"
   chmod +x "$app_macos/rnparmor"
   cp -f "$dylib" "$app_macos/librnp.dylib"
+  cp -f "$root/LICENSE" "$app_res/LICENSE"
 
   cp -f "$root/third_party/licenses/rnp-LICENSE.md" "$app_lic/"
   cp -f "$root/third_party/licenses/sexpp-LICENSE.md" "$app_lic/"
