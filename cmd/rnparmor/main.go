@@ -66,11 +66,13 @@ type uiState struct {
 	sessionLoaded bool
 	tab           int
 	langIdx       int
-	showAbout     bool
+	mainWin       *mygo.Window
+	aboutWin      *mygo.Window
 }
 
 func main() {
 	smoke := flag.Bool("smoke-test", false, "probe librnp and exit")
+	smokeOut := flag.String("smoke-out", "", "write smoke-test output to file")
 	langFlag := flag.String("lang", "", "ui language: en|zh|ja")
 	flag.Parse()
 
@@ -98,11 +100,14 @@ func main() {
 	lang := ResolveLang(*langFlag)
 
 	if *smoke {
-		fmt.Println("status=ok")
-		fmt.Println("app_version=" + appVersion)
-		fmt.Println("library=" + path)
-		fmt.Println("version=" + v)
-		fmt.Println("i18n=ok")
+		smokeText := buildSmokeOutput(appVersion, path, v)
+		if err := writeSmokeOutput(*smokeOut, smokeText); err != nil {
+			fmt.Fprintln(os.Stderr, "status=error")
+			fmt.Fprintln(os.Stderr, "step=smoke-out")
+			fmt.Fprintln(os.Stderr, "error="+err.Error())
+			os.Exit(1)
+		}
+		fmt.Print(smokeText)
 		os.Exit(0)
 	}
 
@@ -133,12 +138,14 @@ func main() {
 	}
 
 	mygo.App.WhenReady(func() {
-		mygo.NewWindow(mygo.WindowOptions{
+		w := mygo.NewWindow(mygo.WindowOptions{
 			Title:   "RnpArmor",
 			Width:   1120,
 			Height:  780,
 			Content: ui.View(st.view),
 		})
+		st.mainWin = w
+		st.applyMainMenu()
 	})
 	if err := mygo.App.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -154,29 +161,173 @@ func mustWd() string {
 	return wd
 }
 
+func buildSmokeOutput(appVer, libPath, version string) string {
+	lines := []string{
+		"status=ok",
+		"app_version=" + appVer,
+		"library=" + libPath,
+		"version=" + version,
+		"i18n=ok",
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func writeSmokeOutput(path, text string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(text), 0o600)
+}
+
 func (s *uiState) lang() Lang { return LangByIndex(s.langIdx) }
 
 func (s *uiState) tr(key string) string { return Tr(s.lang(), key) }
 
-func (s *uiState) view(c *ui.Context) {
-	t := c.Theme()
-	if s.showAbout {
-		s.viewAbout(c)
+func (s *uiState) setLang(l Lang) {
+	idx := LangIndex(l)
+	if idx == s.langIdx {
 		return
 	}
+	s.langIdx = idx
+	s.applyMainMenu()
+	if s.mainWin != nil && !s.mainWin.IsDestroyed() {
+		s.mainWin.SetTitle(s.tr("title.app"))
+	}
+	if s.aboutWin != nil && !s.aboutWin.IsDestroyed() {
+		s.aboutWin.SetTitle(s.tr("title.about"))
+	}
+	s.invalidateAll()
+}
+
+func (s *uiState) selectTab(i int) {
+	s.tab = i
+	s.invalidateAll()
+	if s.mainWin != nil && !s.mainWin.IsDestroyed() {
+		s.mainWin.Focus()
+	}
+}
+
+func (s *uiState) closeMainWindow() {
+	if s.mainWin != nil && !s.mainWin.IsDestroyed() {
+		s.mainWin.Close()
+	}
+}
+
+func (s *uiState) openAboutWindow() {
+	if s.aboutWin != nil && !s.aboutWin.IsDestroyed() {
+		s.aboutWin.Show()
+		s.aboutWin.Focus()
+		return
+	}
+	opts := mygo.WindowOptions{
+		Title:   s.tr("title.about"),
+		Width:   860,
+		Height:  700,
+		Content: ui.View(s.viewAboutWindow),
+	}
+	if s.mainWin != nil && !s.mainWin.IsDestroyed() {
+		opts.Parent = s.mainWin
+	}
+	w := mygo.NewWindow(opts)
+	w.SetMenu(nil)
+	w.OnClosed(func() {
+		s.aboutWin = nil
+		s.invalidateAll()
+	})
+	s.aboutWin = w
+	s.invalidateAll()
+}
+
+func (s *uiState) closeAboutWindow() {
+	if s.aboutWin != nil && !s.aboutWin.IsDestroyed() {
+		s.aboutWin.Close()
+	}
+	s.invalidateAll()
+}
+
+func (s *uiState) invalidateAll() {
+	if s.mainWin != nil && !s.mainWin.IsDestroyed() {
+		s.mainWin.Invalidate()
+	}
+	if s.aboutWin != nil && !s.aboutWin.IsDestroyed() {
+		s.aboutWin.Invalidate()
+	}
+}
+
+func (s *uiState) menuTemplate() []*mygo.MenuItem {
+	wsItems := []struct {
+		key string
+		tab int
+	}{
+		{key: "menu.workspace.keys", tab: 0},
+		{key: "menu.workspace.text", tab: 1},
+		{key: "menu.workspace.file", tab: 2},
+		{key: "menu.workspace.packet", tab: 3},
+		{key: "menu.workspace.portable", tab: 4},
+	}
+	workspaceMenu := make([]*mygo.MenuItem, 0, len(wsItems))
+	for _, item := range wsItems {
+		tab := item.tab
+		workspaceMenu = append(workspaceMenu, &mygo.MenuItem{
+			Label: s.tr(item.key),
+			Click: func(*mygo.MenuItem, *mygo.Window) {
+				s.selectTab(tab)
+			},
+		})
+	}
+
+	currentLang := s.lang()
+	langMenu := []*mygo.MenuItem{
+		{Label: "English", Type: mygo.MenuItemRadio, Checked: currentLang == LangEN, Click: func(*mygo.MenuItem, *mygo.Window) { s.setLang(LangEN) }},
+		{Label: "中文", Type: mygo.MenuItemRadio, Checked: currentLang == LangZH, Click: func(*mygo.MenuItem, *mygo.Window) { s.setLang(LangZH) }},
+		{Label: "日本語", Type: mygo.MenuItemRadio, Checked: currentLang == LangJA, Click: func(*mygo.MenuItem, *mygo.Window) { s.setLang(LangJA) }},
+	}
+
+	return []*mygo.MenuItem{
+		{
+			Label: s.tr("menu.file"),
+			Submenu: []*mygo.MenuItem{
+				{Label: s.tr("menu.file.close"), Click: func(*mygo.MenuItem, *mygo.Window) { s.closeMainWindow() }},
+				mygo.Separator(),
+				{Label: s.tr("menu.file.quit"), Click: func(*mygo.MenuItem, *mygo.Window) { mygo.App.Quit() }},
+			},
+		},
+		{
+			Label:   s.tr("menu.workspace"),
+			Submenu: workspaceMenu,
+		},
+		{
+			Label:   s.tr("menu.language"),
+			Submenu: langMenu,
+		},
+		{
+			Label: s.tr("menu.help"),
+			Submenu: []*mygo.MenuItem{
+				{Label: s.tr("menu.help.about"), Click: func(*mygo.MenuItem, *mygo.Window) { s.openAboutWindow() }},
+			},
+		},
+	}
+}
+
+func (s *uiState) applyMainMenu() {
+	if s.mainWin == nil || s.mainWin.IsDestroyed() {
+		return
+	}
+	s.mainWin.SetMenu(mygo.NewMenu(s.menuTemplate()))
+}
+
+func (s *uiState) view(c *ui.Context) {
+	t := c.Theme()
 	ui.Column(c).Fill().Padding(14).Gap(10).Children(func() {
 		ui.Column(c).Gap(8).Children(func() {
 			ui.Text(c, s.tr("title.app")).FontSize(24).Bold()
 			ui.Textf(c, "librnp %s", s.version).TextColor(t.TextMuted)
 			ui.Text(c, s.libPath).FontSize(11).TextColor(t.TextMuted)
 			ui.Text(c, s.statusLine()).FontSize(12).TextColor(t.TextMuted)
-			ui.Row(c).Gap(8).Children(func() {
-				ui.Text(c, s.tr("label.language")).TextColor(t.TextMuted)
-				ui.Segmented(c, &s.langIdx, LangChoices()...)
-				if ui.Button(c, s.tr("btn.about")).Clicked() {
-					s.showAbout = true
-				}
-			})
 		})
 		ui.Divider(c)
 
@@ -450,7 +601,7 @@ func (s *uiState) viewPortable(c *ui.Context) {
 	ui.Text(c, s.tr("note.portable_pass")).TextColor(t.TextMuted)
 }
 
-func (s *uiState) viewAbout(c *ui.Context) {
+func (s *uiState) viewAboutWindow(c *ui.Context) {
 	t := c.Theme()
 	absWS := s.workspace
 	if strings.TrimSpace(absWS) != "" {
@@ -467,12 +618,11 @@ func (s *uiState) viewAbout(c *ui.Context) {
 	rnpUpstream := fmt.Sprintf("https://github.com/rnpgp/rnp (librnp %s)", s.version)
 
 	ui.Column(c).Fill().Padding(20).Gap(12).Children(func() {
-		ui.Row(c).Gap(10).Children(func() {
-			if ui.Button(c, s.tr("btn.back_workspaces")).Clicked() {
-				s.showAbout = false
-			}
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, s.tr("title.about")).FontSize(22).Bold().Grow(1)
-			ui.Segmented(c, &s.langIdx, LangChoices()...)
+			if ui.Button(c, s.tr("btn.close")).Clicked() {
+				s.closeAboutWindow()
+			}
 		})
 		ui.Text(c, s.tr("about.no_menu_hint")).FontSize(12).TextColor(t.TextMuted)
 		ui.Divider(c)
@@ -585,6 +735,7 @@ func (s *uiState) finish(title string, err error) {
 		s.lastErr = ""
 		s.statusDone = true
 	}
+	go s.invalidateAll()
 }
 
 func (s *uiState) openSession(sess *rnp.Session, ctx context.Context) error {
