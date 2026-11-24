@@ -167,49 +167,62 @@ CGO_ENABLED=0 go build -o rnparmor ./cmd/rnparmor
 ### Windows（portable）
 
 ```powershell
-# 一键（兼容旧习惯）：deps + rnp + package
+# 一键（兼容旧习惯）：按序执行 deps -> rnp -> package（默认 -Stage all）
 pwsh -File .\scripts\build-windows.ps1
 
-# 分阶段（便于 CI 观测耗时与缓存）
+# 粗粒度分阶段模式
 pwsh -File .\scripts\build-windows.ps1 -Stage deps
 pwsh -File .\scripts\build-windows.ps1 -Stage rnp
 pwsh -File .\scripts\build-windows.ps1 -Stage package
 
+# 细粒度依赖阶段（CI 用于分段观测耗时与缓存复用）
+pwsh -File .\scripts\build-windows.ps1 -Stage fetch-deps
+pwsh -File .\scripts\build-windows.ps1 -Stage botan
+pwsh -File .\scripts\build-windows.ps1 -Stage small-deps
+
 # 注入应用版本（用于 --smoke-test / About 显示）
-pwsh -File .\scripts\build-windows.ps1 -Version v1.2.3
+pwsh -File .\scripts\build-windows.ps1 -Version v0.0.1
 
 # 分阶段 + 版本注入
-pwsh -File .\scripts\build-windows.ps1 -Stage package -Version v1.2.3
+pwsh -File .\scripts\build-windows.ps1 -Stage package -Version v0.0.1
 ```
 
-Windows 依赖构建采用 `scripts/windows/botan3-modules.txt` 中的 Botan
-最小静态模块清单（每行一个模块，支持注释），对齐 `rnpgp/rnp v0.18.1`
-所需能力，避免在 CI 中编译不必要的 CLI/测试与非 OpenPGP 模块。
+Windows 依赖构建钉扎并打包以下组件：
 
-`scripts/build-windows.ps1` 现支持分阶段执行：
+- `Botan 3.10.0`：按 `scripts/windows/botan3-modules.txt` 中的精简静态模块清单（共 57 个模块，每行一个模块，支持注释）编译静态库，对齐 `rnpgp/rnp v0.18.1` 的 OpenPGP 能力需求，避免在 CI 中编译不必要的 CLI/测试与非 OpenPGP 模块。
+- `json-c 0.19`、`zlib 1.4`、`bzip2 1.0.8`：编译为静态库并链接进 `rnp.dll`。
+- `dirent 1.24`（`tronkko/dirent`，MIT 许可）：Windows 构建 `librnp` 所需的头文件兼容依赖（`dirent.h`）。
+- 上述及 Go/RNP 第三方许可证文本（`rnp-LICENSE.md`、`sexpp-LICENSE.md`、`botan-license.txt`、`dirent-LICENSE`、`json-c-COPYING`、`zlib-LICENSE`、`bzip2-LICENSE`、`mygo-MIT.txt`、`purego-Apache-2.0.txt`）均随 Windows portable 包打入 `licenses/` 目录。
 
-1. `deps`：构建/缓存 Botan + json-c + zlib + bzip2 到 `out/deps`（含许可证缓存）
-2. `rnp`：构建 `librnp`，并将 `rnp.dll` 缓存到 `out/win-build/rnp-dll/rnp.dll`
-3. `package`：构建 `rnparmor.exe`、执行测试/冒烟/GUI 探针并产出 zip/report
+`scripts/build-windows.ps1` 支持以下 `-Stage` 阶段参数：
+
+1. `fetch-deps`：下载、校验并解压 `Botan 3.10.0`、`json-c 0.19`、`zlib 1.4`、`bzip2 1.0.8` 与 `dirent 1.24` 源码到 `out/src`（若 `out/deps` 热缓存已完整则自动跳过）
+2. `botan`：编译并安装精简静态 `Botan 3.10.0` 到 `out/deps/botan`（写入 `.modules-sha256` 校验印记）
+3. `small-deps`：编译并安装静态 `json-c`、`zlib`、`bzip2` 到 `out/deps`，准备 `dirent.h` 并将依赖许可证缓存至 `out/deps/licenses`
+4. `deps`：依次执行 `fetch-deps -> botan -> small-deps`
+5. `rnp`：基于缓存依赖编译 `librnp`（`rnp.dll`），并缓存至 `out/win-build/rnp-dll/rnp.dll`
+6. `package`：构建 `rnparmor.exe`、复制 `rnp.dll` 与 `licenses/`、校验 DLL 导入表（`DEPENDENCIES.txt`）、生成 `PORTABLE.txt` 与 `SHA256SUMS`、对打包后的 `rnp.dll` 执行 `go test`、运行 `--smoke-test` 与 GUI 探针并产出 zip 与报告
+7. `all`：依次执行 `deps -> rnp -> package`（默认）
 
 `package` 阶段会生成 `out\dist\rnparmor-windows-amd64`，并执行：
 
-1. `rnparmor.exe --smoke-test`
-2. 带超时保护的 GUI 进程探针
+1. 将 `RNPARMOR_LIBRNP` 指向打包目录内的 `rnp.dll`、并将 `PATH` 收窄到 `System32` 后运行 `go test -count=1 -timeout 20m ./internal/loadlib/ ./internal/rnp/`
+2. 执行 `rnparmor.exe --smoke-test`（核对 `app_version=<Version>`）
+3. 执行带超时保护的 GUI 进程探针
 
-Zip 输出：`out\rnparmor-windows-amd64.zip`。
+Zip 输出：`out\rnparmor-windows-amd64.zip`（报告：`out\windows-report.txt`）。
 
 ## CI
 
-CI 文件：`.github/workflows/smoke.yml`
+工作流文件：`.github/workflows/smoke.yml`
 
 - `linux` 作业：
   - `out/deps` 缓存
-  - pinned librnp 构建 + 测试矩阵
+  - pinned `librnp` 构建 + `go test -race` + `CGO_ENABLED=0` 构建
 - `windows-portable` 作业：
-  - `out/deps` 缓存（`actions/cache/restore` + deps 阶段后 `actions/cache/save`）
-  - Windows 分阶段流水线（`deps` -> `rnp` -> `package`），可直接观测各阶段耗时
-  - 缓存键：`${{ runner.os }}-deps-v3-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
+  - 使用 `actions/cache/restore@v4` 恢复 `out/deps`，并在 `small-deps` 之后执行 `actions/cache/save@v4` 保存缓存
+  - CI 拆分为 `fetch-deps -> botan -> small-deps -> save cache -> rnp -> package`，以提升各阶段耗时观测性与依赖缓存复用率
+  - 缓存键：`${{ runner.os }}-deps-v4-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
 
 发布文件：`.github/workflows/release.yml`
 
@@ -218,8 +231,8 @@ CI 文件：`.github/workflows/smoke.yml`
   - 手动触发（可选 `tag` 输入）
 - 作业：
   - `linux-portable`：构建/测试/打包 `rnparmor-linux-amd64.tar.gz`
-  - `windows-portable`：构建/测试/打包 `rnparmor-windows-amd64.zip` 与 `windows-report.txt`
-  - `publish-release`：双平台通过后创建/更新 Release 并上传资产与统一 SHA256
+  - `windows-portable`：沿用相同的 `deps-v4` 缓存键与分段流水线（`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package -Version "${{ steps.tag.outputs.value }}"`），产出 `rnparmor-windows-amd64.zip` 与 `windows-report.txt`
+  - `publish-release`：双平台通过后创建/更新 Release 并上传资产与统一校验文件（`rnparmor-${TAG}-SHA256SUMS.txt`）
 
 ## 安全边界与注意事项
 
@@ -231,8 +244,8 @@ CI 文件：`.github/workflows/smoke.yml`
 
 ## 仓库状态说明
 
-- 本仓库由最小垂直切片持续扩展而来。
-- Windows 桌面人工体验、输入法与高 DPI 仍需在专门手工环境单独确认。
+- `fix/windows-ci-and-release` 分支（PR #3）已实现 `.github/workflows/smoke.yml` 双平台 CI 全绿，并就绪 `.github/workflows/release.yml` 用于 `v0.0.1` 发版。
+- Windows 桌面人工交互体验、中文输入法与高 DPI 表现仍依赖真实环境，需在 Windows 10/11 桌面环境中单独确认。
 
 ## 第三方依赖与钉扎
 

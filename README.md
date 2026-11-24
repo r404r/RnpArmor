@@ -172,38 +172,50 @@ CGO_ENABLED=0 go build -o rnparmor ./cmd/rnparmor
 ### Windows (portable)
 
 ```powershell
-# one-shot (compatible): deps + rnp + package
+# one-shot (compatible): runs deps -> rnp -> package (default -Stage all)
 pwsh -File .\scripts\build-windows.ps1
 
-# staged mode (for CI observability / caching)
+# coarse staged mode
 pwsh -File .\scripts\build-windows.ps1 -Stage deps
 pwsh -File .\scripts\build-windows.ps1 -Stage rnp
 pwsh -File .\scripts\build-windows.ps1 -Stage package
 
+# granular dependency stages (used by CI for timing observability and cache reuse)
+pwsh -File .\scripts\build-windows.ps1 -Stage fetch-deps
+pwsh -File .\scripts\build-windows.ps1 -Stage botan
+pwsh -File .\scripts\build-windows.ps1 -Stage small-deps
+
 # inject app version into rnparmor.exe metadata shown by --smoke-test/About
-pwsh -File .\scripts\build-windows.ps1 -Version v1.2.3
+pwsh -File .\scripts\build-windows.ps1 -Version v0.0.1
 
 # stage + version together
-pwsh -File .\scripts\build-windows.ps1 -Stage package -Version v1.2.3
+pwsh -File .\scripts\build-windows.ps1 -Stage package -Version v0.0.1
 ```
 
-Windows dependency build uses a minimized Botan static module list from
-`scripts/windows/botan3-modules.txt` (one module per line, comments allowed),
-matching `rnpgp/rnp v0.18.1` requirements while avoiding unnecessary CLI/tests
-and non-OpenPGP modules in CI.
+Windows dependency builds pin and bundle:
 
-`scripts/build-windows.ps1` now supports stage execution:
+- `Botan 3.10.0`: built as a minimized static library from the 57-module list in `scripts/windows/botan3-modules.txt` (one module per line, comments allowed), matching `rnpgp/rnp v0.18.1` OpenPGP requirements while skipping unnecessary CLI/tests and non-OpenPGP modules in CI.
+- `json-c 0.19`, `zlib 1.4`, and `bzip2 1.0.8`: built as static libraries linked into `rnp.dll`.
+- `dirent 1.24` (`tronkko/dirent`, MIT): Windows header compatibility dependency (`dirent.h`) used during the `librnp` build.
+- All third-party license texts (`rnp-LICENSE.md`, `sexpp-LICENSE.md`, `botan-license.txt`, `dirent-LICENSE`, `json-c-COPYING`, `zlib-LICENSE`, `bzip2-LICENSE`, `mygo-MIT.txt`, and `purego-Apache-2.0.txt`) are bundled into `licenses/` inside the Windows portable package.
 
-1. `deps`: build/cache Botan + json-c + zlib + bzip2 into `out/deps` (with cached licenses)
-2. `rnp`: build `librnp` and cache `rnp.dll` to `out/win-build/rnp-dll/rnp.dll`
-3. `package`: build `rnparmor.exe`, run tests/smoke/probe, and produce zip/report
+`scripts/build-windows.ps1` supports the following `-Stage` values:
 
-The package stage creates `out\dist\rnparmor-windows-amd64` and executes:
+1. `fetch-deps`: download, checksum-verify, and extract `Botan 3.10.0`, `json-c 0.19`, `zlib 1.4`, `bzip2 1.0.8`, and `dirent 1.24` into `out/src` (skipped when `out/deps` hot cache is complete)
+2. `botan`: build and install minimized static `Botan 3.10.0` into `out/deps/botan` (stamped with `.modules-sha256`)
+3. `small-deps`: build and install static `json-c`, `zlib`, and `bzip2` into `out/deps`, stage `dirent.h`, and cache dependency licenses under `out/deps/licenses`
+4. `deps`: execute `fetch-deps -> botan -> small-deps`
+5. `rnp`: build `librnp` (`rnp.dll`) using cached dependencies and cache `rnp.dll` at `out/win-build/rnp-dll/rnp.dll`
+6. `package`: build `rnparmor.exe`, copy `rnp.dll` and `licenses/`, verify DLL imports (`DEPENDENCIES.txt`), generate `PORTABLE.txt` and `SHA256SUMS`, run `go test` against packaged `rnp.dll`, run `--smoke-test` and the bounded GUI probe, and produce the zip and report
+7. `all`: execute `deps -> rnp -> package` (default)
 
-1. executes `rnparmor.exe --smoke-test`
-2. runs a bounded GUI process probe
+The `package` stage creates `out\dist\rnparmor-windows-amd64` and executes:
 
-Zip output: `out\rnparmor-windows-amd64.zip`.
+1. `go test -count=1 -timeout 20m ./internal/loadlib/ ./internal/rnp/` with `RNPARMOR_LIBRNP` pointing to the packaged `rnp.dll` and `PATH` restricted to `System32`
+2. `rnparmor.exe --smoke-test` (verifying `app_version=<Version>`)
+3. a bounded GUI process probe
+
+Zip output: `out\rnparmor-windows-amd64.zip` (report: `out\windows-report.txt`).
 
 ## CI
 
@@ -211,11 +223,11 @@ Workflow: `.github/workflows/smoke.yml`
 
 - `linux` job:
   - dependency cache on `out/deps`
-  - pinned librnp build + test matrix
+  - pinned `librnp` build + `go test -race` + `CGO_ENABLED=0` build
 - `windows-portable` job:
-  - dependency cache on `out/deps` with `actions/cache/restore` + post-deps `actions/cache/save`
-  - staged Windows flow (`deps` -> `rnp` -> `package`) for per-phase timing visibility
-  - cache key: `${{ runner.os }}-deps-v3-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
+  - dependency cache on `out/deps` with `actions/cache/restore@v4` before `fetch-deps` and `actions/cache/save@v4` after `small-deps`
+  - staged Windows flow (`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package`) for per-stage timing observability and dependency cache reuse
+  - cache key: `${{ runner.os }}-deps-v4-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
 
 Workflow: `.github/workflows/release.yml`
 
@@ -224,8 +236,8 @@ Workflow: `.github/workflows/release.yml`
   - `workflow_dispatch` (optional `tag` input)
 - jobs:
   - `linux-portable`: build/test/package `rnparmor-linux-amd64.tar.gz`
-  - `windows-portable`: build/test/package `rnparmor-windows-amd64.zip` + `windows-report.txt`
-  - `publish-release`: on both jobs green, create/update Release and upload assets with combined checksums
+  - `windows-portable`: uses the same `deps-v4` cache key and staged sequence (`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package -Version "${{ steps.tag.outputs.value }}"`) to produce `rnparmor-windows-amd64.zip` and `windows-report.txt`
+  - `publish-release`: on both jobs green, create/update Release and upload assets with combined checksums (`rnparmor-${TAG}-SHA256SUMS.txt`)
 
 ## Security & Operational Boundaries
 
@@ -237,8 +249,8 @@ Workflow: `.github/workflows/release.yml`
 
 ## Repository Status Notes
 
-- This repository started from a minimal slice and is under active expansion.
-- Windows desktop manual UX validation and IME/high-DPI verification are still environment-dependent and must be confirmed in dedicated manual runs.
+- `fix/windows-ci-and-release` (PR #3) brings Linux and Windows portable CI (`smoke.yml`) green and prepares `.github/workflows/release.yml` for the `v0.0.1` release.
+- Windows desktop manual UX validation and IME/high-DPI verification are still environment-dependent and must be confirmed in dedicated manual runs on Windows 10/11.
 
 ## Third-Party and Pins
 
