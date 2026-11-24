@@ -51,6 +51,8 @@ twofish
 # Additional runtime/curve modules required by Botan 3.10.0 + OpenPGP capability in rnp.
 system_rng
 pcurves_secp256r1
+pcurves_secp192r1
+pcurves_secp224r1
 pcurves_secp384r1
 pcurves_secp521r1
 pcurves_secp256k1
