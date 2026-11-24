@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, delivering Windows 10/11 portable & installer builds (`rnparmor.exe` + `rnp.dll`), macOS Apple Silicon (`arm64`) `.app`/`.dmg` bundles, and Linux (`amd64`) portable builds/tests.
 
-> License status: **project license not selected yet**. Third-party licenses are included in distributed bundles.
+> License: **Apache License, Version 2.0** ([`LICENSE`](LICENSE)). Third-party notices and license texts are included in [`third_party/NOTICES.md`](third_party/NOTICES.md) and distributed bundles (`LICENSE` and `licenses/` on Windows and Linux; `RnpArmor.app/Contents/Resources/LICENSE` and `licenses/` on macOS).
 
 ## Highlights
 
@@ -199,7 +199,7 @@ bash scripts/build-macos.sh --stage package --version v0.0.1
 
 - `deps`: builds static `Botan 3.10.0` (using the same 57-module list in `scripts/windows/botan3-modules.txt`, stamped with `.modules-sha256`) and static `json-c 0.19` into `out/deps`.
 - `rnp`: builds `librnp.dylib` (`@loader_path/librnp.dylib`) linked statically against Botan and `json-c`, and dynamically against macOS system `/usr/lib/libz` and `/usr/lib/libbz2` plus `-framework Security` (verified via `otool -L` to avoid external Homebrew paths).
-- `package`: builds `CGO_ENABLED=0 GOOS=darwin GOARCH=arm64` `rnparmor`, assembles `out/dist/RnpArmor.app` (`Contents/MacOS/rnparmor`, `Contents/MacOS/librnp.dylib`, `Contents/Resources/SHA256SUMS`, `Contents/Resources/licenses/`), applies ad-hoc signatures and runs `codesign --verify --deep --strict`, executes `go test` and `--smoke-test`, and packages `out/rnparmor-macos-arm64.dmg` via `hdiutil create`.
+- `package`: builds `CGO_ENABLED=0 GOOS=darwin GOARCH=arm64` `rnparmor`, assembles `out/dist/RnpArmor.app` (`Contents/MacOS/rnparmor`, `Contents/MacOS/librnp.dylib`, `Contents/Resources/LICENSE`, `Contents/Resources/SHA256SUMS`, `Contents/Resources/licenses/`), applies ad-hoc signatures and runs `codesign --verify --deep --strict`, executes `go test` and `--smoke-test`, and packages `out/rnparmor-macos-arm64.dmg` via `hdiutil create`.
 
 > macOS Gatekeeper note: `RnpArmor.app` is ad-hoc signed and **not Apple-notarized**. Opening it for the first time from Finder may trigger a Gatekeeper warning (use Control-click → Open or System Settings → Privacy & Security if prompted).
 
@@ -240,7 +240,7 @@ Windows dependency builds pin and bundle:
 3. `small-deps`: build and install static `json-c`, `zlib`, and `bzip2` into `out/deps`, stage `dirent.h`, and cache dependency licenses under `out/deps/licenses`
 4. `deps`: execute `fetch-deps -> botan -> small-deps`
 5. `rnp`: build `librnp` (`rnp.dll`) using cached dependencies and cache `rnp.dll` at `out/win-build/rnp-dll/rnp.dll`
-6. `package`: build `rnparmor.exe` with `-H=windowsgui`, copy `rnp.dll` and `licenses/`, verify `Windows GUI` PE subsystem (`dumpbin /headers`) and DLL imports (`DEPENDENCIES.txt`), generate `PORTABLE.txt` and `SHA256SUMS`, run `go test` against packaged `rnp.dll`, run `--smoke-test --smoke-out` and the bounded GUI probe, and produce the portable zip, Inno Setup 6 installer, and report
+6. `package`: build `rnparmor.exe` with `-H=windowsgui`, copy `rnp.dll`, `LICENSE`, and `licenses/`, verify `Windows GUI` PE subsystem (`dumpbin /headers`) and DLL imports (`DEPENDENCIES.txt`), generate `PORTABLE.txt` and `SHA256SUMS`, run `go test` against packaged `rnp.dll`, run `--smoke-test --smoke-out` and the bounded GUI probe, and produce the portable zip, Inno Setup 6 installer, and report
 7. `all`: execute `deps -> rnp -> package` (default)
 
 The `package` stage creates `out\dist\rnparmor-windows-amd64`, builds the installer via `packaging/windows/rnparmor.iss` + Inno Setup 6 (`ISCC.exe`), and executes:
@@ -290,8 +290,15 @@ Workflow: `.github/workflows/release.yml`
 
 ## Repository Status Notes
 
-- On `feat/multiplatform-release` (PR #5), all three CI targets (`linux`, `windows-portable`, and `macos-arm64` in `.github/workflows/smoke.yml`) are passing and `.github/workflows/release.yml` is ready for the `v0.0.1` multi-platform release.
+- `v0.0.1` has been released across macOS (`arm64`), Linux (`amd64`), and Windows (`amd64`); RnpArmor has now adopted the Apache License, Version 2.0 ([`LICENSE`](LICENSE)), which will be bundled in subsequent releases.
 - Desktop manual UX validation—including Windows 10/11 Chinese IME, high-DPI, and Inno Setup installer flow, plus macOS Apple Silicon first-launch Gatekeeper handling—remains environment-dependent and must be confirmed in dedicated manual runs.
+
+## License
+
+- RnpArmor is licensed under the **Apache License, Version 2.0** (`Copyright 2026 r404r`); see [`LICENSE`](LICENSE) for the full text.
+- Distributed bundle license locations:
+  - Windows (`rnparmor-windows-amd64.zip`, `rnparmor-windows-amd64-setup.exe`) and Linux (`rnparmor-linux-amd64.tar.gz`): `LICENSE` and `licenses/` at the bundle root.
+  - macOS (`rnparmor-macos-arm64.dmg` / `RnpArmor.app`): `RnpArmor.app/Contents/Resources/LICENSE` and `RnpArmor.app/Contents/Resources/licenses/`.
 
 ## Third-Party and Pins
 
@@ -299,4 +306,4 @@ See:
 
 - `deps/pins.json`
 - `third_party/NOTICES.md`
-- portable bundle `licenses/`
+- bundled `LICENSE` and `licenses/`
