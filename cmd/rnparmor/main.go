@@ -17,6 +17,10 @@ import (
 	"github.com/r404r/RnpArmor/internal/rnp"
 )
 
+// appVersion is injected at build time by -ldflags
+// (for example: -X main.appVersion=v1.2.3). Default is dev.
+var appVersion = "dev"
+
 type uiState struct {
 	mu sync.Mutex
 
@@ -95,6 +99,7 @@ func main() {
 
 	if *smoke {
 		fmt.Println("status=ok")
+		fmt.Println("app_version=" + appVersion)
 		fmt.Println("library=" + path)
 		fmt.Println("version=" + v)
 		fmt.Println("i18n=ok")
@@ -474,6 +479,7 @@ func (s *uiState) viewAbout(c *ui.Context) {
 
 		ui.Scroll(c).Fill().Children(func() {
 			ui.Column(c).Gap(10).Children(func() {
+				s.aboutField(c, s.tr("about.app_version"), appVersion)
 				s.aboutField(c, s.tr("about.author"), "r404r (https://github.com/r404r)")
 				s.aboutField(c, s.tr("about.repo_url"), "https://github.com/r404r/RnpArmor")
 				s.aboutField(c, s.tr("about.rnp_upstream"), rnpUpstream)

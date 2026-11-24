@@ -4,8 +4,13 @@ on:
   pull_request:
     paths-ignore:
       - "README.md"
+      - "README.zh-CN.md"
       - "third_party/NOTICES.md"
   workflow_dispatch:
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   linux:
@@ -20,8 +25,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: out/deps
-          key: ${{ runner.os }}-deps-${{ hashFiles('deps/pins.json', 'scripts/build-librnp.sh') }}
+          key: ${{ runner.os }}-deps-v3-${{ hashFiles('deps/pins.json', 'scripts/build-librnp.sh') }}
           restore-keys: |
+            ${{ runner.os }}-deps-v3-
             ${{ runner.os }}-deps-
       - name: packages
         run: sudo apt-get update && sudo apt-get install -y build-essential cmake python3 zlib1g-dev libbz2-dev pkg-config patchelf
@@ -49,16 +55,43 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.4"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: cache deps
-        uses: actions/cache@v4
+        id: cache-deps
+        uses: actions/cache/restore@v4
         with:
           path: out/deps
-          key: ${{ runner.os }}-deps-${{ hashFiles('deps/pins.json', 'scripts/build-windows.ps1') }}
+          key: ${{ runner.os }}-deps-v4-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}
           restore-keys: |
-            ${{ runner.os }}-deps-
-      - name: build, test, and zip
+            ${{ runner.os }}-deps-v4-
+      - name: fetch & extract deps
+        timeout-minutes: 8
         shell: pwsh
-        run: ./scripts/build-windows.ps1
+        run: ./scripts/build-windows.ps1 -Stage fetch-deps
+      - name: build botan
+        timeout-minutes: 30
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Stage botan
+      - name: build json-c, zlib, bzip2
+        timeout-minutes: 10
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Stage small-deps
+      - name: save deps cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: out/deps
+          key: ${{ runner.os }}-deps-v4-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}
+      - name: build librnp (rnp.dll)
+        timeout-minutes: 15
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Stage rnp
+      - name: build, test, smoke, and zip
+        timeout-minutes: 20
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Stage package
       - uses: actions/upload-artifact@v4
         with:
           name: rnparmor-windows-amd64

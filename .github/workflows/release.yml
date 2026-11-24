@@ -1,0 +1,215 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (optional, defaults to current ref name)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-portable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+      - name: resolve tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          echo "value=$tag" >> "$GITHUB_OUTPUT"
+          echo "resolved tag: $tag"
+      - name: cache deps
+        uses: actions/cache@v4
+        with:
+          path: out/deps
+          key: ${{ runner.os }}-deps-v3-${{ hashFiles('deps/pins.json', 'scripts/build-librnp.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-v3-
+            ${{ runner.os }}-deps-
+      - name: packages
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake python3 zlib1g-dev libbz2-dev pkg-config patchelf
+      - name: build pinned librnp
+        run: bash scripts/build-librnp.sh
+      - name: test
+        env:
+          RNPARMOR_LIBRNP: ${{ github.workspace }}/out/lib/librnp.so
+          CGO_ENABLED: "1"
+        run: go test -race -gcflags=all=-d=checkptr=0 ./...
+      - name: build linux portable binary
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.tag.outputs.value }}'
+          mkdir -p out/dist/rnparmor-linux-amd64/licenses
+          go build -trimpath -ldflags "-s -w -X main.appVersion=${TAG}" -o out/dist/rnparmor-linux-amd64/rnparmor ./cmd/rnparmor
+      - name: package linux portable
+        run: |
+          set -euo pipefail
+          cp -L out/lib/librnp.so out/dist/rnparmor-linux-amd64/librnp.so
+          cp -L out/lib/libbotan-3.so.10 out/dist/rnparmor-linux-amd64/libbotan-3.so.10
+          cp -L out/lib/libjson-c.so.5 out/dist/rnparmor-linux-amd64/libjson-c.so.5
+          cp out/lib/SHA256SUMS out/dist/rnparmor-linux-amd64/SHA256SUMS
+          cp third_party/licenses/rnp-LICENSE.md out/dist/rnparmor-linux-amd64/licenses/
+          cp third_party/licenses/sexpp-LICENSE.md out/dist/rnparmor-linux-amd64/licenses/
+          cp third_party/licenses/botan-license.txt out/dist/rnparmor-linux-amd64/licenses/
+          cp third_party/licenses/json-c-COPYING out/dist/rnparmor-linux-amd64/licenses/
+          cp third_party/licenses/mygo-MIT.txt out/dist/rnparmor-linux-amd64/licenses/
+          cp third_party/licenses/purego-Apache-2.0.txt out/dist/rnparmor-linux-amd64/licenses/
+          smoke_out="$(./out/dist/rnparmor-linux-amd64/rnparmor --smoke-test)"
+          echo "$smoke_out"
+          echo "$smoke_out" | grep -Fx "app_version=${{ steps.tag.outputs.value }}"
+          tar -C out/dist -czf out/rnparmor-linux-amd64.tar.gz rnparmor-linux-amd64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rnparmor-linux-amd64
+          path: out/rnparmor-linux-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-portable:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: resolve tag
+        id: tag
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.tag }}" -ne "") {
+            $tag = "${{ inputs.tag }}"
+          }
+          else {
+            $tag = "${{ github.ref_name }}"
+          }
+          "value=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "resolved tag: $tag"
+      - name: cache deps
+        id: cache-deps
+        uses: actions/cache/restore@v4
+        with:
+          path: out/deps
+          key: ${{ runner.os }}-deps-v4-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-v4-
+      - name: fetch & extract deps
+        timeout-minutes: 8
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Stage fetch-deps
+      - name: build botan
+        timeout-minutes: 30
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Stage botan
+      - name: build json-c, zlib, bzip2
+        timeout-minutes: 10
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Stage small-deps
+      - name: save deps cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: out/deps
+          key: ${{ runner.os }}-deps-v4-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}
+      - name: build librnp (rnp.dll)
+        timeout-minutes: 15
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Stage rnp
+      - name: build, test, smoke, and zip
+        timeout-minutes: 20
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Stage package -Version "${{ steps.tag.outputs.value }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rnparmor-windows-amd64
+          path: |
+            out/rnparmor-windows-amd64.zip
+            out/windows-report.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-release:
+    needs: [linux-portable, windows-portable]
+    runs-on: ubuntu-latest
+    steps:
+      - name: resolve tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          echo "value=$tag" >> "$GITHUB_OUTPUT"
+          echo "resolved tag: $tag"
+      - uses: actions/download-artifact@v4
+        with:
+          name: rnparmor-linux-amd64
+          path: out/release
+      - uses: actions/download-artifact@v4
+        with:
+          name: rnparmor-windows-amd64
+          path: out/release
+      - name: unify checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.tag.outputs.value }}'
+          cd out/release
+          sha256sum \
+            rnparmor-windows-amd64.zip \
+            rnparmor-linux-amd64.tar.gz \
+            windows-report.txt \
+            > "rnparmor-${TAG}-SHA256SUMS.txt"
+      - name: create or update GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.tag.outputs.value }}'
+          if [[ ! "$TAG" =~ ^v ]]; then
+            echo "refusing to publish non-version tag: $TAG" >&2
+            exit 1
+          fi
+          cd out/release
+          assets=(
+            rnparmor-windows-amd64.zip
+            rnparmor-linux-amd64.tar.gz
+            windows-report.txt
+            "rnparmor-${TAG}-SHA256SUMS.txt"
+          )
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" --title "$TAG" --generate-notes
+          fi

@@ -149,6 +149,11 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangZH: "无菜单 About 页面：该视图下工作区菜单已隐藏。",
 		LangJA: "メニューなし About ページ: この画面ではワークスペースタブは非表示です。",
 	},
+	"about.app_version": {
+		LangEN: "Application Version",
+		LangZH: "应用版本",
+		LangJA: "アプリケーションバージョン",
+	},
 	"about.author": {
 		LangEN: "Author",
 		LangZH: "作者",
