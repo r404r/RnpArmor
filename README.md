@@ -8,7 +8,7 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, focused on a 
 
 ## Highlights
 
-1. **MyGo native GUI with 5 workspaces + live language switch (English / Simplified Chinese / Japanese)**
+1. **MyGo native GUI with 5 workspaces + native 4-group tri-lingual menu bar + standalone About window**
    - Workspace tabs:
      - Keys & generation
      - Text encrypt/decrypt/sign/verify
@@ -16,16 +16,16 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, focused on a 
      - Packet inspection & feature matrix
      - Portable keyring storage
    - Built-in zero-dependency UI dictionary at `cmd/rnparmor/i18n.go`.
-   - Real-time language switch from the top bar (`English | Chinese | Japanese`).
+   - Native top menu bar with 4 tri-lingual groups (`File` / `Workspace` / `Language` / `Help`):
+     - `File`: Open session, Load keyring, Save keyring, Quit.
+     - `Workspace`: 5 radio items synchronized bi-directionally with the workspace tabs.
+     - `Language`: radio items (`English`, `中文`, `日本語`) that switch and re-render the menu bar, main window, and About window live.
+     - `Help`: opens the standalone About child window (`About`).
    - Language preset by `--lang en|zh|ja`, `RNPARMOR_LANG`, or system `LANG`.
-   - Added a **menu-less standalone About page** (no workspace tabs in About view), showing:
-     - Application Version: injected at build time (`appVersion`, e.g., `v0.0.1` or `dev`)
-     - Author: `r404r (https://github.com/r404r)`
-     - Repository URL: `https://github.com/r404r/RnpArmor`
-     - RNP upstream: `https://github.com/rnpgp/rnp` + current `librnp` version
-     - Local library path: current `rnp.dll` / `librnp.so` absolute path
-     - Keyring directory address: current portable workspace path + `pubring.gpg`/`secring.gpg` existence
-     - Runtime stack: MyGo / purego / Botan versions
+   - **Standalone menu-less non-modal About child window (`580×520`)**:
+     - Single-instance focused, fixed-size, no menu bar (`SetMenu(nil)` on non-macOS), includes a `Close` button.
+     - Closing the About window leaves the main window unaffected; closing the main window closes the About window automatically; switching language updates its title and content live.
+     - Shows Application Version (`appVersion`, e.g., `v0.0.1` or `dev`), Author (`r404r (https://github.com/r404r)`), Repository URL (`https://github.com/r404r/RnpArmor`), RNP upstream (`https://github.com/rnpgp/rnp` + current `librnp` version), Local library path (`rnp.dll` / `librnp.so`), Keyring directory (`portable workspace` + `pubring.gpg`/`secring.gpg` existence), and UI Framework & Runtime (`MyGo` / `purego` / `Botan` versions).
 
 2. **Expanded RNP feature surface in `internal/rnp`**
    - Key iteration/location, key import/export/remove, key-to-JSON.
@@ -43,14 +43,15 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, focused on a 
    - Explicit keyring load/save only; no implicit default keyring.
    - Non-overwrite output semantics for file publishing.
 
-4. **Windows portable build + smoke flow hardening**
-   - `rnparmor.exe --smoke-test` added for deterministic CI smoke checks.
-   - `--smoke-test` now also prints `app_version=<value>` and is validated by CI.
-   - Windows script smoke path now runs headless smoke-test first, then bounded GUI probe.
-   - CI dependency cache added (`out/deps`) for Linux and Windows jobs.
+4. **Windows portable build + GUI subsystem + smoke flow hardening**
+   - Windows `rnparmor.exe` is built with `-H=windowsgui` (Windows GUI subsystem) so launching it does not pop up a black console window.
+   - `scripts/build-windows.ps1` verifies the PE subsystem is `Windows GUI` via `dumpbin /headers` and records the result in `windows-report.txt`.
+   - `rnparmor.exe --smoke-test` supports `--smoke-out <path>` to write smoke output (`status=ok`, `app_version=<value>`, `library=...`, `version=...`, `i18n=ok`) to a file for deterministic CI validation under `-H=windowsgui`.
+   - Windows script smoke path runs `--smoke-test --smoke-out` first, then a bounded GUI probe.
+   - CI dependency cache (`out/deps`) is configured for Linux and Windows jobs.
 
 5. **Automated release workflow for portable artifacts**
-   - New `.github/workflows/release.yml` runs on `push` tag `v*` and `workflow_dispatch`.
+   - `.github/workflows/release.yml` runs on `push` tag `v*` and `workflow_dispatch`.
    - Builds both Linux and Windows portable bundles and uploads them as artifacts.
    - Publishes/updates GitHub Release with:
      - `rnparmor-windows-amd64.zip`
@@ -61,15 +62,16 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, focused on a 
 ## Current Architecture (at a glance)
 
 - `cmd/rnparmor/`
-  - `main.go`: MyGo app entry + 5-workspace UI + async session operations + build-time `appVersion` display/output.
+  - `main.go`: MyGo app entry, native 4-group menu bar, 5-workspace UI, `580×520` non-modal About child window, async session operations, `--smoke-out`, and build-time `appVersion` display/output.
   - `i18n.go`: tri-lingual catalog (EN/ZH/JA), language resolution, translation validation.
+  - `main_test.go`: unit tests for smoke output generation/writing, menu template structure, and state synchronization.
 - `internal/rnp/`
   - `api.go`: purego FFI bindings to librnp APIs.
   - `session.go`: session lifecycle, passphrase callback controls, API models.
   - `ops.go`: key management + text/file crypto/sign/verify + packet/features.
   - `session_test.go`: compatibility tests + expanded integration scenarios.
 - `scripts/build-windows.ps1`
-  - builds pinned deps and portable output, runs tests and smoke steps.
+  - builds pinned deps and `-H=windowsgui` portable output, verifies PE subsystem and DLL imports, runs tests and `--smoke-out` + GUI probe.
 - `.github/workflows/smoke.yml`
   - Linux + Windows portable jobs with cache + per-branch concurrency cancel.
 - `.github/workflows/release.yml`
@@ -110,14 +112,12 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, focused on a 
 - Explicit workspace-based load/save model.
 - Keeps passphrase usage in-memory for active operations only.
 
-### 6) Menu-less About page
+### 6) Native 4-group menu bar & standalone About child window
 
-- Entered from the top-bar About button.
-- In About view, workspace navigation tabs are hidden by design.
-- Includes only:
-  - back button (`← Back`) and language switcher
-  - read-only details for author/repo/RNP upstream/local library path/keyring directory/runtime stack
-- Explicitly states that system default keyring is not read.
+- Top menu bar groups: `File` (session/keyring/quit), `Workspace` (5 radio items synced with workspace tabs), `Language` (`English` / `中文` / `日本語` radio items), and `Help` (`About`).
+- `Help → About` opens a `580×520` non-modal, fixed-size, menu-less standalone child window (single-instance focused, with a `Close` button).
+- Closing the About window leaves the main window running; closing the main window closes the About window automatically; live language switches update both windows immediately.
+- Displays read-only details (app version, author, repository, RNP upstream, local library path, portable keyring directory + `pubring.gpg`/`secring.gpg` existence, runtime stack) and explicitly notes that the system default keyring is not read.
 
 ## Verification Model
 
@@ -133,6 +133,9 @@ RnpArmor reports the first; it does **not** automatically elevate to the second.
 ```bash
 # Probe librnp and validate i18n catalog; no GUI loop
 rnparmor --smoke-test
+
+# Write smoke output to a file (used by CI on Windows -H=windowsgui builds)
+rnparmor --smoke-test --smoke-out out/smoke-out.txt
 
 # Force UI language
 rnparmor --lang en
@@ -206,14 +209,15 @@ Windows dependency builds pin and bundle:
 3. `small-deps`: build and install static `json-c`, `zlib`, and `bzip2` into `out/deps`, stage `dirent.h`, and cache dependency licenses under `out/deps/licenses`
 4. `deps`: execute `fetch-deps -> botan -> small-deps`
 5. `rnp`: build `librnp` (`rnp.dll`) using cached dependencies and cache `rnp.dll` at `out/win-build/rnp-dll/rnp.dll`
-6. `package`: build `rnparmor.exe`, copy `rnp.dll` and `licenses/`, verify DLL imports (`DEPENDENCIES.txt`), generate `PORTABLE.txt` and `SHA256SUMS`, run `go test` against packaged `rnp.dll`, run `--smoke-test` and the bounded GUI probe, and produce the zip and report
+6. `package`: build `rnparmor.exe` with `-H=windowsgui`, copy `rnp.dll` and `licenses/`, verify `Windows GUI` PE subsystem (`dumpbin /headers`) and DLL imports (`DEPENDENCIES.txt`), generate `PORTABLE.txt` and `SHA256SUMS`, run `go test` against packaged `rnp.dll`, run `--smoke-test --smoke-out` and the bounded GUI probe, and produce the zip and report
 7. `all`: execute `deps -> rnp -> package` (default)
 
 The `package` stage creates `out\dist\rnparmor-windows-amd64` and executes:
 
-1. `go test -count=1 -timeout 20m ./internal/loadlib/ ./internal/rnp/` with `RNPARMOR_LIBRNP` pointing to the packaged `rnp.dll` and `PATH` restricted to `System32`
-2. `rnparmor.exe --smoke-test` (verifying `app_version=<Version>`)
-3. a bounded GUI process probe
+1. `dumpbin /headers` check confirming `rnparmor.exe` targets the `Windows GUI` subsystem (recorded in `out\windows-report.txt`)
+2. `go test -count=1 -timeout 20m ./internal/loadlib/ ./internal/rnp/ ./cmd/rnparmor/` with `RNPARMOR_LIBRNP` pointing to the packaged `rnp.dll` and `PATH` restricted to `System32`
+3. `rnparmor.exe --smoke-test --smoke-out <path>` (verifying `status=ok`, `app_version=<Version>`, and `i18n=ok`)
+4. a bounded GUI process probe
 
 Zip output: `out\rnparmor-windows-amd64.zip` (report: `out\windows-report.txt`).
 
@@ -249,7 +253,7 @@ Workflow: `.github/workflows/release.yml`
 
 ## Repository Status Notes
 
-- `fix/windows-ci-and-release` (PR #3) brings Linux and Windows portable CI (`smoke.yml`) green and prepares `.github/workflows/release.yml` for the `v0.0.1` release.
+- On `feat/win-gui-menu-and-about` (PR #4), Linux and Windows portable CI (`smoke.yml`) are passing with `-H=windowsgui` PE subsystem verification, the native 4-group tri-lingual menu bar, the standalone `580×520` non-modal About child window, and `--smoke-out` CI checks.
 - Windows desktop manual UX validation and IME/high-DPI verification are still environment-dependent and must be confirmed in dedicated manual runs on Windows 10/11.
 
 ## Third-Party and Pins
