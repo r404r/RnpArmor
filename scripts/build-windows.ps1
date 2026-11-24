@@ -236,6 +236,19 @@ function Get-BotanLib([string]$BotanPrefix) {
         Select-Object -First 1)
 }
 
+function Test-BotanReady([string]$BotanPrefix, [string]$ExpectedModulesHash) {
+    $botanHeader = Join-Path $BotanPrefix "include\botan-3\botan\version.h"
+    $botanLib = Get-BotanLib $BotanPrefix
+    $botanStampPath = Join-Path $BotanPrefix ".modules-sha256"
+
+    if (-not (Test-Path -LiteralPath $botanHeader)) { return $false }
+    if (-not $botanLib) { return $false }
+    if (-not (Test-Path -LiteralPath $botanStampPath)) { return $false }
+
+    $gotHash = (Get-Content -LiteralPath $botanStampPath -ErrorAction SilentlyContinue | Out-String).Trim()
+    return ($gotHash -eq $ExpectedModulesHash)
+}
+
 function Get-ZlibLib([string]$ZlibPrefix) {
     $libDir = Join-Path $ZlibPrefix "lib"
     if (-not (Test-Path $libDir)) { return $null }
@@ -265,17 +278,16 @@ function Get-JsonCLib([string]$JsonPrefix) {
 function Test-DepsHot(
     [string]$DepsRoot,
     [string]$BotanPrefix,
+    [string]$BotanModulesHash,
     [string]$JsonPrefix,
     [string]$ZlibPrefix,
     [string]$BzPrefix
 ) {
-    $botanHeader = Join-Path $BotanPrefix "include\botan-3\botan\version.h"
-    $botanLib = Get-BotanLib $BotanPrefix
+    $botanReady = Test-BotanReady -BotanPrefix $BotanPrefix -ExpectedModulesHash $BotanModulesHash
     $zlibLib = Get-ZlibLib $ZlibPrefix
     $jsonCLib = Get-JsonCLib $JsonPrefix
 
     $must = @(
-        $botanHeader,
         (Join-Path $BzPrefix "lib\bz2.lib"),
         (Join-Path $DepsRoot "licenses\botan-license.txt"),
         (Join-Path $DepsRoot "licenses\json-c-COPYING"),
@@ -286,7 +298,7 @@ function Test-DepsHot(
     foreach ($m in $must) {
         if (-not (Test-Path -LiteralPath $m)) { return $false }
     }
-    if ((-not $botanLib) -or (-not $zlibLib) -or (-not $jsonCLib)) { return $false }
+    if ((-not $botanReady) -or (-not $zlibLib) -or (-not $jsonCLib)) { return $false }
     return $true
 }
 
@@ -395,9 +407,12 @@ $jsonPrefix = Join-Path $deps "json-c"
 $zlibPrefix = Join-Path $deps "zlib"
 $bzPrefix = Join-Path $deps "bzip2"
 $depsLicenses = Join-Path $deps "licenses"
+$botanModulesFile = Join-Path $root "scripts\windows\botan3-modules.txt"
+$botanModulesHash = Get-Hash $botanModulesFile "SHA256"
+$botanStampPath = Join-Path $botanPrefix ".modules-sha256"
 
 function Build-FetchDeps {
-    if (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix) {
+    if (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -BotanModulesHash $botanModulesHash -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix) {
         Log "deps hot cache hit: skip fetch-deps"
         return
     }
@@ -414,21 +429,19 @@ function Build-FetchDeps {
 }
 
 function Build-Botan {
-    if (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix) {
-        Log "deps hot cache hit: skip botan"
+    if (Test-BotanReady -BotanPrefix $botanPrefix -ExpectedModulesHash $botanModulesHash) {
+        Log "botan cache hit with matching modules hash: skip botan"
         return
     }
 
-    $botanHeader = Join-Path $botanPrefix "include\botan-3\botan\version.h"
-    $botanLib = Get-BotanLib $botanPrefix
-    if ((Test-Path -LiteralPath $botanHeader) -and $botanLib) {
-        Log "botan already present: skip botan"
-        return
-    }
+    if (Test-Path -LiteralPath $botanPrefix) { Remove-Item -Recurse -Force $botanPrefix }
+    $botanBuildDir = Join-Path $work "botan"
+    if (Test-Path -LiteralPath $botanBuildDir) { Remove-Item -Recurse -Force $botanBuildDir }
+    New-Item -ItemType Directory -Force -Path $botanPrefix | Out-Null
 
     Ensure-Extracted -MarkerPath (Join-Path $botanSrc "configure.py") -ArchivePath $botanTar
 
-    $modules = Parse-BotanModules (Join-Path $root "scripts\windows\botan3-modules.txt")
+    $modules = Parse-BotanModules $botanModulesFile
     $botanModules = $modules -join ","
     Log "botan modules count: $($modules.Count)"
 
@@ -444,19 +457,19 @@ function Build-Botan {
         "--without-documentation",
         "--msvc-runtime=MT",
         "--build-tool=ninja",
-        "--with-build-dir=$(Join-Path $work 'botan')"
+        "--with-build-dir=$botanBuildDir"
     )
     Run $py $botanArgs
-    Run $ninja @("-C", (Join-Path $work "botan"), "install")
+    Run $ninja @("-C", $botanBuildDir, "install")
+    Set-Content -LiteralPath $botanStampPath -Value $botanModulesHash -Encoding ascii
 
-    $botanLib = Get-BotanLib $botanPrefix
-    if ((-not (Test-Path -LiteralPath $botanHeader)) -or (-not $botanLib)) {
+    if (-not (Test-BotanReady -BotanPrefix $botanPrefix -ExpectedModulesHash $botanModulesHash)) {
         throw "Botan static install incomplete"
     }
 }
 
 function Build-SmallDeps {
-    if (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix) {
+    if (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -BotanModulesHash $botanModulesHash -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix) {
         Log "deps hot cache hit: skip small-deps"
         return
     }
@@ -503,7 +516,7 @@ function Build-SmallDeps {
     Copy-Item (Join-Path $zlibSrc "LICENSE") (Join-Path $depsLicenses "zlib-LICENSE") -Force
     Copy-Item (Join-Path $bzSrc "LICENSE") (Join-Path $depsLicenses "bzip2-LICENSE") -Force
 
-    if (-not (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix)) {
+    if (-not (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -BotanModulesHash $botanModulesHash -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix)) {
         throw "small-deps stage finished but dependency cache is incomplete"
     }
 }
@@ -515,7 +528,7 @@ function Build-Deps {
 }
 
 function Build-Rnp {
-    if (-not (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix)) {
+    if (-not (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -BotanModulesHash $botanModulesHash -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix)) {
         throw "dependency cache is incomplete; run -Stage deps first"
     }
 
