@@ -150,12 +150,61 @@ jobs:
           name: rnparmor-windows-amd64
           path: |
             out/rnparmor-windows-amd64.zip
+            out/rnparmor-windows-amd64-setup.exe
             out/windows-report.txt
           if-no-files-found: error
           retention-days: 30
 
+  macos-arm64:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+      - name: resolve tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          echo "value=$tag" >> "$GITHUB_OUTPUT"
+          echo "resolved tag: $tag"
+      - name: cache deps
+        id: cache-deps
+        uses: actions/cache/restore@v4
+        with:
+          path: out/deps
+          key: ${{ runner.os }}-arm64-deps-v1-${{ hashFiles('deps/pins.json', 'scripts/windows/botan3-modules.txt', 'scripts/build-macos.sh') }}
+      - name: build deps
+        shell: bash
+        run: bash scripts/build-macos.sh --stage deps
+      - name: save deps cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: out/deps
+          key: ${{ runner.os }}-arm64-deps-v1-${{ hashFiles('deps/pins.json', 'scripts/windows/botan3-modules.txt', 'scripts/build-macos.sh') }}
+      - name: build rnp
+        shell: bash
+        run: bash scripts/build-macos.sh --stage rnp
+      - name: build package
+        shell: bash
+        run: bash scripts/build-macos.sh --stage package --version "${{ steps.tag.outputs.value }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rnparmor-macos-arm64
+          path: out/rnparmor-macos-arm64.dmg
+          if-no-files-found: error
+          retention-days: 30
+
   publish-release:
-    needs: [linux-portable, windows-portable]
+    needs: [linux-portable, macos-arm64, windows-portable]
     runs-on: ubuntu-latest
     steps:
       - name: resolve tag
@@ -178,6 +227,10 @@ jobs:
         with:
           name: rnparmor-windows-amd64
           path: out/release
+      - uses: actions/download-artifact@v4
+        with:
+          name: rnparmor-macos-arm64
+          path: out/release
       - name: unify checksums
         shell: bash
         run: |
@@ -185,8 +238,10 @@ jobs:
           TAG='${{ steps.tag.outputs.value }}'
           cd out/release
           sha256sum \
-            rnparmor-windows-amd64.zip \
+            rnparmor-macos-arm64.dmg \
             rnparmor-linux-amd64.tar.gz \
+            rnparmor-windows-amd64-setup.exe \
+            rnparmor-windows-amd64.zip \
             windows-report.txt \
             > "rnparmor-${TAG}-SHA256SUMS.txt"
       - name: create or update GitHub Release
@@ -203,8 +258,10 @@ jobs:
           fi
           cd out/release
           assets=(
-            rnparmor-windows-amd64.zip
+            rnparmor-macos-arm64.dmg
             rnparmor-linux-amd64.tar.gz
+            rnparmor-windows-amd64-setup.exe
+            rnparmor-windows-amd64.zip
             windows-report.txt
             "rnparmor-${TAG}-SHA256SUMS.txt"
           )
