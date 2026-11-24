@@ -791,7 +791,7 @@ cancelled; cancellation only discards output after the call returns.
         $testLog = Join-Path $work "go-test.txt"
         $testErr = Join-Path $work "go-test-err.txt"
         Write-Host "go test with RNPARMOR_LIBRNP=$env:RNPARMOR_LIBRNP"
-        $testCmd = @("test", "-count=1", "-timeout", "20m", "./internal/loadlib/", "./internal/rnp/")
+        $testCmd = @("test", "-count=1", "-timeout", "20m", "./internal/loadlib/", "./internal/rnp/", "./cmd/rnparmor/")
         $prevNative = $PSNativeCommandUseErrorActionPreference
         try {
             $PSNativeCommandUseErrorActionPreference = $false
@@ -826,19 +826,17 @@ cancelled; cancellation only discards output after the call returns.
         if (Test-Path -LiteralPath $smokeErr) {
             Remove-Item -LiteralPath $smokeErr -Force
         }
-        $prevNative = $PSNativeCommandUseErrorActionPreference
-        try {
-            $PSNativeCommandUseErrorActionPreference = $false
-            & (Join-Path $dist "rnparmor.exe") "--smoke-test" "--smoke-out" $smokeOut 2> $smokeErr
-        } finally {
-            $PSNativeCommandUseErrorActionPreference = $prevNative
-        }
-        if ($LASTEXITCODE -ne 0) {
+        $smokeProc = Start-Process -FilePath (Join-Path $dist "rnparmor.exe") `
+            -ArgumentList @("--smoke-test", "--smoke-out", "`"$smokeOut`"") `
+            -WorkingDirectory $dist `
+            -RedirectStandardError $smokeErr `
+            -NoNewWindow -Wait -PassThru
+        if ($smokeProc.ExitCode -ne 0) {
             $smokeErrText = ""
             if (Test-Path -LiteralPath $smokeErr) {
                 $smokeErrText = Get-Content -LiteralPath $smokeErr -ErrorAction SilentlyContinue | Out-String
             }
-            throw "smoke-test failed: $LASTEXITCODE`n$smokeErrText"
+            throw "smoke-test failed: $($smokeProc.ExitCode)`n$smokeErrText"
         }
         if (-not (Test-Path -LiteralPath $smokeOut)) {
             throw "smoke-test did not produce smoke-out file: $smokeOut"
@@ -849,6 +847,9 @@ cancelled; cancellation only discards output after the call returns.
         }
         if ($smokeText -notmatch '(?m)^status=ok\s*$') {
             throw "smoke-test did not report status=ok`n$smokeText"
+        }
+        if ($smokeText -notmatch '(?m)^i18n=ok\s*$') {
+            throw "smoke-test did not report i18n=ok`n$smokeText"
         }
         Write-Host $smokeText
 
