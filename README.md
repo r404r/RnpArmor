@@ -6,6 +6,26 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, delivering Wi
 
 > License: **Apache License, Version 2.0** ([`LICENSE`](LICENSE)). Third-party notices and license texts are included in [`third_party/NOTICES.md`](third_party/NOTICES.md) and distributed bundles (`LICENSE` and `licenses/` on Windows and Linux; `RnpArmor.app/Contents/Resources/LICENSE` and `licenses/` on macOS).
 
+## Screenshots
+
+Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / Language / Help` menu bar, `librnp 0.18.1`), captured via [`.github/workflows/linux-screenshot.yml`](.github/workflows/linux-screenshot.yml) and [`scripts/capture-linux-screenshots.sh`](scripts/capture-linux-screenshots.sh):
+
+![RnpArmor main window (English, Linux runtime)](docs/screenshots/rnparmor-linux-en.png)
+
+<details>
+<summary>Simplified Chinese UI screenshot</summary>
+
+![RnpArmor main window (Simplified Chinese, Linux runtime)](docs/screenshots/rnparmor-linux-zh.png)
+
+</details>
+
+<details>
+<summary>Japanese UI screenshot</summary>
+
+![RnpArmor main window (Japanese, Linux runtime)](docs/screenshots/rnparmor-linux-ja.png)
+
+</details>
+
 ## Highlights
 
 1. **MyGo native GUI with 5 workspaces + native 4-group tri-lingual menu bar + standalone About window**
@@ -78,12 +98,16 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, delivering Wi
   - builds pinned deps, `-H=windowsgui` portable output, and Inno Setup 6 installer (`rnparmor-windows-amd64-setup.exe`), verifies PE subsystem and DLL imports, and runs tests + `--smoke-out` + GUI probe.
 - `scripts/build-macos.sh`
   - builds pinned static deps (`Botan 3.10.0` + `json-c 0.19`), `librnp.dylib`, and `RnpArmor.app`, runs ad-hoc `codesign --verify --deep --strict`, `go test`, and `--smoke-test`, and packages `rnparmor-macos-arm64.dmg`.
+- `scripts/capture-linux-screenshots.sh`
+  - launches `rnparmor` under headless X11 (`Xvfb` + `openbox`) for `--lang en|zh|ja`, captures focused window PNGs via `scrot`, and verifies dimensions and non-blank pixel variance.
 - `packaging/windows/rnparmor.iss`
   - Inno Setup 6 script for the Windows per-user installer (`rnparmor-windows-amd64-setup.exe`).
 - `.github/workflows/smoke.yml`
   - `linux`, `windows-portable`, and `macos-arm64` jobs with dependency caches + per-branch concurrency cancel.
 - `.github/workflows/release.yml`
   - tag-driven/manual multi-platform packaging and release publication.
+- `.github/workflows/linux-screenshot.yml`
+  - captures tri-lingual Linux runtime screenshots via `scripts/capture-linux-screenshots.sh`, uploads `rnparmor-linux-screenshots` artifacts, and can commit updated PNGs to `docs/screenshots/` on non-`main` branches.
 
 ## GUI Workspaces
 
@@ -279,6 +303,14 @@ Workflow: `.github/workflows/release.yml`
   - `windows-portable`: uses the same `deps-v4` cache key and staged sequence (`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package -Version "${{ steps.tag.outputs.value }}"`) to produce `rnparmor-windows-amd64.zip`, `rnparmor-windows-amd64-setup.exe`, and `windows-report.txt`
   - `macos-arm64` (`runs-on: macos-15`): uses the same `arm64-deps-v1` cache key and staged sequence (`deps -> save cache -> rnp -> package --version "${{ steps.tag.outputs.value }}"`) to produce `rnparmor-macos-arm64.dmg`
   - `publish-release`: on all three platform jobs green, creates/updates GitHub Release and uploads `rnparmor-macos-arm64.dmg`, `rnparmor-linux-amd64.tar.gz`, `rnparmor-windows-amd64-setup.exe`, `rnparmor-windows-amd64.zip`, `windows-report.txt`, and `rnparmor-${TAG}-SHA256SUMS.txt`
+
+Workflow: `.github/workflows/linux-screenshot.yml`
+
+- triggers:
+  - `workflow_dispatch` (optional `commit_screenshots` boolean, non-`main` branches only)
+  - `pull_request` modifying `scripts/capture-linux-screenshots.sh` or `.github/workflows/linux-screenshot.yml`
+- `linux-screenshot` job (`runs-on: ubuntu-latest`):
+  - builds pinned `librnp.so` and `rnparmor`, runs `scripts/capture-linux-screenshots.sh` under `Xvfb` + `openbox`, uploads `rnparmor-linux-screenshots` (`out/screenshots/*.png`), and optionally commits `docs/screenshots/rnparmor-linux-{en,zh,ja}.png` on non-`main` branches
 
 ## Security & Operational Boundaries
 
