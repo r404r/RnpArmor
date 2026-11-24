@@ -557,6 +557,13 @@ function Build-Rnp {
     $rnpBuild = Join-Path $work "rnp"
     if (Test-Path $rnpBuild) { Remove-Item -Recurse -Force $rnpBuild }
 
+    $rnpToolchain = Join-Path $work "rnp-toolchain.cmake"
+@"
+include("$(To-CMakePath $toolchain)")
+add_compile_options($<$<C_COMPILER_ID:MSVC>:/DBOTAN_DLL=> $<$<CXX_COMPILER_ID:MSVC>:/DBOTAN_DLL=>)
+"@ | Set-Content -LiteralPath $rnpToolchain -Encoding ascii
+    $cmakeCommonRnp = @($cmakeCommon | Where-Object { $_ -notlike "-DCMAKE_TOOLCHAIN_FILE=*" })
+
     $rnpCompatInclude = Join-Path $work "rnp-compat-include"
     New-Item -ItemType Directory -Force -Path $rnpCompatInclude | Out-Null
     Copy-Item (Join-Path $direntInclude "dirent.h") (Join-Path $rnpCompatInclude "dirent.h") -Force
@@ -585,6 +592,7 @@ function Build-Rnp {
 
         Run "cmake.exe" (@(
             "-S", $rnpSrc, "-B", $rnpBuild,
+            "-DCMAKE_TOOLCHAIN_FILE=$(To-CMakePath $rnpToolchain)",
             "-DCMAKE_INSTALL_PREFIX=$(To-CMakePath (Join-Path $deps 'rnp'))",
             "-DBUILD_SHARED_LIBS=ON",
             "-DBUILD_TESTING=OFF",
@@ -611,7 +619,7 @@ function Build-Rnp {
             "-DBZIP2_INCLUDE_DIRS=$(To-CMakePath (Join-Path $bzPrefix 'include'))",
             "-DCMAKE_SHARED_LINKER_FLAGS=$link",
             "-DCMAKE_EXE_LINKER_FLAGS=$link"
-        ) + $cmakeCommon)
+        ) + $cmakeCommonRnp)
 
         Run "cmake.exe" @("--build", $rnpBuild, "--config", "Release", "--target", "librnp")
     } finally {
@@ -772,7 +780,21 @@ cancelled; cancellation only discards output after the call returns.
         $testCmd = @("test", "-count=1", "-timeout", "20m", "./internal/loadlib/", "./internal/rnp/")
         & $go @testCmd 1> $testLog 2> $testErr
         Get-Content $testLog, $testErr -ErrorAction SilentlyContinue
-        if ($LASTEXITCODE -ne 0) { throw "go test failed: $LASTEXITCODE" }
+        if ($LASTEXITCODE -ne 0) {
+            $tail = @()
+            foreach ($p in @($testLog, $testErr)) {
+                if (Test-Path -LiteralPath $p) {
+                    $tail += (Get-Content -LiteralPath $p -ErrorAction SilentlyContinue |
+                        ForEach-Object { $_.TrimEnd() } |
+                        Where-Object { $_.Trim().Length -gt 0 })
+                }
+            }
+            if ($tail.Count -gt 15) {
+                $tail = $tail[($tail.Count - 15)..($tail.Count - 1)]
+            }
+            $ctx = if ($tail.Count -gt 0) { ($tail -join " | ") } else { "no log output" }
+            throw "go test failed: $LASTEXITCODE :: $ctx"
+        }
 
         Log "smoke"
         Remove-Item Env:RNPARMOR_LIBRNP -ErrorAction SilentlyContinue
