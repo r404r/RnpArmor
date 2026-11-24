@@ -116,6 +116,8 @@ jobs:
         with:
           path: out/deps
           key: ${{ runner.os }}-arm64-deps-v1-${{ hashFiles('deps/pins.json', 'scripts/windows/botan3-modules.txt', 'scripts/build-macos.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-arm64-deps-v1-
       - name: build deps
         shell: bash
         run: bash scripts/build-macos.sh --stage deps

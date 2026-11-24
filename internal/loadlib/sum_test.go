@@ -67,6 +67,38 @@ func TestResolveRejectsRelativeEnv(t *testing.T) {
 	}
 }
 
+func TestVerifyMacOSBundleResourcesFallback(t *testing.T) {
+	root := t.TempDir()
+	macos := filepath.Join(root, "RnpArmor.app", "Contents", "MacOS")
+	res := filepath.Join(root, "RnpArmor.app", "Contents", "Resources")
+	if err := os.MkdirAll(macos, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(res, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lib := filepath.Join(macos, "librnp.dylib")
+	if err := os.WriteFile(lib, []byte("signed-dylib-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(mustRead(t, lib))
+	line := hex.EncodeToString(sum[:]) + "  librnp.dylib\n"
+	if err := os.WriteFile(filepath.Join(res, SumFile), []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Verify(lib); err != nil {
+		t.Fatalf("fallback verify failed: %v", err)
+	}
+
+	if err := os.WriteFile(lib, []byte("tampered"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(lib); err == nil {
+		t.Fatal("tampered dylib was accepted with Resources/SHA256SUMS fallback")
+	}
+}
+
 func writeSums(t *testing.T, dir string, files ...string) {
 	t.Helper()
 	var b []byte

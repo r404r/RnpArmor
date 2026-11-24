@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 stage="all"
@@ -345,7 +345,7 @@ package_stage() {
   run_cmd "codesign dylib" codesign --force --sign - "$app_macos/librnp.dylib"
   (
     cd "$app_macos"
-    shasum -a 256 librnp.dylib > SHA256SUMS
+    shasum -a 256 librnp.dylib > "$app_res/SHA256SUMS"
   )
   run_cmd "codesign app" codesign --force --sign - "$app_root"
   run_cmd "codesign verify" codesign --verify --deep --strict "$app_root"
