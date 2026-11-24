@@ -4,6 +4,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 stage="all"
 VERSION="dev"
+export MACOSX_DEPLOYMENT_TARGET=13.0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -202,6 +203,7 @@ PY
     -DBUILD_TESTING=OFF \
     -DDISABLE_WERROR=ON \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5
   run_cmd "json-c build" cmake --build "$json_build" -j"$(sysctl -n hw.ncpu)"
@@ -248,6 +250,7 @@ rnp_stage() {
     -DCRYPTO_BACKEND=botan \
     -DBOTAN_ROOT_DIR="$botan_prefix" \
     -DCMAKE_PREFIX_PATH="$botan_prefix;$json_prefix" \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
     -DJSON-C_LIBRARY="$json_prefix/lib/libjson-c.a" \
     -DJSON-C_INCLUDE_DIR="$json_prefix/include" \
     -DCMAKE_BUILD_TYPE=Release \
