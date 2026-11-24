@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Capture en/zh/ja RnpArmor main-window screenshots on a headless X11 desktop.
 set -Eeuo pipefail
-export LC_ALL=C
+if locale -a 2>/dev/null | grep -qiE '^C\.utf-?8$'; then
+  export LC_ALL=C.UTF-8
+else
+  export LC_ALL=C
+fi
 
 BIN=""
 LIB=""
