@@ -748,3 +748,112 @@ func TestFileOptsDumpAndFeatures(t *testing.T) {
 		t.Fatalf("single support result malformed: %s", one)
 	}
 }
+
+func TestOpenOptionalPassPublicOnlyRoundTrip(t *testing.T) {
+	lib := libPath(t)
+	ctx := context.Background()
+
+	if _, err := Open(lib, nil); !errors.Is(err, ErrPass) {
+		t.Fatalf("Open(nil) = %v, want ErrPass", err)
+	}
+	if _, err := OpenOptionalPass(lib, bytes.Repeat([]byte("a"), maxPass+1)); !errors.Is(err, ErrPass) {
+		t.Fatalf("OpenOptionalPass(too long) = %v", err)
+	}
+
+	empty, err := OpenOptionalPass(lib, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = empty.Close() })
+	if _, err := empty.ListKeys(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := empty.SaveTo(ctx, t.TempDir()); !errors.Is(err, ErrEmpty) {
+		t.Fatalf("empty SaveTo = %v, want ErrEmpty", err)
+	}
+	if err := empty.SaveTo(ctx, "relative"); !errors.Is(err, ErrRelative) {
+		t.Fatalf("relative SaveTo = %v", err)
+	}
+
+	pass := newPass(t)
+	full := openSession(t, pass)
+	sum, err := full.GenerateKeyWithSpec(ctx, KeyGenRequest{UserID: "Pub Only <pub@example.com>"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sum.IsPrimary || sum.IsSub {
+		t.Fatalf("generated primary flags: IsPrimary=%v IsSub=%v", sum.IsPrimary, sum.IsSub)
+	}
+	if len(sum.Subkeys) == 0 {
+		t.Fatal("generated primary has no subkeys")
+	}
+	for _, sub := range sum.Subkeys {
+		if sub.IsPrimary || !sub.IsSub || len(sub.Subkeys) != 0 {
+			t.Fatalf("subkey summary: %+v", sub)
+		}
+	}
+	pub, err := full.ExportKey(ctx, sum.Fingerprint, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(pub, "BEGIN PGP PUBLIC KEY BLOCK") {
+		t.Fatalf("public export: %q", pub)
+	}
+
+	ro, err := OpenOptionalPass(lib, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ro.Close() })
+	if _, err := ro.ImportKeys(ctx, []byte(pub)); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := ro.SaveTo(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "pubring.gpg")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "secring.gpg")); !os.IsNotExist(err) {
+		t.Fatalf("public-only secring: %v", err)
+	}
+	if err := ro.SaveTo(ctx, dir); !errors.Is(err, ErrExists) {
+		t.Fatalf("second public save = %v", err)
+	}
+
+	ro2, err := OpenOptionalPass(lib, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ro2.Close() })
+	if err := ro2.LoadFrom(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
+	list, err := ro2.ListKeys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loaded *KeySummary
+	for i := range list {
+		if strings.EqualFold(list[i].Fingerprint, sum.Fingerprint) && list[i].IsPrimary {
+			loaded = &list[i]
+			break
+		}
+	}
+	if loaded == nil {
+		t.Fatalf("reloaded primary missing from %d keys", len(list))
+	}
+	if loaded.HasSecret {
+		t.Fatal("public-only reload has a secret")
+	}
+	if len(loaded.Subkeys) == 0 {
+		t.Fatal("reloaded primary has no subkeys")
+	}
+	if err := ro2.LoadFrom(ctx, t.TempDir()); !os.IsNotExist(err) {
+		t.Fatalf("missing keyring LoadFrom = %v", err)
+	}
+	if err := ro2.LoadFrom(ctx, "relative"); !errors.Is(err, ErrRelative) {
+		t.Fatalf("relative LoadFrom = %v", err)
+	}
+}

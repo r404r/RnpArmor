@@ -12,6 +12,7 @@ on:
       - "scripts/capture-linux-screenshots.sh"
       - ".github/workflows/linux-screenshot.yml"
       - "assets/icons/**"
+      - "cmd/rnparmor/**"
 
 concurrency:
   group: linux-screenshot-${{ github.ref }}

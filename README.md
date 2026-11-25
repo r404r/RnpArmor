@@ -34,27 +34,28 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
 
 1. **MyGo native GUI with 5 workspaces + native 4-group tri-lingual menu bar + standalone About window**
    - Workspace tabs:
-     - Keys & generation
+     - Keys & generation (master-detail key manager)
      - Text encrypt/decrypt/sign/verify
      - File encrypt/decrypt/sign/verify
      - Packet inspection & feature matrix
      - Portable keyring storage
    - Built-in zero-dependency UI dictionary at `cmd/rnparmor/i18n.go`.
-   - Application icon (`assets/icons/rnparmor-256.png` embedded via `assets/icons/icons.go`) applied at runtime to both the main window and About window via `w.SetIcon(...)`, and on macOS via `mygo.App.Dock.SetIcon(...)`.
+   - Application icon (`assets/icons/rnparmor-256.png` embedded via `assets/icons/icons.go`) applied at runtime to the main window and child windows (**About**, **New Key**, **Import Key Text**) via `w.SetIcon(...)`, and on macOS via `mygo.App.Dock.SetIcon(...)`.
    - Native top menu bar with 4 tri-lingual groups (`File` / `Workspace` / `Language` / `Help`):
-     - `File`: Open session, Load keyring, Save keyring, Quit.
+     - `File`: Choose Folder..., Open session, Load keyring, Save keyring, Quit.
      - `Workspace`: 5 radio items synchronized bi-directionally with the workspace tabs.
-     - `Language`: radio items (`English`, `中文`, `日本語`) that switch and re-render the menu bar, main window, and About window live.
+     - `Language`: radio items (`English`, `中文`, `日本語`) that switch and re-render the menu bar, main window, and open child windows (**About**, **New Key**, **Import Key Text**) live.
      - `Help`: opens the standalone About child window (`About`).
    - Language preset by `--lang en|zh|ja`, `RNPARMOR_LANG`, or system `LANG`.
    - **Standalone menu-less non-modal About child window (`580×520`)**:
      - Single-instance focused, fixed-size, no menu bar (`SetMenu(nil)` on non-macOS), includes a `Close` button.
-     - Closing the About window leaves the main window unaffected; closing the main window closes the About window automatically; switching language updates its title and content live.
-     - Shows Application Version (`appVersion`, e.g., `v0.0.1` or `dev`), Author (`r404r (https://github.com/r404r)`), Repository URL (`https://github.com/r404r/RnpArmor`), RNP upstream (`https://github.com/rnpgp/rnp` + current `librnp` version), Local library path (`rnp.dll` / `librnp.so`), Keyring directory (`portable workspace` + `pubring.gpg`/`secring.gpg` existence), and UI Framework & Runtime (`MyGo` / `purego` / `Botan` versions).
+     - Closing the About window leaves the main window unaffected; closing the main window closes **About**, **New Key**, and **Import Key Text** automatically; switching language updates window titles and content live.
+     - Shows Application Version (`appVersion`, e.g., `v0.0.2` or `dev`), Author (`r404r (https://github.com/r404r)`), Repository URL (`https://github.com/r404r/RnpArmor`), RNP upstream (`https://github.com/rnpgp/rnp` + current `librnp` version), Local library path (`rnp.dll` / `librnp.so`), Keyring directory (`portable workspace` + `pubring.gpg`/`secring.gpg` existence), and UI Framework & Runtime (`MyGo` / `purego` / `Botan` versions).
 
 2. **Expanded RNP feature surface in `internal/rnp`**
-   - Key iteration/location, key import/export/remove, key-to-JSON.
-   - JSON-driven key generation (`rnp_generate_key_json`) with multiple algorithm families.
+   - Key iteration/location (with nested `Subkeys` on primary key summaries), key import (`ImportKeys`), public/secret/revocation export (`ExportRevocation`), key-to-JSON, and delete.
+   - Public-only & optional-passphrase read-only sessions (`OpenOptionalPass`), plus public-only `pubring.gpg` save/load without creating empty `secring.gpg`.
+   - JSON-driven key generation (`rnp_generate_key_json`) with multiple algorithm families and optional expiration.
    - Text operations: encrypt/decrypt, clearsign/detached/inline sign/verify.
    - File operations with option-rich APIs.
    - Packet dump (text/JSON) and feature querying (`rnp_supported_features`, `rnp_supports_feature`).
@@ -65,8 +66,8 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
 3. **Portable-focused safety boundaries**
    - Absolute-path library loading + `SHA256SUMS` verification before loading.
    - Windows `LoadLibraryEx` restricted search semantics.
-   - Explicit keyring load/save only; no implicit default keyring.
-   - Non-overwrite output semantics for file publishing.
+   - Explicit keyring load/save only; no implicit default keyring; empty initial passphrase (no pre-filled default), masked passphrase fields, concealed secret clipboard copy, and `0600` mode for secret/revocation file exports.
+   - Non-clobbering keyring persistence (read-only actions never rewrite disk files) and non-overwrite output semantics for file publishing.
 
 4. **Windows portable build + GUI subsystem + smoke flow hardening**
    - Windows `rnparmor.exe` is built with `-H=windowsgui` (Windows GUI subsystem) so launching it does not pop up a black console window.
@@ -93,18 +94,19 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
   - `rnparmor.png`, `rnparmor-256.png`, `rnparmor.ico`, `RnpArmor.icns`: transparent multi-platform application icon assets.
   - `icons.go`, `icons_test.go`: embeds `rnparmor-256.png` (`icons.AppIconPNG`) for runtime window and Dock icons.
 - `cmd/rnparmor/`
-  - `main.go`: MyGo app entry, runtime window/Dock icon setup, native 4-group menu bar, 5-workspace UI, `580×520` non-modal About child window, async session operations, `--smoke-out`, and build-time `appVersion` display/output.
+  - `main.go`: MyGo app entry, runtime window/Dock icon setup, native 4-group menu bar (including `File → Choose Folder...`), startup keyring auto-load, empty initial passphrase + `OpenOptionalPass`, 5-workspace navigation, `580×520` non-modal About child window, masked unlock input in Portable Keyring, async session operations, `--smoke-out`, and build-time `appVersion` display/output.
+  - `keys_ui.go`: Phase 1 master-detail Key Manager workspace (`+ New Key`, `Import File...`, `Import Text...`, `Refresh`, read-only Workspace + native `Choose Folder...`), segmented ownership filters (`All` / `My Keys` / `Public`), `Key ID (16)` ↔ `Fingerprint (40)` switch, live search, sortable primary-key table, detail inspector (grouped fingerprint + copy, badges, nested subkeys, public/secret/revocation exports with confirmation & concealed secret copy, `Delete Key...` confirmation, collapsible `Raw Key JSON`), and `+ New Key` / `Import Key Text` child windows.
   - `i18n.go`: tri-lingual catalog (EN/ZH/JA), language resolution, translation validation.
-  - `main_test.go`: unit tests for smoke output generation/writing, menu template structure, state synchronization, decrypt/verify input resolution, recipient fallback rules, and real `librnp` end-to-end GUI action regression tests (`TestUIStateActionsEndToEnd`).
+  - `main_test.go`: unit tests for smoke output generation/writing, menu template structure, state synchronization, key-manager filter/search/sort/ID-mode/`New Key` validation, decrypt/verify input resolution, recipient fallback rules, and real `librnp` end-to-end GUI action regression tests (`TestUIStateActionsEndToEnd`, including revocation export & public-only keyring flows).
 - `cmd/genwinres/`
   - `main.go`: zero-dependency pure Go AMD64 COFF `.syso` resource generator embedding `rnparmor.ico` into `rnparmor.exe` at build time.
 - `internal/loadlib/`
   - `open.go`: absolute-path `librnp` resolution and `SHA256SUMS` verification before loading, including fallback from `Contents/MacOS/SHA256SUMS` to `Contents/Resources/SHA256SUMS` for macOS `.app` bundles.
 - `internal/rnp/`
   - `api.go`: purego FFI bindings to librnp APIs.
-  - `session.go`: session lifecycle, passphrase callback controls, API models.
-  - `ops.go`: key management + text/file crypto/sign/verify + packet/features.
-  - `session_test.go`: compatibility tests + expanded integration scenarios.
+  - `session.go`: session lifecycle (`Open`, `OpenOptionalPass`), passphrase callback controls, API models (including `KeySummary.Subkeys`).
+  - `ops.go`: key management (including nested subkeys, public-only `SaveTo`/`LoadFrom`, revocation export) + text/file crypto/sign/verify + packet/features.
+  - `session_test.go`: compatibility tests + expanded integration scenarios (including subkeys and public-only keyring loading/saving).
 - `scripts/build-windows.ps1`
   - builds pinned deps, embeds temporary `.syso` icon via `cmd/genwinres`, builds `-H=windowsgui` portable output and Inno Setup 6 installer (`rnparmor-windows-amd64-setup.exe`), verifies PE subsystem, `.rsrc` section, and DLL imports, and runs tests + `--smoke-out` + GUI probe.
 - `scripts/build-macos.sh`
@@ -127,13 +129,15 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
 
 ### 1) Keys & generation
 
-- Open session with in-memory passphrase.
-- Generate keys via spec (RSA / ECC variants through JSON-based generation path).
-- List key summaries, export public/secret, show key JSON, delete key.
-- Save/load explicit keyring files (`pubring.gpg` / `secring.gpg`); read-only actions never rewrite disk keyrings, empty-session explicit saves fail safely, and deleting the last key removes empty files.
+- Master-detail Key Manager workspace with top toolbar (`+ New Key`, `Import File...`, `Import Text...`, `Refresh`, and read-only Workspace + native `Choose Folder...`).
+- Segmented filtering (`All` / `My Keys` / `Public`), `Key ID (16)` ↔ `Fingerprint (40)` column switch, live search across UID/Key ID/fingerprint/algorithm, and sortable primary-key table (keeping subkeys nested inside each primary key summary).
+- Detail inspector with grouped 4-character fingerprint + `Copy Fingerprint`, status & capability badges, nested `Subkeys`, `Copy Public Key` / `Export Public (.asc)...`, secret-only `Export Secret (.asc)...` (with confirmation prompt & `0600` file mode) / concealed `Copy Secret` / `Revocation Cert...` (`.rev.asc`), confirmation-gated `Delete Key...`, and collapsible `Raw Key JSON`.
+- Standalone `+ New Key` window requiring `Name`/`Email`, masked `Passphrase` + `Confirm Passphrase`, `Expiration` (`Never` / `1 Year` / `2 Years` / `5 Years`), and collapsible `Advanced algorithms`; read-only / public-only keyrings (`pubring.gpg` without `secring.gpg`) open with an empty passphrase.
+- Read-only actions never rewrite disk keyrings, empty-session explicit saves fail safely, and deleting the last key cleans up empty files.
 
 ### 2) Text studio
 
+- Text-input fields for `Recipients (comma fp)` and `Signer fingerprint`.
 - Encrypt text (recipient and/or password modes, optional sign-on-encrypt; falls back to the selected key when both recipients and password are empty).
 - Decrypt text (supports pasting external armored PGP ciphertext directly into Plain text, or staged output).
 - Sign text in three modes:
@@ -144,6 +148,7 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
 
 ### 3) File workbench
 
+- Text-input fields for `Source`, `Destination`, and `Signature path` (absolute paths).
 - Encrypt/decrypt files.
 - Sign/verify files (detached and inline flows).
 - Keeps non-overwrite publish behavior aligned with internal file safety utilities.
@@ -155,12 +160,12 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
 
 ### 5) Portable keyring storage
 
-- Explicit workspace-based load/save model.
-- Keeps passphrase usage in-memory for active operations only.
+- Read-only `Workspace` path with native `Choose Folder...` picker and explicit `Open+Load` / `Save` / `Reload keys` controls (supporting public-only `pubring.gpg` as well as full `pubring.gpg` + `secring.gpg`).
+- Masked unlock `Passphrase` (empty at startup, used only in memory for active secret-key operations).
 
 ### 6) Native 4-group menu bar & standalone About child window
 
-- Top menu bar groups: `File` (session/keyring/quit), `Workspace` (5 radio items synced with workspace tabs), `Language` (`English` / `中文` / `日本語` radio items), and `Help` (`About`).
+- Top menu bar groups: `File` (`Choose Folder...` / open session / load & save keyring / quit), `Workspace` (5 radio items synced with workspace tabs), `Language` (`English` / `中文` / `日本語` radio items), and `Help` (`About`).
 - `Help → About` opens a `580×520` non-modal, fixed-size, menu-less standalone child window (single-instance focused, with a `Close` button).
 - Closing the About window leaves the main window running; closing the main window closes the About window automatically; live language switches update both windows immediately.
 - Displays read-only details (app version, author, repository, RNP upstream, local library path, portable keyring directory + `pubring.gpg`/`secring.gpg` existence, runtime stack) and explicitly notes that the system default keyring is not read.
@@ -330,14 +335,14 @@ Workflow: `.github/workflows/linux-screenshot.yml`
 
 - Dynamic library loading is constrained and integrity-checked.
 - No implicit default keyring read/write path.
-- Passphrase callback re-entry is blocked by design.
+- Passphrase callback re-entry is blocked by design; startup starts with an empty passphrase (no pre-filled default), UI passphrase inputs are masked, and secret-key clipboard copies use concealed mode.
 - Large input/output caps are enforced in memory paths.
 - Portable test guidance remains: do not use real production keys/passphrases in this stage.
 
 ## Repository Status Notes
 
 - `v0.0.1` and `v0.0.2` have been released across macOS (`arm64`), Linux (`amd64`), and Windows (`amd64`); `v0.0.2` includes Apache-2.0 licensing ([`LICENSE`](LICENSE)), Linux runtime screenshots, multi-platform application icons, and the bilingual user guides ([`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)).
-- The current branch adds GUI action deadlock fixes, non-clobbering keyring persistence, certifiable primary secret key default selection, direct Text Studio ciphertext/signature paste & recipient fallback support, and real `librnp` end-to-end GUI action regression tests in `cmd/rnparmor/main_test.go` for the next release.
+- The current branch lands Phase 1 of the UI upgrade (master-detail Key Manager in `cmd/rnparmor/keys_ui.go`, native folder/file/save dialogs, `+ New Key` and `Import Key Text` child windows, `16`/`40`-char ID switch, empty initial passphrase + masked inputs, public-only `pubring.gpg` support, revocation certificate export, updated Linux tri-lingual screenshots, plus the GUI deadlock, non-clobbering keyring, and Text Studio paste/fallback fixes) for the next release. Text Studio and File Workbench remain text-input based until future Phase 2 work.
 - Desktop manual UX validation—including Windows 10/11 Chinese IME, high-DPI, and Inno Setup installer flow, plus macOS Apple Silicon first-launch Gatekeeper handling—remains environment-dependent and must be confirmed in dedicated manual runs.
 
 ## License
