@@ -379,7 +379,7 @@ func (s *Session) ListKeys(ctx context.Context) ([]KeySummary, error) {
 			if err != nil {
 				return err
 			}
-			sum, err := s.keySummaryFromHandle(key)
+			sum, err := s.keySummaryFromHandle(key, true)
 			bound.keyDestroy(key)
 			if err != nil {
 				return err
@@ -502,7 +502,7 @@ func (s *Session) GenerateKeyWithSpec(ctx context.Context, req KeyGenRequest) (K
 			}
 		}
 
-		summary, err := s.keySummaryFromHandle(primaryKey)
+		summary, err := s.keySummaryFromHandle(primaryKey, true)
 		if err != nil {
 			bound.keyDestroy(primaryKey)
 			if encKey != 0 {
@@ -984,7 +984,7 @@ func (s *Session) locateKeyHandle(typ, id string) (uintptr, error) {
 	return key, nil
 }
 
-func (s *Session) keySummaryFromHandle(key uintptr) (KeySummary, error) {
+func (s *Session) keySummaryFromHandle(key uintptr, includeSubkeys bool) (KeySummary, error) {
 	var out KeySummary
 	var p uintptr
 	if err := bound.check("key_get_fprint", bound.keyFprint(key, &p)); err != nil {
@@ -1038,6 +1038,34 @@ func (s *Session) keySummaryFromHandle(key uintptr) (KeySummary, error) {
 	}
 	if err := bound.check("key_allows_usage", bound.keyUsage(key, "certify", &out.CanCertify)); err != nil {
 		return out, err
+	}
+	if err := bound.check("key_is_primary", bound.keyIsPrimary(key, &out.IsPrimary)); err != nil {
+		return out, err
+	}
+	if err := bound.check("key_is_sub", bound.keyIsSub(key, &out.IsSub)); err != nil {
+		return out, err
+	}
+	if includeSubkeys && out.IsPrimary {
+		var n uintptr
+		if err := bound.check("key_get_subkey_count", bound.keySubCount(key, &n)); err != nil {
+			return out, err
+		}
+		out.Subkeys = make([]KeySummary, 0, n)
+		for i := uintptr(0); i < n; i++ {
+			var sub uintptr
+			if err := bound.check("key_get_subkey_at", bound.keySubAt(key, i, &sub)); err != nil {
+				if sub != 0 {
+					bound.keyDestroy(sub)
+				}
+				return out, err
+			}
+			sum, err := s.keySummaryFromHandle(sub, false)
+			bound.keyDestroy(sub)
+			if err != nil {
+				return out, err
+			}
+			out.Subkeys = append(out.Subkeys, sum)
+		}
 	}
 	return out, nil
 }
@@ -1325,9 +1353,11 @@ func normalizeCompression(in string) string {
 	}
 }
 
-// SaveTo writes pubring.gpg and secring.gpg into an existing directory.
-// It fails if either file exists or the directory is not writable. It does
-// not choose a default directory.
+// SaveTo writes the keyring files that this session actually holds.
+// pubring.gpg is written only when there is a public key, and secring.gpg
+// only when there is a secret key. A public-only keyring therefore has no
+// secring.gpg. Both counts empty is ErrEmpty. A file that would be written
+// must not already exist. The directory must be absolute.
 func (s *Session) SaveTo(ctx context.Context, dir string) error {
 	return s.Do(ctx, func(context.Context) error {
 		return s.saveTo(dir)
@@ -1345,36 +1375,72 @@ func (s *Session) saveTo(dir string) error {
 	if !info.IsDir() {
 		return errorsNew("not a directory")
 	}
+	var pubN, secN uintptr
+	if err := bound.check("count", bound.pubCount(s.ffi, &pubN)); err != nil {
+		return err
+	}
+	if err := bound.check("count", bound.secCount(s.ffi, &secN)); err != nil {
+		return err
+	}
+	if pubN == 0 && secN == 0 {
+		return ErrEmpty
+	}
 	pubPath := filepath.Join(dir, "pubring.gpg")
 	secPath := filepath.Join(dir, "secring.gpg")
-	if _, err := os.Lstat(pubPath); err == nil {
-		return ErrExists
+	if pubN > 0 {
+		if err := refuseExisting(pubPath); err != nil {
+			return err
+		}
 	}
-	if _, err := os.Lstat(secPath); err == nil {
-		return ErrExists
+	if secN > 0 {
+		if err := refuseExisting(secPath); err != nil {
+			return err
+		}
 	}
-	pub, err := s.exportKeys(flagPublic)
-	if err != nil {
-		return err
+	var pub, sec []byte
+	if pubN > 0 {
+		pub, err = s.exportKeys(flagPublic)
+		if err != nil {
+			return err
+		}
 	}
-	sec, err := s.exportKeys(flagSecret)
-	if err != nil {
+	if secN > 0 {
+		sec, err = s.exportKeys(flagSecret)
+		if err != nil {
+			wipe(pub)
+			return err
+		}
+	}
+	if pubN > 0 {
+		if err := commitNew(pubPath, pub, 0o644); err != nil {
+			wipe(pub)
+			wipe(sec)
+			return err
+		}
 		wipe(pub)
-		return err
 	}
-	if err := commitNew(pubPath, pub, 0o644); err != nil {
-		wipe(pub)
+	if secN > 0 {
+		if err := commitNew(secPath, sec, 0o600); err != nil {
+			if pubN > 0 {
+				os.Remove(pubPath)
+			}
+			wipe(sec)
+			return err
+		}
 		wipe(sec)
-		return err
 	}
-	wipe(pub)
-	if err := commitNew(secPath, sec, 0o600); err != nil {
-		os.Remove(pubPath)
-		wipe(sec)
-		return err
-	}
-	wipe(sec)
 	return nil
+}
+
+func refuseExisting(path string) error {
+	_, err := os.Lstat(path)
+	if err == nil {
+		return ErrExists
+	}
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 func (s *Session) exportKeys(flags uint32) ([]byte, error) {
@@ -1389,7 +1455,10 @@ func (s *Session) exportKeys(flags uint32) ([]byte, error) {
 	return takeOutput(output)
 }
 
-// LoadFrom reads pubring.gpg and secring.gpg from dir and nowhere else.
+// LoadFrom reads whichever of pubring.gpg and secring.gpg exist in dir.
+// A public-only directory loads the public ring alone. When neither file
+// exists the error is the missing-file error from the public path. The
+// directory must be absolute.
 func (s *Session) LoadFrom(ctx context.Context, dir string) error {
 	return s.Do(ctx, func(context.Context) error {
 		return s.loadFrom(dir)
@@ -1400,20 +1469,45 @@ func (s *Session) loadFrom(dir string) error {
 	if !filepath.IsAbs(dir) {
 		return ErrRelative
 	}
-	pub, err := readLimited(filepath.Join(dir, "pubring.gpg"))
-	if err != nil {
-		return err
+	pubPath := filepath.Join(dir, "pubring.gpg")
+	secPath := filepath.Join(dir, "secring.gpg")
+	_, pubErr := os.Lstat(pubPath)
+	_, secErr := os.Lstat(secPath)
+	pubExists := pubErr == nil
+	secExists := secErr == nil
+	if !pubExists && !secExists {
+		if pubErr != nil {
+			return pubErr
+		}
+		return secErr
 	}
-	defer wipe(pub)
-	sec, err := readLimited(filepath.Join(dir, "secring.gpg"))
-	if err != nil {
-		return err
+	if pubErr != nil && !os.IsNotExist(pubErr) {
+		return pubErr
 	}
-	defer wipe(sec)
-	if err := s.importKeys(pub, flagPublic); err != nil {
-		return err
+	if secErr != nil && !os.IsNotExist(secErr) {
+		return secErr
 	}
-	return s.importKeys(sec, flagSecret)
+	if pubExists {
+		pub, err := readLimited(pubPath)
+		if err != nil {
+			return err
+		}
+		defer wipe(pub)
+		if err := s.importKeys(pub, flagPublic); err != nil {
+			return err
+		}
+	}
+	if secExists {
+		sec, err := readLimited(secPath)
+		if err != nil {
+			return err
+		}
+		defer wipe(sec)
+		if err := s.importKeys(sec, flagSecret); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Session) importKeys(b []byte, flags uint32) error {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/r404r/RnpArmor/internal/loadlib"
@@ -47,6 +47,9 @@ type KeySummary struct {
 	CanSign     bool
 	CanEncrypt  bool
 	CanCertify  bool
+	IsPrimary   bool
+	IsSub       bool
+	Subkeys     []KeySummary
 }
 
 type KeyGenRequest struct {
@@ -160,13 +163,34 @@ func ensureLib(path string) error {
 
 // Open creates an empty GPG-format ffi and registers the password slot.
 // pass is copied. The caller can wipe its own buffer. Open does not read
-// or write the default keyring.
+// or write the default keyring. An empty passphrase is ErrPass.
 func Open(libPath string, pass []byte) (*Session, error) {
 	if inCallback.Load() {
 		return nil, ErrReenter
 	}
 	if len(pass) == 0 || len(pass) > maxPass {
 		return nil, ErrPass
+	}
+	return openPrepared(libPath, pass)
+}
+
+// OpenOptionalPass is Open for public and read-only work. An empty
+// passphrase is allowed and still rejected when longer than maxPass.
+// Secret unlock, sign, decrypt, and protected export need a later
+// non-empty passphrase. The slot is copied; the caller can wipe pass.
+func OpenOptionalPass(libPath string, pass []byte) (*Session, error) {
+	if inCallback.Load() {
+		return nil, ErrReenter
+	}
+	if len(pass) > maxPass {
+		return nil, ErrPass
+	}
+	return openPrepared(libPath, pass)
+}
+
+func openPrepared(libPath string, pass []byte) (*Session, error) {
+	if inCallback.Load() {
+		return nil, ErrReenter
 	}
 	if err := ensureLib(libPath); err != nil {
 		return nil, err

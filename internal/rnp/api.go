@@ -97,6 +97,10 @@ type api struct {
 	keyLocked    func(key uintptr, locked *bool) uint32
 	keyRevoked   func(key uintptr, revoked *bool) uint32
 	keyUsage     func(key uintptr, usage string, allowed *bool) uint32
+	keyIsPrimary func(key uintptr, primary *bool) uint32
+	keyIsSub     func(key uintptr, sub *bool) uint32
+	keySubCount  func(key uintptr, n *uintptr) uint32
+	keySubAt     func(key, idx uintptr, sub *uintptr) uint32
 	encPassword  func(op uintptr, pass, s2kHash string, iterations uintptr, s2kCipher string) uint32
 	encSign      func(op, key uintptr, sig *uintptr) uint32
 	encCompress  func(op uintptr, alg string, level int32) uint32
@@ -204,6 +208,10 @@ func bind(handle uintptr) error {
 		reg(&bound.keyLocked, "rnp_key_is_locked")
 		reg(&bound.keyRevoked, "rnp_key_is_revoked")
 		reg(&bound.keyUsage, "rnp_key_allows_usage")
+		reg(&bound.keyIsPrimary, "rnp_key_is_primary")
+		reg(&bound.keyIsSub, "rnp_key_is_sub")
+		reg(&bound.keySubCount, "rnp_key_get_subkey_count")
+		reg(&bound.keySubAt, "rnp_key_get_subkey_at")
 		reg(&bound.encPassword, "rnp_op_encrypt_add_password")
 		reg(&bound.encSign, "rnp_op_encrypt_add_signature")
 		reg(&bound.encCompress, "rnp_op_encrypt_set_compression")

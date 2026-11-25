@@ -769,4 +769,439 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangZH: "保存",
 		LangJA: "保存",
 	},
+	"action.import_keys": {
+		LangEN: "Import keys",
+		LangZH: "导入密钥",
+		LangJA: "鍵をインポート",
+	},
+	"action.export_public_file": {
+		LangEN: "Export public key",
+		LangZH: "导出公钥",
+		LangJA: "公開鍵を書き出す",
+	},
+	"action.export_secret_file": {
+		LangEN: "Export secret key",
+		LangZH: "导出私钥",
+		LangJA: "秘密鍵を書き出す",
+	},
+	"action.export_revocation": {
+		LangEN: "Export revocation certificate",
+		LangZH: "导出吊销证书",
+		LangJA: "失効証明書を書き出す",
+	},
+	"action.copy_public": {
+		LangEN: "Copy public key",
+		LangZH: "复制公钥",
+		LangJA: "公開鍵をコピー",
+	},
+	"action.copy_secret": {
+		LangEN: "Copy secret key",
+		LangZH: "复制私钥",
+		LangJA: "秘密鍵をコピー",
+	},
+	"btn.choose_folder": {
+		LangEN: "Choose Folder...",
+		LangZH: "选择文件夹...",
+		LangJA: "フォルダを選択...",
+	},
+	"btn.new_key": {
+		LangEN: "+ New Key",
+		LangZH: "+ 新建密钥",
+		LangJA: "+ 新しい鍵",
+	},
+	"btn.import_file": {
+		LangEN: "Import File...",
+		LangZH: "导入文件...",
+		LangJA: "ファイルをインポート...",
+	},
+	"btn.import_text": {
+		LangEN: "Import Text...",
+		LangZH: "粘贴导入...",
+		LangJA: "テキストをインポート...",
+	},
+	"btn.refresh": {
+		LangEN: "Refresh",
+		LangZH: "刷新",
+		LangJA: "更新",
+	},
+	"btn.copy_fingerprint": {
+		LangEN: "Copy Fingerprint",
+		LangZH: "复制指纹",
+		LangJA: "指紋をコピー",
+	},
+	"btn.copy_public": {
+		LangEN: "Copy Public Key",
+		LangZH: "复制公钥",
+		LangJA: "公開鍵をコピー",
+	},
+	"btn.copy_secret": {
+		LangEN: "Copy Secret",
+		LangZH: "复制私钥",
+		LangJA: "秘密鍵をコピー",
+	},
+	"btn.export_public_asc": {
+		LangEN: "Export Public (.asc)...",
+		LangZH: "导出公钥 (.asc)...",
+		LangJA: "公開鍵を書き出す (.asc)...",
+	},
+	"btn.export_secret_asc": {
+		LangEN: "Export Secret (.asc)...",
+		LangZH: "导出私钥 (.asc)...",
+		LangJA: "秘密鍵を書き出す (.asc)...",
+	},
+	"btn.revocation": {
+		LangEN: "Revocation Cert...",
+		LangZH: "吊销证书...",
+		LangJA: "失効証明書...",
+	},
+	"btn.delete_key_ellipsis": {
+		LangEN: "Delete Key...",
+		LangZH: "删除密钥...",
+		LangJA: "鍵を削除...",
+	},
+	"btn.generate": {
+		LangEN: "Generate Key",
+		LangZH: "生成密钥",
+		LangJA: "鍵を生成",
+	},
+	"btn.import": {
+		LangEN: "Import",
+		LangZH: "导入",
+		LangJA: "インポート",
+	},
+	"btn.paste_clipboard": {
+		LangEN: "Paste from Clipboard",
+		LangZH: "从剪贴板粘贴",
+		LangJA: "クリップボードから貼り付け",
+	},
+	"btn.load_json": {
+		LangEN: "Load JSON",
+		LangZH: "加载 JSON",
+		LangJA: "JSON を読み込む",
+	},
+	"btn.cancel": {
+		LangEN: "Cancel",
+		LangZH: "取消",
+		LangJA: "キャンセル",
+	},
+	"btn.delete": {
+		LangEN: "Delete",
+		LangZH: "删除",
+		LangJA: "削除",
+	},
+	"seg.all": {
+		LangEN: "All",
+		LangZH: "全部",
+		LangJA: "すべて",
+	},
+	"seg.mine": {
+		LangEN: "My Keys",
+		LangZH: "我的密钥",
+		LangJA: "自分の鍵",
+	},
+	"seg.public": {
+		LangEN: "Public",
+		LangZH: "公钥",
+		LangJA: "公開鍵",
+	},
+	"seg.id16": {
+		LangEN: "Key ID (16)",
+		LangZH: "密钥 ID (16)",
+		LangJA: "鍵 ID (16)",
+	},
+	"seg.fp40": {
+		LangEN: "Fingerprint (40)",
+		LangZH: "指纹 (40)",
+		LangJA: "フィンガープリント (40)",
+	},
+	"col.type": {
+		LangEN: "Type",
+		LangZH: "类型",
+		LangJA: "種類",
+	},
+	"col.name": {
+		LangEN: "Name / Email",
+		LangZH: "名称 / 邮箱",
+		LangJA: "名前 / メール",
+	},
+	"col.key_id": {
+		LangEN: "Key ID",
+		LangZH: "密钥 ID",
+		LangJA: "鍵 ID",
+	},
+	"col.fingerprint": {
+		LangEN: "Fingerprint",
+		LangZH: "指纹",
+		LangJA: "フィンガープリント",
+	},
+	"col.algorithm": {
+		LangEN: "Algorithm",
+		LangZH: "算法",
+		LangJA: "アルゴリズム",
+	},
+	"col.status": {
+		LangEN: "Status",
+		LangZH: "状态",
+		LangJA: "状態",
+	},
+	"badge.secret": {
+		LangEN: "Secret",
+		LangZH: "私钥",
+		LangJA: "秘密鍵",
+	},
+	"badge.public": {
+		LangEN: "Public",
+		LangZH: "公钥",
+		LangJA: "公開鍵",
+	},
+	"badge.secret_public": {
+		LangEN: "Secret+Public",
+		LangZH: "私钥+公钥",
+		LangJA: "秘密鍵+公開鍵",
+	},
+	"badge.valid": {
+		LangEN: "Valid",
+		LangZH: "有效",
+		LangJA: "有効",
+	},
+	"badge.expired": {
+		LangEN: "Expired",
+		LangZH: "已过期",
+		LangJA: "期限切れ",
+	},
+	"badge.revoked": {
+		LangEN: "Revoked",
+		LangZH: "已吊销",
+		LangJA: "失効",
+	},
+	"badge.certify": {
+		LangEN: "Certify",
+		LangZH: "认证",
+		LangJA: "証明",
+	},
+	"badge.sign": {
+		LangEN: "Sign",
+		LangZH: "签名",
+		LangJA: "署名",
+	},
+	"badge.encrypt": {
+		LangEN: "Encrypt",
+		LangZH: "加密",
+		LangJA: "暗号化",
+	},
+	"label.expires": {
+		LangEN: "Expires",
+		LangZH: "过期",
+		LangJA: "有効期限",
+	},
+	"label.created": {
+		LangEN: "Created",
+		LangZH: "创建",
+		LangJA: "作成",
+	},
+	"label.never": {
+		LangEN: "Never",
+		LangZH: "永不",
+		LangJA: "無期限",
+	},
+	"label.key_id": {
+		LangEN: "Key ID",
+		LangZH: "密钥 ID",
+		LangJA: "鍵 ID",
+	},
+	"label.fingerprint": {
+		LangEN: "Fingerprint",
+		LangZH: "指纹",
+		LangJA: "フィンガープリント",
+	},
+	"label.subkeys": {
+		LangEN: "Subkeys",
+		LangZH: "子密钥",
+		LangJA: "副鍵",
+	},
+	"label.raw_json": {
+		LangEN: "Raw Key JSON",
+		LangZH: "原始密钥 JSON",
+		LangJA: "鍵 JSON",
+	},
+	"label.name": {
+		LangEN: "Name",
+		LangZH: "名称",
+		LangJA: "名前",
+	},
+	"label.email": {
+		LangEN: "Email",
+		LangZH: "邮箱",
+		LangJA: "メール",
+	},
+	"label.confirm_pass": {
+		LangEN: "Confirm Passphrase",
+		LangZH: "确认口令",
+		LangJA: "パスフレーズの確認",
+	},
+	"label.expiration": {
+		LangEN: "Expiration",
+		LangZH: "有效期",
+		LangJA: "有効期限",
+	},
+	"label.advanced": {
+		LangEN: "Advanced algorithms",
+		LangZH: "高级算法选项",
+		LangJA: "高度なアルゴリズム",
+	},
+	"label.none": {
+		LangEN: "None",
+		LangZH: "无",
+		LangJA: "なし",
+	},
+	"placeholder.unlock_pass": {
+		LangEN: "Passphrase to unlock secret keys",
+		LangZH: "用于解锁私钥的口令",
+		LangJA: "秘密鍵を解除するパスフレーズ",
+	},
+	"placeholder.search": {
+		LangEN: "Search UID, Key ID, fingerprint, algorithm",
+		LangZH: "搜索 UID、密钥 ID、指纹、算法",
+		LangJA: "UID・鍵 ID・指紋・アルゴリズムを検索",
+	},
+	"placeholder.import_text": {
+		LangEN: "Paste an armored public or secret key",
+		LangZH: "粘贴装甲公钥或私钥",
+		LangJA: "装甲公開鍵または秘密鍵を貼り付け",
+	},
+	"placeholder.name": {
+		LangEN: "Name",
+		LangZH: "名称",
+		LangJA: "名前",
+	},
+	"placeholder.email": {
+		LangEN: "name@example.com",
+		LangZH: "name@example.com",
+		LangJA: "name@example.com",
+	},
+	"placeholder.new_pass": {
+		LangEN: "Passphrase",
+		LangZH: "口令",
+		LangJA: "パスフレーズ",
+	},
+	"placeholder.confirm_pass": {
+		LangEN: "Confirm passphrase",
+		LangZH: "再次输入口令",
+		LangJA: "パスフレーズを再入力",
+	},
+	"exp.never": {
+		LangEN: "Never",
+		LangZH: "永不",
+		LangJA: "無期限",
+	},
+	"exp.1y": {
+		LangEN: "1 Year",
+		LangZH: "1 年",
+		LangJA: "1 年",
+	},
+	"exp.2y": {
+		LangEN: "2 Years",
+		LangZH: "2 年",
+		LangJA: "2 年",
+	},
+	"exp.5y": {
+		LangEN: "5 Years",
+		LangZH: "5 年",
+		LangJA: "5 年",
+	},
+	"err.name_or_email": {
+		LangEN: "Enter a name or an email.",
+		LangZH: "请至少填写名称或邮箱。",
+		LangJA: "名前またはメールを入力してください。",
+	},
+	"err.pass_empty": {
+		LangEN: "Passphrase is required.",
+		LangZH: "口令不能为空。",
+		LangJA: "パスフレーズは必須です。",
+	},
+	"err.pass_mismatch": {
+		LangEN: "Passphrase and confirmation do not match.",
+		LangZH: "两次输入的口令不一致。",
+		LangJA: "パスフレーズが一致しません。",
+	},
+	"err.import_empty": {
+		LangEN: "Nothing to import.",
+		LangZH: "没有可导入的内容。",
+		LangJA: "インポートする内容がありません。",
+	},
+	"empty.keys": {
+		LangEN: "No keys in this folder. Choose a folder or create a key.",
+		LangZH: "此文件夹没有密钥。请选择文件夹或新建密钥。",
+		LangJA: "このフォルダに鍵はありません。フォルダを選ぶか鍵を作成してください。",
+	},
+	"empty.search": {
+		LangEN: "No keys match this search.",
+		LangZH: "没有符合搜索的密钥。",
+		LangJA: "検索に一致する鍵はありません。",
+	},
+	"empty.select": {
+		LangEN: "Select a key to inspect it.",
+		LangZH: "选择一把密钥以查看详情。",
+		LangJA: "鍵を選ぶと詳細を表示します。",
+	},
+	"empty.subkeys": {
+		LangEN: "No subkeys.",
+		LangZH: "没有子密钥。",
+		LangJA: "副鍵はありません。",
+	},
+	"dlg.choose_folder": {
+		LangEN: "Choose keyring folder",
+		LangZH: "选择钥匙圈文件夹",
+		LangJA: "鍵リングのフォルダを選択",
+	},
+	"dlg.import_file": {
+		LangEN: "Import key file",
+		LangZH: "导入密钥文件",
+		LangJA: "鍵ファイルをインポート",
+	},
+	"dlg.export_public": {
+		LangEN: "Export public key",
+		LangZH: "导出公钥",
+		LangJA: "公開鍵を書き出す",
+	},
+	"dlg.export_secret": {
+		LangEN: "Export secret key",
+		LangZH: "导出私钥",
+		LangJA: "秘密鍵を書き出す",
+	},
+	"dlg.export_revocation": {
+		LangEN: "Save revocation certificate",
+		LangZH: "保存吊销证书",
+		LangJA: "失効証明書を保存",
+	},
+	"dlg.delete_title": {
+		LangEN: "Delete key",
+		LangZH: "删除密钥",
+		LangJA: "鍵を削除",
+	},
+	"dlg.delete_public": {
+		LangEN: "This deletes the public key.",
+		LangZH: "这将删除公钥。",
+		LangJA: "公開鍵を削除します。",
+	},
+	"dlg.delete_secret": {
+		LangEN: "This deletes the public key and the secret key.",
+		LangZH: "这将同时删除公钥和私钥。",
+		LangJA: "公開鍵と秘密鍵を削除します。",
+	},
+	"title.new_key": {
+		LangEN: "New Key",
+		LangZH: "新建密钥",
+		LangJA: "新しい鍵",
+	},
+	"title.import_text": {
+		LangEN: "Import Key Text",
+		LangZH: "粘贴导入密钥",
+		LangJA: "鍵テキストをインポート",
+	},
+	"hint.secret_export": {
+		LangEN: "A secret key export can unlock your mail and files. The file is saved with mode 0600.",
+		LangZH: "导出私钥可能解锁你的邮件和文件。文件将以 0600 权限保存。",
+		LangJA: "秘密鍵の書き出しはメールとファイルを解錠できます。ファイルは 0600 で保存します。",
+	},
 }

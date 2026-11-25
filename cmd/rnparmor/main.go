@@ -70,6 +70,38 @@ type uiState struct {
 	langIdx       int
 	mainWin       *mygo.Window
 	aboutWin      *mygo.Window
+
+	keyFilter     int
+	keyIDMode     int
+	keySearch     string
+	keySplitPct   float32
+	keyTable      ui.ListState
+	keySel        int
+	keySort       ui.SortOrder
+	shownSelected string
+	shownSig      string
+	keyJSONOpen   bool
+
+	newKeyWin      *mygo.Window
+	newKeyName     string
+	newKeyEmail    string
+	newKeyPass     string
+	newKeyPass2    string
+	newKeyExpiry   int
+	newKeyAdvanced bool
+	newKeyErr      string
+
+	importWin            *mygo.Window
+	importText           string
+	importErr            string
+	importBytes          []byte
+	closeImportOnSuccess bool
+
+	exportPath string
+	exportKind string
+
+	pendingCloseNew    bool
+	pendingCloseImport bool
 }
 
 func main() {
@@ -114,28 +146,29 @@ func main() {
 	}
 
 	st := &uiState{
-		libPath:       path,
-		version:       v,
-		statusKey:     "status.ready",
-		statusDone:    false,
-		workspace:     mustWd(),
-		passphrase:    "change-me",
-		encCipher:     "AES256",
-		encCompress:   "zlib",
-		textMode:      string(rnp.SignModeDetached),
-		featureQuery:  "",
-		packetAsJSON:  true,
-		textInput:     "hello from RnpArmor",
+		libPath:         path,
+		version:         v,
+		statusKey:       "status.ready",
+		statusDone:      false,
+		workspace:       mustWd(),
+		passphrase:      "",
+		keySplitPct:     58,
+		encCipher:       "AES256",
+		encCompress:     "zlib",
+		textMode:        string(rnp.SignModeDetached),
+		featureQuery:    "",
+		packetAsJSON:    true,
+		textInput:       "hello from RnpArmor",
 		textVerifyInput: "",
-		langIdx:       LangIndex(lang),
+		langIdx:         LangIndex(lang),
 		keyReq: rnp.KeyGenRequest{
-			UserID:      "User <user@example.com>",
-			PrimaryAlg:  "EDDSA",
+			UserID:       "User <user@example.com>",
+			PrimaryAlg:   "EDDSA",
 			PrimaryCurve: "Ed25519",
-			SubkeyAlg:   "ECDH",
-			SubkeyCurve: "Curve25519",
-			HashAlg:     "SHA256",
-			SymmCipher:  "AES256",
+			SubkeyAlg:    "ECDH",
+			SubkeyCurve:  "Curve25519",
+			HashAlg:      "SHA256",
+			SymmCipher:   "AES256",
 		},
 	}
 
@@ -156,9 +189,12 @@ func main() {
 		}
 		w.OnClosed(func() {
 			st.closeAboutWindow()
+			st.closeNewKeyWindow()
+			st.closeImportWindow()
 		})
 		st.mainWin = w
 		st.applyMainMenu()
+		st.autoLoadKeyring()
 	})
 	if err := mygo.App.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -212,6 +248,12 @@ func (s *uiState) setLang(l Lang) {
 	}
 	if s.aboutWin != nil && !s.aboutWin.IsDestroyed() {
 		s.aboutWin.SetTitle(s.tr("title.about"))
+	}
+	if s.newKeyWin != nil && !s.newKeyWin.IsDestroyed() {
+		s.newKeyWin.SetTitle(s.tr("title.new_key"))
+	}
+	if s.importWin != nil && !s.importWin.IsDestroyed() {
+		s.importWin.SetTitle(s.tr("title.import_text"))
 	}
 	s.invalidateAll()
 }
@@ -281,6 +323,12 @@ func (s *uiState) invalidateAll() {
 	if s.aboutWin != nil && !s.aboutWin.IsDestroyed() {
 		s.aboutWin.Invalidate()
 	}
+	if s.newKeyWin != nil && !s.newKeyWin.IsDestroyed() {
+		s.newKeyWin.Invalidate()
+	}
+	if s.importWin != nil && !s.importWin.IsDestroyed() {
+		s.importWin.Invalidate()
+	}
 }
 
 func (s *uiState) menuTemplate() []*mygo.MenuItem {
@@ -318,6 +366,7 @@ func (s *uiState) menuTemplate() []*mygo.MenuItem {
 		{
 			Label: s.tr("menu.file"),
 			Submenu: []*mygo.MenuItem{
+				{Label: s.tr("btn.choose_folder"), Click: func(*mygo.MenuItem, *mygo.Window) { s.chooseWorkspace() }},
 				{Label: s.tr("btn.open_session"), Click: func(*mygo.MenuItem, *mygo.Window) { s.run("action.open_session", s.openSession) }},
 				{Label: s.tr("btn.load_keyring"), Click: func(*mygo.MenuItem, *mygo.Window) { s.run("action.load_keyring", s.loadKeyring) }},
 				{Label: s.tr("btn.save_keyring"), Click: func(*mygo.MenuItem, *mygo.Window) { s.run("action.save_keyring", s.saveKeyring) }},
@@ -412,94 +461,6 @@ func (s *uiState) statusLine() string {
 		status = status + " " + s.tr("state.done")
 	}
 	return state + " | " + status
-}
-
-func (s *uiState) viewKeys(c *ui.Context) {
-	t := c.Theme()
-	ui.Form(c, func() {
-		ui.Field(c, s.tr("label.passphrase"), func() {
-			ui.TextInput(c, &s.passphrase).Placeholder(s.tr("placeholder.session_passphrase"))
-		})
-		ui.Field(c, s.tr("label.workspace"), func() {
-			ui.TextInput(c, &s.workspace).Placeholder(s.tr("placeholder.workspace"))
-		})
-		ui.Field(c, s.tr("label.user_id"), func() {
-			ui.TextInput(c, &s.keyReq.UserID)
-		})
-		ui.Field(c, s.tr("label.primary"), func() {
-			ui.Row(c).Gap(8).Children(func() {
-				ui.Select(c, &s.keyReq.PrimaryAlg, []string{"EDDSA", "RSA", "ECDSA", "DSA"}).Width(180)
-				ui.TextInput(c, &s.keyReq.PrimaryCurve).Placeholder(s.tr("placeholder.curve"))
-				bits := float64(s.keyReq.PrimaryBits)
-				if ui.NumberInput(c, &bits, 0, 8192, 1).Width(120).Changed() {
-					s.keyReq.PrimaryBits = int(bits)
-				}
-			})
-		})
-		ui.Field(c, s.tr("label.subkey"), func() {
-			ui.Row(c).Gap(8).Children(func() {
-				ui.Select(c, &s.keyReq.SubkeyAlg, []string{"ECDH", "RSA", "ELGAMAL", ""}).Width(180)
-				ui.TextInput(c, &s.keyReq.SubkeyCurve).Placeholder(s.tr("placeholder.curve"))
-				bits := float64(s.keyReq.SubkeyBits)
-				if ui.NumberInput(c, &bits, 0, 8192, 1).Width(120).Changed() {
-					s.keyReq.SubkeyBits = int(bits)
-				}
-			})
-		})
-		ui.Field(c, s.tr("label.crypto"), func() {
-			ui.Row(c).Gap(8).Children(func() {
-				ui.Select(c, &s.keyReq.HashAlg, []string{"SHA256", "SHA384", "SHA512", "SHA3-256"}).Width(180)
-				ui.Select(c, &s.keyReq.SymmCipher, []string{"AES256", "AES192", "AES128", "Camellia256"}).Width(180)
-			})
-		})
-	})
-
-	ui.Row(c).Gap(8).Padding(8, 0, 12, 0).Children(func() {
-		if ui.PrimaryButton(c, s.tr("btn.open_session")).Clicked() {
-			s.run("action.open_session", s.openSession)
-		}
-		if ui.Button(c, s.tr("btn.generate_key")).Clicked() {
-			s.run("action.generate_key", s.generateKey)
-		}
-		if ui.Button(c, s.tr("btn.reload_keys")).Clicked() {
-			s.run("action.list_keys", s.reloadKeys)
-		}
-		if ui.Button(c, s.tr("btn.save_keyring")).Clicked() {
-			s.run("action.save_keyring", s.saveKeyring)
-		}
-		if ui.Button(c, s.tr("btn.load_keyring")).Clicked() {
-			s.run("action.load_keyring", s.loadKeyring)
-		}
-	})
-
-	ui.Divider(c)
-	ui.Text(c, s.tr("label.keyring")).Bold().Padding(8, 0, 4, 0)
-	ui.Text(c, s.tr("hint.keys_alg")).FontSize(12).Padding(0, 0, 6, 0)
-	for i := range s.keys {
-		k := s.keys[i]
-		line := fmt.Sprintf("%s | %s | %s", shorten(k.Fingerprint), k.Algorithm, k.PrimaryUID)
-		if ui.Button(c, line).Clicked() {
-			s.selected = k.Fingerprint
-		}
-	}
-	if s.selected != "" {
-		ui.Textf(c, "%s: %s", s.tr("label.selected"), s.selected).TextColor(t.TextMuted)
-		ui.Row(c).Gap(8).Children(func() {
-			if ui.Button(c, s.tr("btn.key_json")).Clicked() {
-				s.run("action.key_json", s.loadKeyJSON)
-			}
-			if ui.Button(c, s.tr("btn.export_public")).Clicked() {
-				s.run("action.export_public", s.exportPublic)
-			}
-			if ui.Button(c, s.tr("btn.export_secret")).Clicked() {
-				s.run("action.export_secret", s.exportSecret)
-			}
-			if ui.Button(c, s.tr("btn.delete_key")).Clicked() {
-				s.run("action.delete_key", s.deleteKey)
-			}
-		})
-	}
-	ui.TextArea(c, &s.keyJSON).Height(220).Placeholder(s.tr("placeholder.key_output"))
 }
 
 func (s *uiState) viewTextStudio(c *ui.Context) {
@@ -601,8 +562,10 @@ func (s *uiState) viewPackets(c *ui.Context) {
 func (s *uiState) viewPortable(c *ui.Context) {
 	t := c.Theme()
 	ui.Form(c, func() {
-		ui.Field(c, s.tr("label.workspace"), func() { ui.TextInput(c, &s.workspace) })
-		ui.Field(c, s.tr("label.passphrase"), func() { ui.TextInput(c, &s.passphrase) })
+		ui.Field(c, s.tr("label.workspace"), func() { s.workspaceChooser(c) })
+		ui.Field(c, s.tr("label.passphrase"), func() {
+			ui.TextInput(c, &s.passphrase).Password().Placeholder(s.tr("placeholder.unlock_pass"))
+		})
 	})
 	ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
 		if ui.PrimaryButton(c, s.tr("btn.open_load")).Clicked() {
@@ -711,6 +674,9 @@ type actionInput struct {
 	packetAsJSON       bool
 	featureQuery       string
 	langIdx            int
+	importData         []byte
+	exportPath         string
+	exportKind         string
 }
 
 func (in actionInput) tr(key string) string {
@@ -736,6 +702,11 @@ type actionResult struct {
 	packetOut             string
 	hasSessionLoaded      bool
 	sessionLoaded         bool
+	hasForceSelect        bool
+	forceSelect           string
+	hasCopy               bool
+	copyText              string
+	copyConcealed         bool
 }
 
 type actionOutcome struct {
@@ -747,7 +718,7 @@ type actionOutcome struct {
 }
 
 func (s *uiState) snapshot() actionInput {
-	return actionInput{
+	in := actionInput{
 		libPath:            s.libPath,
 		passphrase:         s.passphrase,
 		workspace:          s.workspace,
@@ -772,7 +743,14 @@ func (s *uiState) snapshot() actionInput {
 		packetAsJSON:       s.packetAsJSON,
 		featureQuery:       s.featureQuery,
 		langIdx:            s.langIdx,
+		importData:         s.importBytes,
+		exportPath:         s.exportPath,
+		exportKind:         s.exportKind,
 	}
+	s.importBytes = nil
+	s.exportPath = ""
+	s.exportKind = ""
+	return in
 }
 
 func invalidateWins(mainWin, aboutWin *mygo.Window) {
@@ -811,6 +789,14 @@ func (s *uiState) run(title string, fn sessionAction) {
 			defer close(done)
 		}
 		out := performAction(in, fn)
+		if out.err == nil {
+			if cerr := deliverClipboard(&out.res); cerr != nil {
+				out.err = cerr
+			}
+		} else {
+			out.res.hasCopy = false
+			out.res.copyText = ""
+		}
 		s.applyUI(func() {
 			s.applyResult(title, out)
 		})
@@ -833,15 +819,35 @@ func (s *uiState) applyUI(fn func()) {
 			s.mu.Lock()
 			fn()
 			about := s.aboutWin
+			newW := s.newKeyWin
+			imp := s.importWin
+			closeNew := s.pendingCloseNew
+			closeImp := s.pendingCloseImport
+			s.pendingCloseNew = false
+			s.pendingCloseImport = false
 			s.mu.Unlock()
 			if about != nil && !about.IsDestroyed() {
 				about.Invalidate()
+			}
+			if newW != nil && !newW.IsDestroyed() {
+				newW.Invalidate()
+			}
+			if imp != nil && !imp.IsDestroyed() {
+				imp.Invalidate()
+			}
+			if closeNew && newW != nil && !newW.IsDestroyed() {
+				newW.Close()
+			}
+			if closeImp && imp != nil && !imp.IsDestroyed() {
+				imp.Close()
 			}
 		})
 		return
 	}
 	s.mu.Lock()
 	fn()
+	s.pendingCloseNew = false
+	s.pendingCloseImport = false
 	s.mu.Unlock()
 }
 
@@ -868,17 +874,21 @@ func (s *uiState) applyResult(title string, out actionOutcome) {
 	if out.haveKeys {
 		kept := s.selected
 		s.keys = out.keys
-		stillThere := false
-		for i := range out.keys {
-			if kept != "" && out.keys[i].Fingerprint == kept {
-				stillThere = true
-				break
-			}
-		}
-		if stillThere {
-			s.selected = kept
+		if res.hasForceSelect {
+			s.selected = res.forceSelect
 		} else {
-			s.selected = out.selected
+			stillThere := false
+			for i := range out.keys {
+				if kept != "" && out.keys[i].Fingerprint == kept {
+					stillThere = true
+					break
+				}
+			}
+			if stillThere {
+				s.selected = kept
+			} else {
+				s.selected = out.selected
+			}
 		}
 	}
 	if res.hasSessionLoaded {
@@ -889,10 +899,27 @@ func (s *uiState) applyResult(title string, out actionOutcome) {
 	if out.err != nil {
 		s.lastErr = s.tr(title) + ": " + out.err.Error()
 		s.statusDone = false
+		s.closeImportOnSuccess = false
+		if title == "action.generate_key" {
+			s.newKeyErr = s.lastErr
+		}
+		if title == "action.import_keys" {
+			s.importErr = s.lastErr
+		}
 		return
 	}
 	s.lastErr = ""
 	s.statusDone = true
+	if res.hasForceSelect && res.forceSelect != "" {
+		s.pendingCloseNew = true
+		s.newKeyErr = ""
+	}
+	if s.closeImportOnSuccess && title == "action.import_keys" {
+		s.pendingCloseImport = true
+		s.closeImportOnSuccess = false
+		s.importText = ""
+		s.importErr = ""
+	}
 }
 
 func performAction(in actionInput, fn sessionAction) actionOutcome {
@@ -909,7 +936,15 @@ func performAction(in actionInput, fn sessionAction) actionOutcome {
 		return actionOutcome{res: res, selected: in.selected, err: err}
 	}
 
-	sess, err := rnp.Open(in.libPath, pass)
+	var (
+		sess *rnp.Session
+		err  error
+	)
+	if len(pass) == 0 {
+		sess, err = rnp.OpenOptionalPass(in.libPath, nil)
+	} else {
+		sess, err = rnp.Open(in.libPath, pass)
+	}
 	if err != nil {
 		return fail(actionResult{}, err)
 	}
@@ -921,8 +956,8 @@ func performAction(in actionInput, fn sessionAction) actionOutcome {
 			ws = abs
 		}
 	}
-	// Load only when both keyring files exist. A previous sessionLoaded
-	// flag must not import an empty directory.
+	// Load when either keyring file exists. A public-only directory has
+	// pubring.gpg and no secring.gpg. An empty directory is not imported.
 	if ws != "" && hasKeyringFiles(ws) {
 		if lerr := sess.LoadFrom(ctx, ws); lerr != nil {
 			return fail(actionResult{}, lerr)
@@ -958,11 +993,16 @@ func (s *uiState) openSession(sess *rnp.Session, ctx context.Context, _ actionIn
 }
 
 func (s *uiState) generateKey(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
-	_, err := sess.GenerateKeyWithSpec(ctx, in.keyReq)
+	sum, err := sess.GenerateKeyWithSpec(ctx, in.keyReq)
 	if err != nil {
 		return actionResult{}, err
 	}
-	return actionResult{persist: persistUpdate}, nil
+	res := actionResult{persist: persistUpdate}
+	if sum.Fingerprint != "" {
+		res.hasForceSelect = true
+		res.forceSelect = sum.Fingerprint
+	}
+	return res, nil
 }
 
 func (s *uiState) reloadKeys(_ *rnp.Session, _ context.Context, _ actionInput) (actionResult, error) {
@@ -1246,13 +1286,6 @@ func pickSigner(on bool, explicit, selected string) string {
 	return strings.TrimSpace(selected)
 }
 
-func shorten(fp string) string {
-	if len(fp) <= 16 {
-		return fp
-	}
-	return fp[:8] + "…" + fp[len(fp)-8:]
-}
-
 func normalizeWorkspace(v string) (string, error) {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -1272,13 +1305,19 @@ func hasKeyringFiles(dir string) bool {
 	if dir == "" || !filepath.IsAbs(dir) {
 		return false
 	}
-	if _, err := os.Stat(filepath.Join(dir, "pubring.gpg")); err != nil {
-		return false
+	if fileExists(filepath.Join(dir, "pubring.gpg")) {
+		return true
 	}
-	if _, err := os.Stat(filepath.Join(dir, "secring.gpg")); err != nil {
-		return false
+	return fileExists(filepath.Join(dir, "secring.gpg"))
+}
+
+func (s *uiState) autoLoadKeyring() {
+	abs, err := normalizeWorkspace(s.workspace)
+	if err != nil || !hasKeyringFiles(abs) {
+		return
 	}
-	return true
+	s.workspace = abs
+	s.run("action.load_keyring", s.loadKeyring)
 }
 
 func fileExists(path string) bool {
