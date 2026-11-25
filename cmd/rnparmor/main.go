@@ -830,9 +830,12 @@ func (s *uiState) applyUI(fn func()) {
 	s.mu.Unlock()
 	if useMain {
 		win.Update(func() {
+			s.mu.Lock()
 			fn()
-			if s.aboutWin != nil && !s.aboutWin.IsDestroyed() {
-				s.aboutWin.Invalidate()
+			about := s.aboutWin
+			s.mu.Unlock()
+			if about != nil && !about.IsDestroyed() {
+				about.Invalidate()
 			}
 		})
 		return
@@ -1299,13 +1302,29 @@ func refreshKeyList(sess *rnp.Session, ctx context.Context, selected string) ([]
 		}
 	}
 	if !found {
-		if len(keys) > 0 {
-			selected = keys[0].Fingerprint
-		} else {
-			selected = ""
-		}
+		selected = defaultSelectedKey(keys)
 	}
 	return keys, selected, nil
+}
+
+// defaultSelectedKey prefers a primary secret key (CanCertify && HasSecret) so
+// signing, exporting, and deleting default to the primary keypair rather than a
+// subkey when librnp enumerates keys in arbitrary order.
+func defaultSelectedKey(keys []rnp.KeySummary) string {
+	for i := range keys {
+		if keys[i].CanCertify && keys[i].HasSecret {
+			return keys[i].Fingerprint
+		}
+	}
+	for i := range keys {
+		if keys[i].CanCertify {
+			return keys[i].Fingerprint
+		}
+	}
+	if len(keys) > 0 {
+		return keys[0].Fingerprint
+	}
+	return ""
 }
 
 func persistToWorkspace(sess *rnp.Session, ctx context.Context, ws string, deleteEmpty bool) error {
