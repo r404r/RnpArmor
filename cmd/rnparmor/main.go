@@ -489,27 +489,13 @@ func (s *uiState) viewKeys(c *ui.Context) {
 				s.run("action.key_json", s.loadKeyJSON)
 			}
 			if ui.Button(c, s.tr("btn.export_public")).Clicked() {
-				s.run("action.export_public", func(sess *rnp.Session, ctx context.Context) error {
-					v, err := sess.ExportKey(ctx, s.selected, false)
-					if err == nil {
-						s.keyJSON = v
-					}
-					return err
-				})
+				s.run("action.export_public", s.exportPublic)
 			}
 			if ui.Button(c, s.tr("btn.export_secret")).Clicked() {
-				s.run("action.export_secret", func(sess *rnp.Session, ctx context.Context) error {
-					v, err := sess.ExportKey(ctx, s.selected, true)
-					if err == nil {
-						s.keyJSON = v
-					}
-					return err
-				})
+				s.run("action.export_secret", s.exportSecret)
 			}
 			if ui.Button(c, s.tr("btn.delete_key")).Clicked() {
-				s.run("action.delete_key", func(sess *rnp.Session, ctx context.Context) error {
-					return sess.DeleteKey(ctx, s.selected)
-				})
+				s.run("action.delete_key", s.deleteKey)
 			}
 		})
 	}
@@ -620,13 +606,7 @@ func (s *uiState) viewPortable(c *ui.Context) {
 	})
 	ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
 		if ui.PrimaryButton(c, s.tr("btn.open_load")).Clicked() {
-			s.run("action.open_load", func(sess *rnp.Session, ctx context.Context) error {
-				if err := sess.LoadFrom(ctx, s.workspace); err != nil {
-					return err
-				}
-				s.sessionLoaded = true
-				return nil
-			})
+			s.run("action.open_load", s.openAndLoad)
 		}
 		if ui.Button(c, s.tr("btn.save")).Clicked() {
 			s.run("action.save", s.saveKeyring)
@@ -695,294 +675,550 @@ func (s *uiState) yesNo(v bool) string {
 	return s.tr("about.no")
 }
 
-func (s *uiState) run(title string, fn func(sess *rnp.Session, ctx context.Context) error) {
+type sessionAction func(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error)
+
+type persistMode int
+
+const (
+	persistNone persistMode = iota
+	persistUpdate
+	persistDelete
+)
+
+// actionInput is a main-thread snapshot. The worker must not read uiState.
+type actionInput struct {
+	libPath            string
+	passphrase         string
+	workspace          string
+	selected           string
+	keyReq             rnp.KeyGenRequest
+	textInput          string
+	textOutput         string
+	textSigner         string
+	textVerifyInput    string
+	textVerifyDetached string
+	textMode           string
+	encRecipients      string
+	encPassword        string
+	encCipher          string
+	encCompress        string
+	encSign            bool
+	fileSrc            string
+	fileDst            string
+	fileSig            string
+	fileDetached       bool
+	packetInput        string
+	packetAsJSON       bool
+	featureQuery       string
+	langIdx            int
+}
+
+func (in actionInput) tr(key string) string {
+	return Tr(LangByIndex(in.langIdx), key)
+}
+
+// actionResult carries UI writes. Pointer-free flags keep unset fields intact.
+type actionResult struct {
+	persist persistMode
+	saved   bool
+
+	hasKeyJSON            bool
+	keyJSON               string
+	hasTextOutput         bool
+	textOutput            string
+	hasTextVerifyInput    bool
+	textVerifyInput       string
+	hasTextVerifyDetached bool
+	textVerifyDetached    string
+	hasFeatures           bool
+	features              string
+	hasPacketOut          bool
+	packetOut             string
+	hasSessionLoaded      bool
+	sessionLoaded         bool
+}
+
+type actionOutcome struct {
+	res      actionResult
+	keys     []rnp.KeySummary
+	selected string
+	haveKeys bool
+	err      error
+}
+
+func (s *uiState) snapshot() actionInput {
+	return actionInput{
+		libPath:            s.libPath,
+		passphrase:         s.passphrase,
+		workspace:          s.workspace,
+		selected:           s.selected,
+		keyReq:             s.keyReq,
+		textInput:          s.textInput,
+		textOutput:         s.textOutput,
+		textSigner:         s.textSigner,
+		textVerifyInput:    s.textVerifyInput,
+		textVerifyDetached: s.textVerifyDetached,
+		textMode:           s.textMode,
+		encRecipients:      s.encRecipients,
+		encPassword:        s.encPassword,
+		encCipher:          s.encCipher,
+		encCompress:        s.encCompress,
+		encSign:            s.encSign,
+		fileSrc:            s.fileSrc,
+		fileDst:            s.fileDst,
+		fileSig:            s.fileSig,
+		fileDetached:       s.fileDetached,
+		packetInput:        s.packetInput,
+		packetAsJSON:       s.packetAsJSON,
+		featureQuery:       s.featureQuery,
+		langIdx:            s.langIdx,
+	}
+}
+
+func invalidateWins(mainWin, aboutWin *mygo.Window) {
+	if mainWin != nil && !mainWin.IsDestroyed() {
+		mainWin.Invalidate()
+	}
+	if aboutWin != nil && !aboutWin.IsDestroyed() {
+		aboutWin.Invalidate()
+	}
+}
+
+func (s *uiState) run(title string, fn sessionAction) {
 	s.mu.Lock()
 	if s.busy {
 		s.mu.Unlock()
 		return
 	}
-	lib := s.libPath
-	passphrase := s.passphrase
-	workspace := strings.TrimSpace(s.workspace)
-	loaded := s.sessionLoaded
+	in := s.snapshot()
+	mainWin := s.mainWin
+	aboutWin := s.aboutWin
+	headless := mainWin == nil || mainWin.IsDestroyed()
 	s.busy = true
 	s.statusKey = title
 	s.statusDone = false
 	s.lastErr = ""
 	s.mu.Unlock()
+	// Busy is visible before the worker starts. Do not hold s.mu across Invalidate.
+	invalidateWins(mainWin, aboutWin)
 
-	pass := []byte(passphrase)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-
+	var done chan struct{}
+	if headless {
+		done = make(chan struct{})
+	}
 	go func() {
-		defer cancel()
-		defer func() {
-			for i := range pass {
-				pass[i] = 0
-			}
-		}()
-
-		sess, err := rnp.Open(lib, pass)
-		if err != nil {
-			s.finish(title, err)
-			return
+		if done != nil {
+			defer close(done)
 		}
-		defer sess.Close()
-
-		if workspace != "" {
-			if abs, aerr := normalizeWorkspace(workspace); aerr == nil {
-				workspace = abs
-			}
-		}
-		if workspace != "" && (loaded || hasKeyringFiles(workspace)) {
-			if lerr := sess.LoadFrom(ctx, workspace); lerr != nil {
-				s.finish(title, lerr)
-				return
-			}
-		}
-		err = <-sess.Go(ctx, func(ctx context.Context) error {
-			return fn(sess, ctx)
+		out := performAction(in, fn)
+		s.applyUI(func() {
+			s.applyResult(title, out)
 		})
-		if err == nil {
-			if workspace != "" {
-				if perr := s.persistToWorkspace(sess, ctx, workspace); perr != nil {
-					err = perr
-				} else {
-					s.mu.Lock()
-					s.sessionLoaded = true
-					s.mu.Unlock()
-				}
-			}
-			if err == nil {
-				_ = s.pullKeys(sess, ctx)
-			}
-		}
-		s.finish(title, err)
 	}()
+	if done != nil {
+		<-done
+	}
 }
 
-func (s *uiState) finish(title string, err error) {
+// applyUI writes UI state on the main thread when a window exists.
+// Headless tests run fn under s.mu and wait in run. Never call Update
+// or Invalidate while holding s.mu: the UI thread also locks it.
+func (s *uiState) applyUI(fn func()) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	win := s.mainWin
+	useMain := win != nil && !win.IsDestroyed()
+	s.mu.Unlock()
+	if useMain {
+		win.Update(func() {
+			fn()
+			if s.aboutWin != nil && !s.aboutWin.IsDestroyed() {
+				s.aboutWin.Invalidate()
+			}
+		})
+		return
+	}
+	s.mu.Lock()
+	fn()
+	s.mu.Unlock()
+}
+
+func (s *uiState) applyResult(title string, out actionOutcome) {
+	res := out.res
+	if res.hasKeyJSON {
+		s.keyJSON = res.keyJSON
+	}
+	if res.hasTextOutput {
+		s.textOutput = res.textOutput
+	}
+	if res.hasTextVerifyInput {
+		s.textVerifyInput = res.textVerifyInput
+	}
+	if res.hasTextVerifyDetached {
+		s.textVerifyDetached = res.textVerifyDetached
+	}
+	if res.hasFeatures {
+		s.features = res.features
+	}
+	if res.hasPacketOut {
+		s.packetOut = res.packetOut
+	}
+	if out.haveKeys {
+		kept := s.selected
+		s.keys = out.keys
+		stillThere := false
+		for i := range out.keys {
+			if kept != "" && out.keys[i].Fingerprint == kept {
+				stillThere = true
+				break
+			}
+		}
+		if stillThere {
+			s.selected = kept
+		} else {
+			s.selected = out.selected
+		}
+	}
+	if res.hasSessionLoaded {
+		s.sessionLoaded = res.sessionLoaded
+	}
 	s.busy = false
 	s.statusKey = title
-	if err != nil {
-		s.lastErr = s.tr(title) + ": " + err.Error()
+	if out.err != nil {
+		s.lastErr = s.tr(title) + ": " + out.err.Error()
 		s.statusDone = false
-	} else {
-		s.lastErr = ""
-		s.statusDone = true
+		return
 	}
-	go s.invalidateAll()
+	s.lastErr = ""
+	s.statusDone = true
 }
 
-func (s *uiState) openSession(sess *rnp.Session, ctx context.Context) error {
+func performAction(in actionInput, fn sessionAction) actionOutcome {
+	pass := []byte(in.passphrase)
+	defer func() {
+		for i := range pass {
+			pass[i] = 0
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	fail := func(res actionResult, err error) actionOutcome {
+		return actionOutcome{res: res, selected: in.selected, err: err}
+	}
+
+	sess, err := rnp.Open(in.libPath, pass)
+	if err != nil {
+		return fail(actionResult{}, err)
+	}
+	defer sess.Close()
+
+	ws := strings.TrimSpace(in.workspace)
+	if ws != "" {
+		if abs, aerr := normalizeWorkspace(ws); aerr == nil {
+			ws = abs
+		}
+	}
+	// Load only when both keyring files exist. A previous sessionLoaded
+	// flag must not import an empty directory.
+	if ws != "" && hasKeyringFiles(ws) {
+		if lerr := sess.LoadFrom(ctx, ws); lerr != nil {
+			return fail(actionResult{}, lerr)
+		}
+	}
+
+	// Session methods already call Do. sess.Go would lock Session.mu twice and deadlock.
+	res, err := fn(sess, ctx, in)
+	if err != nil {
+		return fail(res, err)
+	}
+	if ws != "" && res.persist != persistNone {
+		if perr := persistToWorkspace(sess, ctx, ws, res.persist == persistDelete); perr != nil {
+			return fail(res, perr)
+		}
+		res.hasSessionLoaded = true
+		res.sessionLoaded = true
+	}
+	if res.saved {
+		res.hasSessionLoaded = true
+		res.sessionLoaded = true
+	}
+	keys, selected, kerr := refreshKeyList(sess, ctx, in.selected)
+	if kerr != nil {
+		return fail(res, kerr)
+	}
+	return actionOutcome{res: res, keys: keys, selected: selected, haveKeys: true}
+}
+
+func (s *uiState) openSession(sess *rnp.Session, ctx context.Context, _ actionInput) (actionResult, error) {
 	_, err := sess.Version(ctx)
-	return err
+	return actionResult{}, err
 }
 
-func (s *uiState) generateKey(sess *rnp.Session, ctx context.Context) error {
-	_, err := sess.GenerateKeyWithSpec(ctx, s.keyReq)
-	return err
-}
-
-func (s *uiState) reloadKeys(sess *rnp.Session, ctx context.Context) error {
-	return s.pullKeys(sess, ctx)
-}
-
-func (s *uiState) pullKeys(sess *rnp.Session, ctx context.Context) error {
-	keys, err := sess.ListKeys(ctx)
+func (s *uiState) generateKey(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	_, err := sess.GenerateKeyWithSpec(ctx, in.keyReq)
 	if err != nil {
-		return err
+		return actionResult{}, err
 	}
-	s.keys = keys
-	if s.selected == "" && len(keys) > 0 {
-		s.selected = keys[0].Fingerprint
-	}
-	return nil
+	return actionResult{persist: persistUpdate}, nil
 }
 
-func (s *uiState) saveKeyring(sess *rnp.Session, ctx context.Context) error {
-	ws, err := normalizeWorkspace(s.workspace)
+func (s *uiState) reloadKeys(_ *rnp.Session, _ context.Context, _ actionInput) (actionResult, error) {
+	// Key list refresh happens in performAction after a successful call.
+	return actionResult{}, nil
+}
+
+func (s *uiState) saveKeyring(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	if strings.TrimSpace(in.workspace) == "" {
+		return actionResult{}, fmt.Errorf("%s", in.tr("err.workspace_empty"))
+	}
+	if err := commitKeyring(sess, ctx, in.workspace, false); err != nil {
+		return actionResult{}, err
+	}
+	return actionResult{saved: true}, nil
+}
+
+func (s *uiState) loadKeyring(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	ws, err := normalizeWorkspace(in.workspace)
 	if err != nil {
-		if strings.TrimSpace(s.workspace) == "" {
-			return fmt.Errorf("%s", s.tr("err.workspace_empty"))
+		if strings.TrimSpace(in.workspace) == "" {
+			return actionResult{}, fmt.Errorf("%s", in.tr("err.workspace_empty"))
 		}
-		return err
+		return actionResult{}, err
 	}
-	if err := os.MkdirAll(ws, 0o700); err != nil {
-		return err
-	}
-	if _, err := os.Stat(filepath.Join(ws, "pubring.gpg")); err == nil {
-		_ = os.Remove(filepath.Join(ws, "pubring.gpg"))
-	}
-	if _, err := os.Stat(filepath.Join(ws, "secring.gpg")); err == nil {
-		_ = os.Remove(filepath.Join(ws, "secring.gpg"))
-	}
-	return sess.SaveTo(ctx, ws)
+	return actionResult{}, sess.LoadFrom(ctx, ws)
 }
 
-func (s *uiState) loadKeyring(sess *rnp.Session, ctx context.Context) error {
-	ws, err := normalizeWorkspace(s.workspace)
+func (s *uiState) openAndLoad(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	ws, err := normalizeWorkspace(in.workspace)
 	if err != nil {
-		if strings.TrimSpace(s.workspace) == "" {
-			return fmt.Errorf("%s", s.tr("err.workspace_empty"))
+		if strings.TrimSpace(in.workspace) == "" {
+			return actionResult{}, fmt.Errorf("%s", in.tr("err.workspace_empty"))
 		}
-		return err
+		return actionResult{}, err
 	}
-	return sess.LoadFrom(ctx, ws)
+	if err := sess.LoadFrom(ctx, ws); err != nil {
+		return actionResult{}, err
+	}
+	return actionResult{hasSessionLoaded: true, sessionLoaded: true}, nil
 }
 
-func (s *uiState) loadKeyJSON(sess *rnp.Session, ctx context.Context) error {
-	if strings.TrimSpace(s.selected) == "" {
-		return fmt.Errorf("%s", s.tr("err.no_key_selected"))
+func (s *uiState) loadKeyJSON(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	if strings.TrimSpace(in.selected) == "" {
+		return actionResult{}, fmt.Errorf("%s", in.tr("err.no_key_selected"))
 	}
-	v, err := sess.KeyToJSON(ctx, s.selected)
-	if err == nil {
-		s.keyJSON = v
+	v, err := sess.KeyToJSON(ctx, in.selected)
+	if err != nil {
+		return actionResult{}, err
 	}
-	return err
+	return actionResult{hasKeyJSON: true, keyJSON: v}, nil
 }
 
-func (s *uiState) encryptText(sess *rnp.Session, ctx context.Context) error {
+func (s *uiState) exportPublic(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	return exportSelected(sess, ctx, in, false)
+}
+
+func (s *uiState) exportSecret(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	return exportSelected(sess, ctx, in, true)
+}
+
+func exportSelected(sess *rnp.Session, ctx context.Context, in actionInput, secret bool) (actionResult, error) {
+	if strings.TrimSpace(in.selected) == "" {
+		return actionResult{}, fmt.Errorf("%s", in.tr("err.no_key_selected"))
+	}
+	v, err := sess.ExportKey(ctx, in.selected, secret)
+	if err != nil {
+		return actionResult{}, err
+	}
+	return actionResult{hasKeyJSON: true, keyJSON: v}, nil
+}
+
+func (s *uiState) deleteKey(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	if strings.TrimSpace(in.selected) == "" {
+		return actionResult{}, fmt.Errorf("%s", in.tr("err.no_key_selected"))
+	}
+	if err := sess.DeleteKey(ctx, in.selected); err != nil {
+		return actionResult{}, err
+	}
+	return actionResult{persist: persistDelete}, nil
+}
+
+func (s *uiState) encryptText(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
 	opts := rnp.EncryptOptions{
-		RecipientFprints: splitCSV(s.encRecipients),
-		Password:         s.encPassword,
-		SignerFprint:     pickSigner(s.encSign, s.textSigner, s.selected),
-		Cipher:           s.encCipher,
-		Compression:      s.encCompress,
+		RecipientFprints: recipientFingerprints(in),
+		Password:         in.encPassword,
+		SignerFprint:     pickSigner(in.encSign, in.textSigner, in.selected),
+		Cipher:           in.encCipher,
+		Compression:      in.encCompress,
 		Armor:            true,
 	}
-	v, err := sess.EncryptText(ctx, s.textInput, opts)
-	if err == nil {
-		s.textOutput = v
-		s.textVerifyInput = v
+	v, err := sess.EncryptText(ctx, in.textInput, opts)
+	if err != nil {
+		return actionResult{}, err
 	}
-	return err
+	return actionResult{hasTextOutput: true, textOutput: v, hasTextVerifyInput: true, textVerifyInput: v}, nil
 }
 
-func (s *uiState) decryptText(sess *rnp.Session, ctx context.Context) error {
-	v, err := sess.DecryptText(ctx, s.textVerifyInput)
-	if err == nil {
-		s.textOutput = v.Plaintext
+func (s *uiState) decryptText(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	body := resolveDecryptInput(in.textInput, in.textVerifyInput, in.textOutput)
+	v, err := sess.DecryptText(ctx, body)
+	if err != nil {
+		return actionResult{}, err
 	}
-	return err
+	return actionResult{hasTextOutput: true, textOutput: v.Plaintext}, nil
 }
 
-func (s *uiState) signText(sess *rnp.Session, ctx context.Context) error {
-	signer := strings.TrimSpace(s.textSigner)
+func (s *uiState) signText(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	signer := strings.TrimSpace(in.textSigner)
 	if signer == "" {
-		signer = s.selected
+		signer = strings.TrimSpace(in.selected)
 	}
-	v, err := sess.SignText(ctx, s.textInput, signer, rnp.SignMode(s.textMode), "SHA256")
-	if err == nil {
-		s.textOutput = v
-		if s.textMode == string(rnp.SignModeDetached) {
-			s.textVerifyDetached = v
-			s.textVerifyInput = s.textInput
-		} else {
-			s.textVerifyInput = v
-		}
+	v, err := sess.SignText(ctx, in.textInput, signer, rnp.SignMode(in.textMode), "SHA256")
+	if err != nil {
+		return actionResult{}, err
 	}
-	return err
+	res := actionResult{hasTextOutput: true, textOutput: v, hasTextVerifyInput: true}
+	if in.textMode == string(rnp.SignModeDetached) {
+		res.textVerifyInput = in.textInput
+		res.hasTextVerifyDetached = true
+		res.textVerifyDetached = v
+	} else {
+		res.textVerifyInput = v
+		res.hasTextVerifyDetached = true
+		res.textVerifyDetached = ""
+	}
+	return res, nil
 }
 
-func (s *uiState) verifyText(sess *rnp.Session, ctx context.Context) error {
-	v, err := sess.VerifyText(ctx, s.textVerifyInput, s.textVerifyDetached)
-	if err == nil {
-		mathBadge := s.tr("verify.math_invalid")
-		if v.MathValid {
-			mathBadge = s.tr("verify.math_valid")
-		}
-		identityBadge := s.tr("verify.identity_unverified")
-		if v.IdentityTrusted {
-			identityBadge = s.tr("verify.identity_trusted")
-		}
-		s.textOutput = fmt.Sprintf("%s %s\n%s=%d\n%s=%s\n%s=%s\n%s=%s\n%s=%d\n%s=%d",
-			mathBadge,
-			identityBadge,
-			s.tr("verify.status"), v.Status,
-			s.tr("verify.keyid"), v.SignerKeyID,
-			s.tr("verify.fingerprint"), v.SignerFingerprint,
-			s.tr("verify.hash"), v.HashAlg,
-			s.tr("verify.created"), v.CreatedUnix,
-			s.tr("verify.expires"), v.ExpiresUnix,
-		)
+func (s *uiState) verifyText(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	msg, detached := resolveVerifyInput(in.textInput, in.textVerifyInput, in.textOutput, in.textVerifyDetached)
+	v, err := sess.VerifyText(ctx, msg, detached)
+	if err != nil {
+		return actionResult{}, err
 	}
-	return err
+	return actionResult{hasTextOutput: true, textOutput: formatVerify(in, v)}, nil
 }
 
-func (s *uiState) encryptFile(sess *rnp.Session, ctx context.Context) error {
+func (s *uiState) encryptFile(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
 	opts := rnp.EncryptOptions{
-		RecipientFprints: splitCSV(s.encRecipients),
-		Password:         s.encPassword,
-		SignerFprint:     pickSigner(s.encSign, s.textSigner, s.selected),
-		Cipher:           s.encCipher,
-		Compression:      s.encCompress,
-		Armor:            strings.HasSuffix(strings.ToLower(s.fileDst), ".asc"),
+		RecipientFprints: recipientFingerprints(in),
+		Password:         in.encPassword,
+		SignerFprint:     pickSigner(in.encSign, in.textSigner, in.selected),
+		Cipher:           in.encCipher,
+		Compression:      in.encCompress,
+		Armor:            strings.HasSuffix(strings.ToLower(in.fileDst), ".asc"),
 	}
-	return sess.EncryptFileWithOpts(ctx, s.fileSrc, s.fileDst, opts)
+	return actionResult{}, sess.EncryptFileWithOpts(ctx, in.fileSrc, in.fileDst, opts)
 }
 
-func (s *uiState) decryptFile(sess *rnp.Session, ctx context.Context) error {
-	return sess.DecryptFile(ctx, s.fileSrc, s.fileDst)
+func (s *uiState) decryptFile(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	return actionResult{}, sess.DecryptFile(ctx, in.fileSrc, in.fileDst)
 }
 
-func (s *uiState) signFile(sess *rnp.Session, ctx context.Context) error {
-	signer := strings.TrimSpace(s.textSigner)
+func (s *uiState) signFile(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	signer := strings.TrimSpace(in.textSigner)
 	if signer == "" {
-		signer = s.selected
+		signer = strings.TrimSpace(in.selected)
 	}
-	mode := rnp.SignMode(s.textMode)
+	mode := rnp.SignMode(in.textMode)
 	if mode == "" {
 		mode = rnp.SignModeDetached
 	}
-	return sess.SignFileWithOpts(ctx, s.fileSrc, s.fileSig, signer, mode, true, "SHA256")
+	return actionResult{}, sess.SignFileWithOpts(ctx, in.fileSrc, in.fileSig, signer, mode, true, "SHA256")
 }
 
-func (s *uiState) verifyFile(sess *rnp.Session, ctx context.Context) error {
-	v, err := sess.VerifyFileWithOpts(ctx, s.fileSrc, s.fileSig, s.fileDetached)
-	if err == nil {
-		mathBadge := s.tr("verify.math_invalid")
-		if v.MathValid {
-			mathBadge = s.tr("verify.math_valid")
-		}
-		identityBadge := s.tr("verify.identity_unverified")
-		if v.IdentityTrusted {
-			identityBadge = s.tr("verify.identity_trusted")
-		}
-		s.textOutput = fmt.Sprintf("%s %s\n%s=%d\n%s=%s\n%s=%s\n%s=%s\n%s=%d\n%s=%d",
-			mathBadge,
-			identityBadge,
-			s.tr("verify.status"), v.Status,
-			s.tr("verify.keyid"), v.SignerKeyID,
-			s.tr("verify.fingerprint"), v.SignerFingerprint,
-			s.tr("verify.hash"), v.HashAlg,
-			s.tr("verify.created"), v.CreatedUnix,
-			s.tr("verify.expires"), v.ExpiresUnix,
-		)
-	}
-	return err
-}
-
-func (s *uiState) dumpPackets(sess *rnp.Session, ctx context.Context) error {
-	b, err := os.ReadFile(s.packetInput)
+func (s *uiState) verifyFile(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	v, err := sess.VerifyFileWithOpts(ctx, in.fileSrc, in.fileSig, in.fileDetached)
 	if err != nil {
-		return err
+		return actionResult{}, err
 	}
-	v, err := sess.DumpPackets(ctx, b, s.packetAsJSON)
-	if err == nil {
-		s.packetOut = v
-	}
-	return err
+	return actionResult{hasTextOutput: true, textOutput: formatVerify(in, v)}, nil
 }
 
-func (s *uiState) queryFeatures(sess *rnp.Session, ctx context.Context) error {
-	v, err := sess.SupportedFeatures(ctx, s.featureQuery)
-	if err == nil {
-		s.features = v
+func (s *uiState) dumpPackets(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	b, err := os.ReadFile(in.packetInput)
+	if err != nil {
+		return actionResult{}, err
 	}
-	return err
+	v, err := sess.DumpPackets(ctx, b, in.packetAsJSON)
+	if err != nil {
+		return actionResult{}, err
+	}
+	return actionResult{hasPacketOut: true, packetOut: v}, nil
+}
+
+func (s *uiState) queryFeatures(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
+	v, err := sess.SupportedFeatures(ctx, in.featureQuery)
+	if err != nil {
+		return actionResult{}, err
+	}
+	return actionResult{hasFeatures: true, features: v}, nil
+}
+
+func formatVerify(in actionInput, v rnp.VerifyResult) string {
+	mathBadge := in.tr("verify.math_invalid")
+	if v.MathValid {
+		mathBadge = in.tr("verify.math_valid")
+	}
+	identityBadge := in.tr("verify.identity_unverified")
+	if v.IdentityTrusted {
+		identityBadge = in.tr("verify.identity_trusted")
+	}
+	return fmt.Sprintf("%s %s\n%s=%d\n%s=%s\n%s=%s\n%s=%s\n%s=%d\n%s=%d",
+		mathBadge,
+		identityBadge,
+		in.tr("verify.status"), v.Status,
+		in.tr("verify.keyid"), v.SignerKeyID,
+		in.tr("verify.fingerprint"), v.SignerFingerprint,
+		in.tr("verify.hash"), v.HashAlg,
+		in.tr("verify.created"), v.CreatedUnix,
+		in.tr("verify.expires"), v.ExpiresUnix,
+	)
+}
+
+func recipientFingerprints(in actionInput) []string {
+	fps := splitCSV(in.encRecipients)
+	if len(fps) == 0 && strings.TrimSpace(in.encPassword) == "" && strings.TrimSpace(in.selected) != "" {
+		return []string{strings.TrimSpace(in.selected)}
+	}
+	return fps
+}
+
+// resolveDecryptInput picks the armored message the user can actually see.
+// A pasted ciphertext in the input box wins over the hidden verify buffer.
+func resolveDecryptInput(textInput, textVerifyInput, textOutput string) string {
+	if strings.Contains(textInput, "-----BEGIN PGP MESSAGE-----") {
+		return textInput
+	}
+	if strings.TrimSpace(textVerifyInput) != "" {
+		return textVerifyInput
+	}
+	if strings.Contains(textOutput, "-----BEGIN PGP MESSAGE-----") {
+		return textOutput
+	}
+	return textInput
+}
+
+// resolveVerifyInput returns the signed message and the detached signature.
+// A non-empty detached signature keeps detached mode. Otherwise an armored
+// blob in the visible input, the verify buffer, or the output is used.
+func resolveVerifyInput(textInput, textVerifyInput, textOutput, detachedSig string) (string, string) {
+	if strings.TrimSpace(detachedSig) != "" {
+		plain := textInput
+		if strings.TrimSpace(plain) == "" {
+			plain = textVerifyInput
+		}
+		return plain, detachedSig
+	}
+	if strings.Contains(textInput, "-----BEGIN PGP ") {
+		return textInput, ""
+	}
+	if strings.TrimSpace(textVerifyInput) != "" {
+		return textVerifyInput, ""
+	}
+	if strings.Contains(textOutput, "-----BEGIN PGP ") {
+		return textOutput, ""
+	}
+	return textInput, ""
 }
 
 func splitCSV(v string) []string {
@@ -1050,23 +1286,77 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-func (s *uiState) persistToWorkspace(sess *rnp.Session, ctx context.Context, ws string) error {
-	if ws == "" {
-		return nil
+func refreshKeyList(sess *rnp.Session, ctx context.Context, selected string) ([]rnp.KeySummary, string, error) {
+	keys, err := sess.ListKeys(ctx)
+	if err != nil {
+		return nil, selected, err
 	}
-	if !filepath.IsAbs(ws) {
-		var err error
-		ws, err = filepath.Abs(ws)
-		if err != nil {
-			return err
+	found := false
+	for i := range keys {
+		if keys[i].Fingerprint == selected {
+			found = true
+			break
 		}
 	}
-	if err := os.MkdirAll(ws, 0o700); err != nil {
+	if !found {
+		if len(keys) > 0 {
+			selected = keys[0].Fingerprint
+		} else {
+			selected = ""
+		}
+	}
+	return keys, selected, nil
+}
+
+func persistToWorkspace(sess *rnp.Session, ctx context.Context, ws string, deleteEmpty bool) error {
+	if strings.TrimSpace(ws) == "" {
+		return nil
+	}
+	return commitKeyring(sess, ctx, ws, deleteEmpty)
+}
+
+// commitKeyring checks key counts before deleting pubring.gpg or secring.gpg.
+// deleteEmpty is the delete-key path: an empty session removes the files and
+// returns nil. An explicit save of an empty session returns ErrNoKey and
+// leaves existing files in place.
+func commitKeyring(sess *rnp.Session, ctx context.Context, ws string, deleteEmpty bool) error {
+	abs, err := normalizeWorkspace(ws)
+	if err != nil {
 		return err
 	}
-	_ = os.Remove(filepath.Join(ws, "pubring.gpg"))
-	_ = os.Remove(filepath.Join(ws, "secring.gpg"))
-	return sess.SaveTo(ctx, ws)
+	pubN, secN, err := sess.Counts(ctx)
+	if err != nil {
+		return err
+	}
+	pubPath := filepath.Join(abs, "pubring.gpg")
+	secPath := filepath.Join(abs, "secring.gpg")
+	if pubN == 0 && secN == 0 {
+		if !deleteEmpty {
+			return rnp.ErrNoKey
+		}
+		if err := removeKeyringFile(pubPath); err != nil {
+			return err
+		}
+		return removeKeyringFile(secPath)
+	}
+	if err := os.MkdirAll(abs, 0o700); err != nil {
+		return err
+	}
+	if err := removeKeyringFile(pubPath); err != nil {
+		return err
+	}
+	if err := removeKeyringFile(secPath); err != nil {
+		return err
+	}
+	return sess.SaveTo(ctx, abs)
+}
+
+func removeKeyringFile(path string) error {
+	err := os.Remove(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 func init() {
