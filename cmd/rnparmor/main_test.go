@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -507,7 +508,7 @@ func exerciseUIActions(lib, ws string) error {
 	if err != nil {
 		return err
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		return fmt.Errorf("revocation mode %o", info.Mode().Perm())
 	}
 
