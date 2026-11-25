@@ -18,7 +18,7 @@ Supported release targets:
 
 ## 2. Download, Installation & First Launch
 
-Release packages are published via `.github/workflows/release.yml` (`v0.0.1` and `v0.0.2` are released; `v0.0.2` includes Apache-2.0 licensing, Linux runtime screenshots, multi-platform application icons, and the initial bilingual User Guide, while the master-detail Keys redesign, native folder/file dialogs, empty initial passphrase, public-only keyring support, and previous GUI deadlock/keyring fixes will ship in a subsequent release).
+Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.3` are released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide, and `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` ships both the Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs).
 
 ### Verifying Release Checksums
 
@@ -89,7 +89,7 @@ Example `--smoke-test` output:
 
 ```text
 status=ok
-app_version=v0.0.2
+app_version=v0.0.3
 library=/path/to/librnp.so
 version=0.18.1+git...
 i18n=ok
@@ -175,11 +175,16 @@ Use this workspace for ASCII-armored text encryption, decryption, signing, and v
 **Fields:**
 
 - **Plain text**: defaults to `"hello from RnpArmor"`. You can also paste an external ASCII-armored PGP ciphertext (`-----BEGIN PGP MESSAGE-----`) here to run **Decrypt text**, or paste an external `cleartext` / `inline` signed PGP block (`-----BEGIN PGP SIGNED MESSAGE-----` / `-----BEGIN PGP MESSAGE-----`) here to run **Verify text**.
-- **Recipients (comma fp)**: comma-separated recipient key fingerprints. If both **Recipients** and **Password** are empty, RnpArmor automatically falls back to the currently **Selected** key (preferring a certifiable primary secret key by default).
-- **Password**: optional symmetric encryption password (can be combined with recipients, or used alone without falling back to the **Selected** key).
+- **Recipients (comma fp)**:
+  - **Keyring picker**: select any loaded primary key from the dropdown (`UID [Key ID]`) and click **`+ Add`** to append its fingerprint to the comma-separated list (case- and whitespace-insensitive deduplication preserves existing entries); click **`Clear`** to empty the list.
+  - **Manual entry**: paste or edit comma-separated fingerprints directly in the text box (`Comma-separated fingerprints`). If no keys are loaded yet, you can still paste fingerprints directly.
+  - **Fallback**: if both **Recipients** and **Password** are empty, RnpArmor automatically falls back to the currently **Selected** key (preferring a certifiable primary secret key by default).
+- **Password**: optional masked symmetric encryption password (placeholder `Symmetric passphrase`; can be combined with recipients, or used alone without falling back to the **Selected** key).
 - **Cipher / Compression**: cipher (`AES256`, `AES192`, `AES128`, `Camellia256`; default `AES256`), compression (`zlib`, `bzip2`, `zip`, `uncompressed`; default `zlib`), and **Encrypt+Sign** toggle.
 - **Sign mode**: `cleartext`, `detached` (default), or `inline` (attached OpenPGP signature).
-- **Signer fingerprint**: optional explicit signer fingerprint (if blank, **Encrypt+Sign** and **Sign text** fall back to the currently **Selected** key).
+- **Signer fingerprint**:
+  - **Signer dropdown**: lists loaded primary keys that have a secret key, starting with **`Use selected key (default)`**. Switching entries updates the fingerprint override field; choosing **`Use selected key (default)`** clears the override so **Encrypt+Sign** and **Sign text** use the currently **Selected** key.
+  - **Manual override**: paste or type a custom fingerprint in the text field below (`Fingerprint override`) to override without altering the dropdown until changed.
 - **Detached verify sig**: paste a detached ASCII-armored signature here when verifying a detached signature against the text in **Plain text**.
 
 **Operations:**
@@ -197,30 +202,38 @@ Use this workspace for ASCII-armored text encryption, decryption, signing, and v
 
 ### Workspace 3: `③ File Workbench`
 
-Use this workspace to encrypt, decrypt, sign, and verify files on disk safely.
+Use this workspace to encrypt, decrypt, sign, and verify files on disk safely using native file pickers and self-contained recipient/signer controls.
+
+**Fields & Native File Dialogs:**
+
+- **Source**: file path text box + **`Browse...`** native Open dialog (defaults to showing **`All files`** first, with **`OpenPGP`** filter available).
+- **Destination**: file path text box + **`Save As...`** native Save dialog (defaults to **`All files`** first; starts in **Source**'s directory if **Destination** is blank, falling back to **Workspace**).
+- **Signature path**: file path text box + both **`Browse...`** (for selecting an existing signature when verifying) and **`Save As...`** (for choosing output signature path when signing); both default to the **`OpenPGP`** filter (`.asc`, `.pgp`, `.gpg`, `.key`, `.sig`) first and **`All files`** second.
+- **Detached verify**: toggle **`Detached`** on when verifying a detached signature file.
+- **Recipients (comma fp)**, **Password** (masked), **Signer fingerprint**, and **Encrypt+Sign**: embedded directly in **File Workbench** and shared with **Text Studio**, so you can configure recipients, passphrase, signer, and **Encrypt+Sign** without switching tabs.
 
 **Important Path & Safety Rules:**
 
-- All paths (**Source**, **Destination**, **Signature path**) must be **absolute paths**.
+- All paths (**Source**, **Destination**, **Signature path**) must be **absolute paths** (the native **`Browse...`** / **`Save As...`** dialogs fill absolute paths automatically).
 - **Source** and **Destination** cannot be the same path.
 - **Non-overwrite protection**: RnpArmor refuses to overwrite an existing **Destination** or **Signature path** (`refusing to overwrite an existing file`). Choose a new output filename each time.
 - **Size limit**: regular files only, non-empty, up to **32 MiB** (`MaxInput`) input and **40 MiB** (`MaxOutput`) in-memory output.
 
 **Operations:**
 
-- **Encrypt file**: set **Source** and **Destination**, plus recipients/password/cipher/compression/Encrypt+Sign options from **Text Studio** (falling back to the currently **Selected** key if both recipients and password are blank), then click **Encrypt file**. Output uses ASCII armor automatically when **Destination** ends with `.asc` (otherwise binary OpenPGP).
-- **Decrypt file**: set **Source** (encrypted file) and **Destination** (new output path), then click **Decrypt file**.
-- **Sign file**: set **Source** and **Signature path**, choose **Sign mode** (`detached` or `inline` in **Text Studio**; armored with `SHA256`), optionally set **Signer fingerprint**, and click **Sign file**.
+- **Encrypt file**: pick or enter **Source** and **Destination**, configure **Recipients**, **Password**, or **Encrypt+Sign** right in **File Workbench** (or **Cipher / Compression** in **Text Studio**; falls back to the currently **Selected** key if both recipients and password are blank), then click **Encrypt file**. Output uses ASCII armor automatically when **Destination** ends with `.asc` (otherwise binary OpenPGP).
+- **Decrypt file**: pick or enter **Source** (encrypted file) and **Destination** (new output path), then click **Decrypt file**.
+- **Sign file**: pick or enter **Source** and **Signature path**, optionally pick a **Signer** (or choose **Sign mode** `detached`/`inline` in **Text Studio**; armored with `SHA256`), and click **Sign file**.
 - **Verify file**:
-  - For detached verification: toggle **Detached** on, set **Source** (original file) and **Signature path** (`.asc`/`.sig` file), and click **Verify file**.
-  - For inline signed files: toggle **Detached** off, set **Source** to the signed file, and click **Verify file**.
+  - For detached verification: toggle **Detached** on, pick **Source** (original file) and **Signature path** (`.asc`/`.sig` file via **`Browse...`**), and click **Verify file**.
+  - For inline signed files: toggle **Detached** off, pick **Source** (signed file), and click **Verify file**.
 
 ### Workspace 4: `④ Packet & Features`
 
 Use this workspace to inspect OpenPGP packet structures and audit supported algorithms in `librnp`.
 
 - **Dump packets**:
-  1. Enter an absolute path to an OpenPGP file (`.asc`, `.pgp`, `.gpg`, up to 32 MiB) in **Packet input file**.
+  1. Click **`Browse...`** next to **Packet input file** (native Open dialog defaulting to the **`OpenPGP`** filter `.asc`, `.pgp`, `.gpg`, `.key`, `.sig`) or enter an absolute path (up to 32 MiB).
   2. Toggle **JSON** on for JSON output (default) or off for text output.
   3. Click **Dump packets** to inspect the structure in **Packet output**.
 - **Query features**:
@@ -257,7 +270,7 @@ Use this workspace to load, save, and migrate explicit portable keyrings, or to 
 | Symptom | Cause | Resolution |
 | --- | --- | --- |
 | `librnp bundle checksum failed` on startup | Missing `SHA256SUMS`, modified library, or mismatched `RNPARMOR_LIBRNP` | Re-extract the original release archive without modifying `rnp.dll`/`librnp.so`/`librnp.dylib` or `SHA256SUMS`; if using `RNPARMOR_LIBRNP`, use an absolute path alongside its valid `SHA256SUMS` |
-| `path must be absolute` | Relative path entered in **File Workbench** or **Packet input file** | Enter a full absolute path (e.g., `C:\Users\name\docs\file.txt` on Windows or `/home/name/file.txt` on Linux/macOS), or use **`Choose Folder...`** for **Workspace** |
+| `path must be absolute` | Relative path entered in **File Workbench** or **Packet input file** | Use **`Browse...`** / **`Save As...`** (or enter a full absolute path, e.g., `C:\Users\name\docs\file.txt` on Windows or `/home/name/file.txt` on Linux/macOS), and **`Choose Folder...`** for **Workspace** |
 | `refusing to overwrite an existing file` | Output path in **Destination** or **Signature path** already exists | Choose a new output filename that does not already exist |
 | `input exceeds the memory limit` | Input file exceeds 32 MiB (`MaxInput`) | RnpArmor currently buffers files up to 32 MiB in memory |
 | Operations fail with `passphrase unavailable` or key-not-found | Unlock **Passphrase** is empty, wrong for `secring.gpg`, or keyring folder not loaded | Enter the matching passphrase in **Portable Keyring**, click **`Choose Folder...`** to select the folder containing `pubring.gpg` (and `secring.gpg` for secret operations), and click **Refresh** / **Open+Load** |

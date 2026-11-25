@@ -1204,4 +1204,84 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangZH: "导出私钥可能解锁你的邮件和文件。文件将以 0600 权限保存。",
 		LangJA: "秘密鍵の書き出しはメールとファイルを解錠できます。ファイルは 0600 で保存します。",
 	},
+	"btn.add_recipient": {
+		LangEN: "+ Add",
+		LangZH: "+ 添加",
+		LangJA: "+ 追加",
+	},
+	"btn.clear_recipients": {
+		LangEN: "Clear",
+		LangZH: "清除",
+		LangJA: "クリア",
+	},
+	"btn.browse": {
+		LangEN: "Browse...",
+		LangZH: "浏览...",
+		LangJA: "参照...",
+	},
+	"btn.save_as": {
+		LangEN: "Save As...",
+		LangZH: "另存为...",
+		LangJA: "別名で保存...",
+	},
+	"signer.use_selected": {
+		LangEN: "Use selected key (default)",
+		LangZH: "使用当前选中密钥（默认）",
+		LangJA: "選択中の鍵を使う（既定）",
+	},
+	"empty.recipient_keys": {
+		LangEN: "No keys loaded. Open a keyring, or paste a fingerprint.",
+		LangZH: "未加载密钥。请打开钥匙圈，或粘贴指纹。",
+		LangJA: "鍵が読み込まれていません。鍵リングを開くか、指紋を貼り付けてください。",
+	},
+	"placeholder.recipients": {
+		LangEN: "Comma-separated fingerprints",
+		LangZH: "逗号分隔的指纹，可粘贴",
+		LangJA: "カンマ区切りの指紋（貼り付け可）",
+	},
+	"placeholder.signer": {
+		LangEN: "Fingerprint override",
+		LangZH: "手动覆盖指纹",
+		LangJA: "指紋を手入力で上書き",
+	},
+	"placeholder.symm_pass": {
+		LangEN: "Symmetric passphrase",
+		LangZH: "对称口令",
+		LangJA: "共通鍵のパスフレーズ",
+	},
+	"dlg.browse_source": {
+		LangEN: "Choose source file",
+		LangZH: "选择源文件",
+		LangJA: "入力ファイルを選択",
+	},
+	"dlg.save_destination": {
+		LangEN: "Save destination as",
+		LangZH: "目标文件另存为",
+		LangJA: "出力先を別名で保存",
+	},
+	"dlg.browse_signature": {
+		LangEN: "Choose signature file",
+		LangZH: "选择签名文件",
+		LangJA: "署名ファイルを選択",
+	},
+	"dlg.save_signature": {
+		LangEN: "Save signature as",
+		LangZH: "签名文件另存为",
+		LangJA: "署名を別名で保存",
+	},
+	"dlg.browse_packet": {
+		LangEN: "Open OpenPGP message",
+		LangZH: "打开 OpenPGP 文件",
+		LangJA: "OpenPGP ファイルを開く",
+	},
+	"filter.openpgp": {
+		LangEN: "OpenPGP",
+		LangZH: "OpenPGP",
+		LangJA: "OpenPGP",
+	},
+	"filter.all_files": {
+		LangEN: "All files",
+		LangZH: "所有文件",
+		LangJA: "すべてのファイル",
+	},
 }

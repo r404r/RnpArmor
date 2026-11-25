@@ -50,7 +50,7 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
    - **Standalone menu-less non-modal About child window (`580×520`)**:
      - Single-instance focused, fixed-size, no menu bar (`SetMenu(nil)` on non-macOS), includes a `Close` button.
      - Closing the About window leaves the main window unaffected; closing the main window closes **About**, **New Key**, and **Import Key Text** automatically; switching language updates window titles and content live.
-     - Shows Application Version (`appVersion`, e.g., `v0.0.2` or `dev`), Author (`r404r (https://github.com/r404r)`), Repository URL (`https://github.com/r404r/RnpArmor`), RNP upstream (`https://github.com/rnpgp/rnp` + current `librnp` version), Local library path (`rnp.dll` / `librnp.so`), Keyring directory (`portable workspace` + `pubring.gpg`/`secring.gpg` existence), and UI Framework & Runtime (`MyGo` / `purego` / `Botan` versions).
+     - Shows Application Version (`appVersion`, e.g., `v0.0.3` or `dev`), Author (`r404r (https://github.com/r404r)`), Repository URL (`https://github.com/r404r/RnpArmor`), RNP upstream (`https://github.com/rnpgp/rnp` + current `librnp` version), Local library path (`rnp.dll` / `librnp.so`), Keyring directory (`portable workspace` + `pubring.gpg`/`secring.gpg` existence), and UI Framework & Runtime (`MyGo` / `purego` / `Botan` versions).
 
 2. **Expanded RNP feature surface in `internal/rnp`**
    - Key iteration/location (with nested `Subkeys` on primary key summaries), key import (`ImportKeys`), public/secret/revocation export (`ExportRevocation`), key-to-JSON, and delete.
@@ -94,10 +94,11 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
   - `rnparmor.png`, `rnparmor-256.png`, `rnparmor.ico`, `RnpArmor.icns`: transparent multi-platform application icon assets.
   - `icons.go`, `icons_test.go`: embeds `rnparmor-256.png` (`icons.AppIconPNG`) for runtime window and Dock icons.
 - `cmd/rnparmor/`
-  - `main.go`: MyGo app entry, runtime window/Dock icon setup, native 4-group menu bar (including `File → Choose Folder...`), startup keyring auto-load, empty initial passphrase + `OpenOptionalPass`, 5-workspace navigation, `580×520` non-modal About child window, masked unlock input in Portable Keyring, async session operations, `--smoke-out`, and build-time `appVersion` display/output.
+  - `main.go`: MyGo app entry, runtime window/Dock icon setup, native 4-group menu bar (including `File → Choose Folder...`), startup keyring auto-load, empty initial passphrase + `OpenOptionalPass`, 5-workspace navigation (with shared recipient/signer pickers and masked symmetric password across Text Studio & File Workbench plus native file pickers on File & Packet pages), `580×520` non-modal About child window, masked unlock input in Portable Keyring, async session operations, `--smoke-out`, and build-time `appVersion` display/output.
   - `keys_ui.go`: Phase 1 master-detail Key Manager workspace (`+ New Key`, `Import File...`, `Import Text...`, `Refresh`, read-only Workspace + native `Choose Folder...`), segmented ownership filters (`All` / `My Keys` / `Public`), `Key ID (16)` ↔ `Fingerprint (40)` switch, live search, sortable primary-key table, detail inspector (grouped fingerprint + copy, badges, nested subkeys, public/secret/revocation exports with confirmation & concealed secret copy, `Delete Key...` confirmation, collapsible `Raw Key JSON`), and `+ New Key` / `Import Key Text` child windows.
+  - `studio_ui.go`: Phase 2 shared primary-key recipient picker (`+ Add` with case-/space-insensitive deduplication, `Clear`, and manual CSV editing), secret-only primary signer dropdown (`Use selected key (default)` + manual fingerprint override), and native file `Browse...` / `Save As...` dialog helpers for File Workbench and Packet & Features.
   - `i18n.go`: tri-lingual catalog (EN/ZH/JA), language resolution, translation validation.
-  - `main_test.go`: unit tests for smoke output generation/writing, menu template structure, state synchronization, key-manager filter/search/sort/ID-mode/`New Key` validation, decrypt/verify input resolution, recipient fallback rules, and real `librnp` end-to-end GUI action regression tests (`TestUIStateActionsEndToEnd`, including revocation export & public-only keyring flows).
+  - `main_test.go`: unit tests for smoke output generation/writing, menu template structure, state synchronization, key-manager filter/search/sort/ID-mode/`New Key` validation, `TestStudioKeyPickersAndFileDialogPaths` (recipient/signer pickers, dialog fallback paths, and filters), decrypt/verify input resolution, recipient fallback rules, and real `librnp` end-to-end GUI action regression tests (`TestUIStateActionsEndToEnd`, including revocation export & public-only keyring flows).
 - `cmd/genwinres/`
   - `main.go`: zero-dependency pure Go AMD64 COFF `.syso` resource generator embedding `rnparmor.ico` into `rnparmor.exe` at build time.
 - `internal/loadlib/`
@@ -137,8 +138,10 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
 
 ### 2) Text studio
 
-- Text-input fields for `Recipients (comma fp)` and `Signer fingerprint`.
-- Encrypt text (recipient and/or password modes, optional sign-on-encrypt; falls back to the selected key when both recipients and password are empty).
+- Keyring primary-key recipient dropdown with `+ Add` / `Clear` (case- and whitespace-insensitive deduplication) alongside manual comma-separated fingerprint editing; falls back to the selected key when both recipients and password are empty.
+- Masked symmetric `Password` input (`Password` mode).
+- Secret-only primary signer dropdown (`Use selected key (default)` first) paired with a manual fingerprint override field.
+- Encrypt text (recipient and/or password modes, optional sign-on-encrypt).
 - Decrypt text (supports pasting external armored PGP ciphertext directly into Plain text, or staged output).
 - Sign text in three modes:
   - cleartext
@@ -148,14 +151,15 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
 
 ### 3) File workbench
 
-- Text-input fields for `Source`, `Destination`, and `Signature path` (absolute paths).
+- Native file dialogs alongside path fields: `Source` (`Browse...`, defaults to `All files`), `Destination` (`Save As...`, defaults to `All files`), and `Signature path` (`Browse...` + `Save As...`, defaults to `OpenPGP` filter).
+- Self-contained embedded controls shared with Text Studio (`Recipients (comma fp)`, masked symmetric `Password`, `Signer fingerprint`, and `Encrypt+Sign` toggle) so file tasks do not require switching tabs.
 - Encrypt/decrypt files.
 - Sign/verify files (detached and inline flows).
 - Keeps non-overwrite publish behavior aligned with internal file safety utilities.
 
 ### 4) Packet & features
 
-- Dump OpenPGP packets in text or JSON.
+- `Browse...` native Open dialog (defaults to `OpenPGP` filter) on `Packet input file`; dump OpenPGP packets in text or JSON.
 - Query supported algorithms/features globally or by `type:name`.
 
 ### 5) Portable keyring storage
@@ -341,8 +345,8 @@ Workflow: `.github/workflows/linux-screenshot.yml`
 
 ## Repository Status Notes
 
-- `v0.0.1` and `v0.0.2` have been released across macOS (`arm64`), Linux (`amd64`), and Windows (`amd64`); `v0.0.2` includes Apache-2.0 licensing ([`LICENSE`](LICENSE)), Linux runtime screenshots, multi-platform application icons, and the bilingual user guides ([`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)).
-- The current branch lands Phase 1 of the UI upgrade (master-detail Key Manager in `cmd/rnparmor/keys_ui.go`, native folder/file/save dialogs, `+ New Key` and `Import Key Text` child windows, `16`/`40`-char ID switch, empty initial passphrase + masked inputs, public-only `pubring.gpg` support, revocation certificate export, updated Linux tri-lingual screenshots, plus the GUI deadlock, non-clobbering keyring, and Text Studio paste/fallback fixes) for the next release. Text Studio and File Workbench remain text-input based until future Phase 2 work.
+- `v0.0.1`, `v0.0.2`, and `v0.0.3` have been released across macOS (`arm64`), Linux (`amd64`), and Windows (`amd64`): `v0.0.2` added Apache-2.0 licensing ([`LICENSE`](LICENSE)), Linux runtime screenshots, multi-platform application icons, and the bilingual user guides ([`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)), and `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases.
+- `v0.0.4` ships both Phase 1 (master-detail Key Manager redesign, 16/40-character ID switch, masked New Key dialog, public-only empty-passphrase startup, and native Workspace folder picker) and Phase 2 (`cmd/rnparmor/studio_ui.go`: shared Text Studio / File Workbench primary-key recipient and secret-only signer dropdown pickers, masked symmetric passphrase input, self-contained File Workbench recipient/signer/`Encrypt+Sign` controls, and native `Browse...` / `Save As...` file dialogs on File Workbench and Packet & Features, backed by `TestStudioKeyPickersAndFileDialogPaths`).
 - Desktop manual UX validation—including Windows 10/11 Chinese IME, high-DPI, and Inno Setup installer flow, plus macOS Apple Silicon first-launch Gatekeeper handling—remains environment-dependent and must be confirmed in dedicated manual runs.
 
 ## License
