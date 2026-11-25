@@ -93,7 +93,7 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
 - `cmd/rnparmor/`
   - `main.go`：MyGo 主程序、运行时窗口/Dock 图标设置、原生 4 组菜单栏、5 工作区 UI、`580×520` 非模态 About 子窗口、异步会话操作、`--smoke-out` 及构建注入 `appVersion` 展示/输出。
   - `i18n.go`：EN/ZH/JA 三语词典、语言解析与完整性校验。
-  - `main_test.go`：冒烟输出与文件写入、菜单模板结构及状态联动单元测试。
+  - `main_test.go`：冒烟输出与文件写入、菜单模板结构、状态联动、文本解密/验签输入解析、收件人留空回退规则单元测试，以及基于真实 `librnp` 的端到端 GUI 动作回归单测（`TestUIStateActionsEndToEnd`）。
 - `cmd/genwinres/`
   - `main.go`：零第三方依赖的纯 Go AMD64 COFF `.syso` 资源生成器，构建时将 `rnparmor.ico` 临时嵌入 `rnparmor.exe`。
 - `internal/loadlib/`
@@ -121,17 +121,17 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
 - 用内存口令打开会话。
 - 按算法参数生成密钥。
 - 列表查看、公私钥导出、Key JSON、删除。
-- 显式保存/加载 `pubring.gpg` 与 `secring.gpg`。
+- 显式保存/加载 `pubring.gpg` 与 `secring.gpg`（只读操作不改写磁盘钥匙圈，空会话显式保存受保护报错，删除最后一把密钥会清理空文件）。
 
 ### 2）文本工作区
 
-- 文本加密（收件人模式 / 密码模式 / 可选加密同时签名）。
-- 文本解密。
+- 文本加密（收件人模式 / 密码模式 / 可选加密同时签名；收件人与密码均留空时回退到当前已选择密钥）。
+- 文本解密（支持直接向明文框粘贴外部 PGP 密文或解密暂存输出）。
 - 三种签名模式：
   - 明文签名（clearsign）
   - 分离签名（detached）
   - 内联签名（inline）
-- 验签结果展示签名元数据。
+- 验签结果展示签名元数据（支持外部明文/内联签名粘贴、分离签名或暂存输出）。
 
 ### 3）文件工作区
 
@@ -327,7 +327,8 @@ Windows 依赖构建钉扎并打包以下组件：
 
 ## 仓库状态说明
 
-- `v0.0.1` 多平台版本已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）。当前 `main` 已合入 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、多平台应用图标及双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)），为 `v0.0.2` 发布做好准备。
+- `v0.0.1` 与 `v0.0.2` 多平台版本均已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）；其中 `v0.0.2` 已包含 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、三端应用图标与双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)）。
+- 当前分支已补充 GUI 动作死锁修复、只读操作不覆盖磁盘钥匙圈（含末把密钥删除清理与空会话保存保护）、默认优先选中可认证主私钥、文本工作区直接粘贴密文/签名与收件人留空回退、以及 `cmd/rnparmor/main_test.go` 中基于真实 `librnp` 的端到端 GUI 动作回归单测，将随后续版本发布。
 - 桌面端人工交互体验（Windows 10/11 中文输入法、高 DPI 与安装程序流程，以及 macOS Apple Silicon 首次启动未公证 Gatekeeper 提示）仍依赖真实桌面环境，需在专门手工测试中确认。
 
 ## 许可证
