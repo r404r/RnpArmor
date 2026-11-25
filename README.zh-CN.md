@@ -336,8 +336,8 @@ Windows 依赖构建钉扎并打包以下组件：
 
 ## 仓库状态说明
 
-- `v0.0.1`、`v0.0.2` 与 `v0.0.3` 多平台版本均已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）；`v0.0.2` 合入 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、三端应用图标与双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)），`v0.0.3` 已发布 Phase 1 主从双栏 Keys 管理页与原生文件夹选择器。
-- 当前分支已落地 Phase 2（`cmd/rnparmor/studio_ui.go`）并为即将发布的 `v0.0.4` 做好就绪准备：提供 Text Studio / File Workbench 共享主密钥收件人与仅私钥签名者下拉选择器、掩码对称口令输入、文件工作区页内自洽收件人/签名者/`加密并签名`配置，以及文件工作区与 Packet 页原生 `浏览...` / `另存为...` 对话窗，并附带 `TestStudioKeyPickersAndFileDialogPaths` 单元测试。
+- `v0.0.1`、`v0.0.2` 与 `v0.0.3` 多平台版本均已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）：`v0.0.2` 合入 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、三端应用图标与双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)），`v0.0.3` 修复了 GUI 操作重入死锁与钥匙圈持久化边界问题。
+- `v0.0.4` 合并发布 Phase 1（主从双栏 Keys 管理页、16/40 位 ID 切换、掩码双口令新建密钥弹窗、空口令公钥只读打开与原生文件夹选择器）与 Phase 2（`cmd/rnparmor/studio_ui.go`：Text Studio / File Workbench 共享主密钥收件人与仅私钥签名者下拉选择器、掩码对称口令输入、文件工作区页内自洽收件人/签名者/`加密并签名`配置，以及文件工作区与 Packet 页原生 `浏览...` / `另存为...` 对话窗，并附带 `TestStudioKeyPickersAndFileDialogPaths` 单元测试）。
 - 桌面端人工交互体验（Windows 10/11 中文输入法、高 DPI 与安装程序流程，以及 macOS Apple Silicon 首次启动未公证 Gatekeeper 提示）仍依赖真实桌面环境，需在专门手工测试中确认。
 
 ## 许可证

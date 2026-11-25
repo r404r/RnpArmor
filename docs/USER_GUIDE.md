@@ -18,7 +18,7 @@ Supported release targets:
 
 ## 2. Download, Installation & First Launch
 
-Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.3` are released; `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide, `v0.0.3` shipped the Phase 1 master-detail Key Manager redesign and native folder picker, and Phase 2 keyring pickers and native file browse/save dialogs are ready for the upcoming `v0.0.4` release).
+Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.3` are released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide, and `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` ships both the Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs).
 
 ### Verifying Release Checksums
 
