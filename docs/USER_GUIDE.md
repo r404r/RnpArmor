@@ -18,7 +18,7 @@ Supported release targets:
 
 ## 2. Download, Installation & First Launch
 
-Release packages are published via `.github/workflows/release.yml` (`v0.0.1` is currently published; upcoming `v0.0.2` will include the new multi-platform application icons and this guide).
+Release packages are published via `.github/workflows/release.yml` (`v0.0.1` and `v0.0.2` are released; `v0.0.2` includes Apache-2.0 licensing, Linux runtime screenshots, multi-platform application icons, and the initial bilingual User Guide, while recent GUI deadlock fixes, non-clobbering keyring persistence, and direct Text Studio paste support will ship in the next release).
 
 ### Verifying Release Checksums
 
@@ -89,7 +89,7 @@ Example `--smoke-test` output:
 
 ```text
 status=ok
-app_version=v0.0.1
+app_version=v0.0.2
 library=/path/to/librnp.so
 version=0.18.1+git...
 i18n=ok
@@ -137,12 +137,13 @@ Use this workspace to manage your session, generate keys, inspect key details, a
 2. Click **Open session** (optional if generating immediately; if `pubring.gpg` and `secring.gpg` already exist in **Workspace**, keys are loaded automatically).
 3. Configure **User ID**, **Primary**, **Subkey**, and **Crypto**, then click **Generate key**.
    - Supported ECC curve names include `Curve25519` (`X25519`), `Ed25519`, `NIST P-256` (`P-256` / `secp256r1`), `NIST P-384` (`P-384` / `secp384r1`), `NIST P-521` (`P-521` / `secp521r1`), and `secp256k1`.
-4. Click **Reload keys** at any time to refresh the list under **Keyring**.
+4. Click **Reload keys** at any time to refresh the list under **Keyring** (if no key is selected yet, RnpArmor automatically prefers a certifiable primary secret key).
 5. Click any key button in the **Keyring** list to select it (**Selected** displays its full fingerprint). With a key selected, you can click:
    - **Key JSON**: shows structured key metadata in the **key JSON / export output** box.
    - **Export public** / **Export secret**: exports the ASCII-armored public or secret key block into the output box.
-   - **Delete key**: removes the selected key (public, secret, and subkeys) from the session keyring.
-6. Click **Save keyring** to write `pubring.gpg` and `secring.gpg` to **Workspace** (or **Load keyring** to reload from disk). Note that successful operations with a non-empty **Workspace** also persist `pubring.gpg` and `secring.gpg` automatically.
+   - **Delete key**: removes the selected key (public, secret, and subkeys) from the session keyring and updates disk files if **Workspace** is non-empty; deleting the last remaining key cleanly removes empty `pubring.gpg` and `secring.gpg` files.
+6. Click **Save keyring** to write `pubring.gpg` and `secring.gpg` to **Workspace** (or **Load keyring** to reload from disk).
+   - **Non-clobbering keyring persistence**: Read-only actions (**Open session**, **Reload keys**, **Query features**, **Key JSON**, **Export public** / **Export secret**, text/file crypto & signing/verification, and **Dump packets**) never rewrite or overwrite `pubring.gpg` / `secring.gpg` on disk. Only **Generate key**, **Delete key** (when **Workspace** is non-empty), and explicit **Save keyring** / **Save** modify keyring files on disk. Explicitly saving an empty session (`0` keys) returns an error (`no matching key found`) and leaves any existing keyring files on disk intact.
 
 ### Workspace 2: `② Text Studio`
 
@@ -150,23 +151,26 @@ Use this workspace for ASCII-armored text encryption, decryption, signing, and v
 
 **Fields:**
 
-- **Plain text**: defaults to `"hello from RnpArmor"`.
-- **Recipients (comma fp)**: comma-separated recipient key fingerprints. If both **Recipients** and **Password** are empty, RnpArmor falls back to the active session encryption subkey (if one was generated in this session).
-- **Password**: optional symmetric encryption password (can be combined with recipients or used alone).
+- **Plain text**: defaults to `"hello from RnpArmor"`. You can also paste an external ASCII-armored PGP ciphertext (`-----BEGIN PGP MESSAGE-----`) here to run **Decrypt text**, or paste an external `cleartext` / `inline` signed PGP block (`-----BEGIN PGP SIGNED MESSAGE-----` / `-----BEGIN PGP MESSAGE-----`) here to run **Verify text**.
+- **Recipients (comma fp)**: comma-separated recipient key fingerprints. If both **Recipients** and **Password** are empty, RnpArmor automatically falls back to the currently **Selected** key (preferring a certifiable primary secret key by default).
+- **Password**: optional symmetric encryption password (can be combined with recipients, or used alone without falling back to the **Selected** key).
 - **Cipher / Compression**: cipher (`AES256`, `AES192`, `AES128`, `Camellia256`; default `AES256`), compression (`zlib`, `bzip2`, `zip`, `uncompressed`; default `zlib`), and **Encrypt+Sign** toggle.
 - **Sign mode**: `cleartext`, `detached` (default), or `inline` (attached OpenPGP signature).
-- **Signer fingerprint**: optional explicit signer fingerprint (if blank, **Encrypt+Sign** uses the **Selected** key when toggled on, and **Sign text** uses the active primary key).
-- **Detached verify sig**: paste a detached ASCII-armored signature here when verifying a detached signature.
+- **Signer fingerprint**: optional explicit signer fingerprint (if blank, **Encrypt+Sign** and **Sign text** fall back to the currently **Selected** key).
+- **Detached verify sig**: paste a detached ASCII-armored signature here when verifying a detached signature against the text in **Plain text**.
 
 **Operations:**
 
-- **Encrypt text**: encrypts **Plain text** to **result output** (and stages the armored message internally for immediate testing with **Decrypt text**).
-- **Decrypt text**: decrypts the armored message staged from **Encrypt text** / **Sign text** and prints the plaintext to **result output**. *(Note: Workspace 2 does not currently provide a separate editable ciphertext input box; use **File Workbench** to decrypt external `.asc` / `.pgp` files saved on disk.)*
+- **Encrypt text**: encrypts **Plain text** to **result output** (and stages the armored message internally for immediate one-click testing with **Decrypt text**). If **Recipients** and **Password** are both blank, encrypts to the currently **Selected** key.
+- **Decrypt text**: decrypts an ASCII-armored message (`-----BEGIN PGP MESSAGE-----`) pasted directly into **Plain text**; if **Plain text** does not contain a ciphertext block, falls back to the message staged from **Encrypt text** / **Sign text** (or shown in **result output**), then prints the plaintext to **result output**.
 - **Sign text**: signs **Plain text** using the selected **Sign mode** (`cleartext`, `detached`, or `inline`, with `SHA256`) and prints the result to **result output** (for `detached`, also copies the signature into **Detached verify sig**).
-- **Verify text**: verifies the staged text/signature (or **Plain text** + **Detached verify sig** after detached signing) and displays:
-  - Mathematical validity badge: `[Math: VALID]` or `[Math: INVALID]`
-  - Identity trust badge: `[Identity: UNVERIFIED]` or `[Identity: TRUSTED]` *(always `UNVERIFIED` in this release because RnpArmor reports cryptographic validity only and does not assert policy trust)*
-  - Metadata lines: `Status`, `KeyID`, `Fingerprint`, `Hash`, `Created`, `Expires`.
+- **Verify text**:
+  - When **Detached verify sig** is non-empty: verifies **Plain text** (or the staged plaintext if **Plain text** is blank) against **Detached verify sig**.
+  - When **Detached verify sig** is empty: verifies a `cleartext` or `inline` PGP block pasted directly into **Plain text**, or falls back to the signed message staged from **Sign text** (or in **result output**).
+  - Displays:
+    - Mathematical validity badge: `[Math: VALID]` or `[Math: INVALID]`
+    - Identity trust badge: `[Identity: UNVERIFIED]` or `[Identity: TRUSTED]` *(always `UNVERIFIED` in this release because RnpArmor reports cryptographic validity only and does not assert policy trust)*
+    - Metadata lines: `Status`, `KeyID`, `Fingerprint`, `Hash`, `Created`, `Expires`.
 
 ### Workspace 3: `③ File Workbench`
 
@@ -181,7 +185,7 @@ Use this workspace to encrypt, decrypt, sign, and verify files on disk safely.
 
 **Operations:**
 
-- **Encrypt file**: set **Source** and **Destination**, plus recipients/password/cipher/compression/Encrypt+Sign options from **Text Studio**, then click **Encrypt file**. Output uses ASCII armor automatically when **Destination** ends with `.asc` (otherwise binary OpenPGP).
+- **Encrypt file**: set **Source** and **Destination**, plus recipients/password/cipher/compression/Encrypt+Sign options from **Text Studio** (falling back to the currently **Selected** key if both recipients and password are blank), then click **Encrypt file**. Output uses ASCII armor automatically when **Destination** ends with `.asc` (otherwise binary OpenPGP).
 - **Decrypt file**: set **Source** (encrypted file) and **Destination** (new output path), then click **Decrypt file**.
 - **Sign file**: set **Source** and **Signature path**, choose **Sign mode** (`detached` or `inline` in **Text Studio**; armored with `SHA256`), optionally set **Signer fingerprint**, and click **Sign file**.
 - **Verify file**:
@@ -206,8 +210,8 @@ Use this workspace to load, save, and migrate explicit portable keyrings.
 
 - **Workspace**: absolute path to your portable keyring directory.
 - **Passphrase**: passphrase used in memory only for the active session.
-- **Open+Load**: loads `pubring.gpg` and `secring.gpg` from **Workspace** into the session.
-- **Save**: saves the current session keys as `pubring.gpg` and `secring.gpg` inside **Workspace** (creates the directory with `0700` permissions if needed; `secring.gpg` is written with `0600` permissions on Unix).
+- **Open+Load**: loads `pubring.gpg` and `secring.gpg` from **Workspace** into the session without rewriting the files on disk.
+- **Save**: saves the current session keys as `pubring.gpg` and `secring.gpg` inside **Workspace** (creates the directory with `0700` permissions if needed; `secring.gpg` is written with `0600` permissions on Unix). Saving an empty session (`0` keys) returns an error and leaves existing files untouched.
 - **Reload keys**: refreshes the loaded key summaries.
 
 **Backup & Migration:**

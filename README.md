@@ -95,7 +95,7 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
 - `cmd/rnparmor/`
   - `main.go`: MyGo app entry, runtime window/Dock icon setup, native 4-group menu bar, 5-workspace UI, `580×520` non-modal About child window, async session operations, `--smoke-out`, and build-time `appVersion` display/output.
   - `i18n.go`: tri-lingual catalog (EN/ZH/JA), language resolution, translation validation.
-  - `main_test.go`: unit tests for smoke output generation/writing, menu template structure, and state synchronization.
+  - `main_test.go`: unit tests for smoke output generation/writing, menu template structure, state synchronization, decrypt/verify input resolution, recipient fallback rules, and real `librnp` end-to-end GUI action regression tests (`TestUIStateActionsEndToEnd`).
 - `cmd/genwinres/`
   - `main.go`: zero-dependency pure Go AMD64 COFF `.syso` resource generator embedding `rnparmor.ico` into `rnparmor.exe` at build time.
 - `internal/loadlib/`
@@ -130,17 +130,17 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
 - Open session with in-memory passphrase.
 - Generate keys via spec (RSA / ECC variants through JSON-based generation path).
 - List key summaries, export public/secret, show key JSON, delete key.
-- Save/load explicit keyring files (`pubring.gpg` / `secring.gpg`).
+- Save/load explicit keyring files (`pubring.gpg` / `secring.gpg`); read-only actions never rewrite disk keyrings, empty-session explicit saves fail safely, and deleting the last key removes empty files.
 
 ### 2) Text studio
 
-- Encrypt text (recipient and/or password modes, optional sign-on-encrypt).
-- Decrypt text.
+- Encrypt text (recipient and/or password modes, optional sign-on-encrypt; falls back to the selected key when both recipients and password are empty).
+- Decrypt text (supports pasting external armored PGP ciphertext directly into Plain text, or staged output).
 - Sign text in three modes:
   - cleartext
   - detached
   - inline
-- Verify text with signature metadata output.
+- Verify text with signature metadata output (supports pasted external cleartext/inline blocks, detached signatures, or staged output).
 
 ### 3) File workbench
 
@@ -336,7 +336,8 @@ Workflow: `.github/workflows/linux-screenshot.yml`
 
 ## Repository Status Notes
 
-- `v0.0.1` has been released across macOS (`arm64`), Linux (`amd64`), and Windows (`amd64`). Current `main` now includes Apache-2.0 licensing ([`LICENSE`](LICENSE)), Linux runtime screenshots, multi-platform application icons, and the bilingual user guides ([`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)) in preparation for `v0.0.2`.
+- `v0.0.1` and `v0.0.2` have been released across macOS (`arm64`), Linux (`amd64`), and Windows (`amd64`); `v0.0.2` includes Apache-2.0 licensing ([`LICENSE`](LICENSE)), Linux runtime screenshots, multi-platform application icons, and the bilingual user guides ([`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)).
+- The current branch adds GUI action deadlock fixes, non-clobbering keyring persistence, certifiable primary secret key default selection, direct Text Studio ciphertext/signature paste & recipient fallback support, and real `librnp` end-to-end GUI action regression tests in `cmd/rnparmor/main_test.go` for the next release.
 - Desktop manual UX validation—including Windows 10/11 Chinese IME, high-DPI, and Inno Setup installer flow, plus macOS Apple Silicon first-launch Gatekeeper handling—remains environment-dependent and must be confirmed in dedicated manual runs.
 
 ## License
