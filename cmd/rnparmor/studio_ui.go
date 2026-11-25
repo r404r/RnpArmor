@@ -155,25 +155,35 @@ func openPGPFileFilters(openpgpName, allName string) []mygo.FileFilter {
 	}
 }
 
+func fileDialogFilters(titleKey, openpgpName, allName string) []mygo.FileFilter {
+	filters := openPGPFileFilters(openpgpName, allName)
+	if titleKey == "dlg.browse_source" || titleKey == "dlg.save_destination" {
+		return []mygo.FileFilter{filters[1], filters[0]}
+	}
+	return filters
+}
+
 func (s *uiState) recipientPicker(c *ui.Context) {
 	labels, fps := recipientOptions(s.keys)
-	if len(labels) == 0 {
-		ui.Text(c, s.tr("empty.recipient_keys")).FontSize(12)
-	} else {
-		if !labelIn(s.recipientPick, labels) {
-			s.recipientPick = labels[0]
+	ui.Column(c).Gap(6).Grow(1).Children(func() {
+		if len(labels) == 0 {
+			ui.Text(c, s.tr("empty.recipient_keys")).FontSize(12)
+		} else {
+			if !labelIn(s.recipientPick, labels) {
+				s.recipientPick = labels[0]
+			}
+			ui.Row(c).Gap(8).Grow(1).Children(func() {
+				ui.Select(c, &s.recipientPick, labels).Grow(1)
+				if ui.Button(c, s.tr("btn.add_recipient")).Clicked() {
+					s.encRecipients = appendRecipientFingerprint(s.encRecipients, fingerprintForLabel(s.recipientPick, labels, fps))
+				}
+				if ui.Button(c, s.tr("btn.clear_recipients")).Clicked() {
+					s.encRecipients = clearRecipientList(s.encRecipients)
+				}
+			})
 		}
-		ui.Row(c).Gap(8).Grow(1).Children(func() {
-			ui.Select(c, &s.recipientPick, labels).Grow(1)
-			if ui.Button(c, s.tr("btn.add_recipient")).Clicked() {
-				s.encRecipients = appendRecipientFingerprint(s.encRecipients, fingerprintForLabel(s.recipientPick, labels, fps))
-			}
-			if ui.Button(c, s.tr("btn.clear_recipients")).Clicked() {
-				s.encRecipients = clearRecipientList(s.encRecipients)
-			}
-		})
-	}
-	ui.TextInput(c, &s.encRecipients).Placeholder(s.tr("placeholder.recipients"))
+		ui.TextInput(c, &s.encRecipients).Placeholder(s.tr("placeholder.recipients"))
+	})
 }
 
 func labelIn(v string, labels []string) bool {
@@ -189,11 +199,13 @@ func (s *uiState) signerPicker(c *ui.Context) {
 	labels, fps := signerOptions(s.keys, s.tr("signer.use_selected"))
 	previous := signerLabelFor(s.textSigner, labels, fps)
 	cur := previous
-	if len(labels) > 0 {
-		ui.Select(c, &cur, labels).Grow(1)
-		s.textSigner = applySignerPick(cur, previous, labels, fps, s.textSigner)
-	}
-	ui.TextInput(c, &s.textSigner).Placeholder(s.tr("placeholder.signer"))
+	ui.Column(c).Gap(6).Grow(1).Children(func() {
+		if len(labels) > 0 {
+			ui.Select(c, &cur, labels).Grow(1)
+			s.textSigner = applySignerPick(cur, previous, labels, fps, s.textSigner)
+		}
+		ui.TextInput(c, &s.textSigner).Placeholder(s.tr("placeholder.signer"))
+	})
 }
 
 // filePathEditors is a path box plus native browse and save buttons.
@@ -220,7 +232,7 @@ func (s *uiState) pickOpenPath(titleKey, def string, dst *string) {
 	}
 	parent := s.mainWin
 	title := s.tr(titleKey)
-	filters := openPGPFileFilters(s.tr("filter.openpgp"), s.tr("filter.all_files"))
+	filters := fileDialogFilters(titleKey, s.tr("filter.openpgp"), s.tr("filter.all_files"))
 	go func() {
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 			Parent:      parent,
@@ -251,7 +263,7 @@ func (s *uiState) pickSavePath(titleKey, def string, dst *string) {
 	}
 	parent := s.mainWin
 	title := s.tr(titleKey)
-	filters := openPGPFileFilters(s.tr("filter.openpgp"), s.tr("filter.all_files"))
+	filters := fileDialogFilters(titleKey, s.tr("filter.openpgp"), s.tr("filter.all_files"))
 	go func() {
 		path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
 			Parent:      parent,
