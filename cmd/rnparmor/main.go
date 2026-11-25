@@ -52,6 +52,7 @@ type uiState struct {
 	textMode           string
 
 	encRecipients string
+	recipientPick string
 	encPassword   string
 	encCipher     string
 	encCompress   string
@@ -469,10 +470,10 @@ func (s *uiState) viewTextStudio(c *ui.Context) {
 			ui.TextArea(c, &s.textInput).Height(120)
 		})
 		ui.Field(c, s.tr("label.recipients"), func() {
-			ui.TextInput(c, &s.encRecipients)
+			s.recipientPicker(c)
 		})
 		ui.Field(c, s.tr("label.password"), func() {
-			ui.TextInput(c, &s.encPassword)
+			ui.TextInput(c, &s.encPassword).Password().Placeholder(s.tr("placeholder.symm_pass"))
 		})
 		ui.Field(c, s.tr("label.cipher_compression"), func() {
 			ui.Row(c).Gap(8).Children(func() {
@@ -485,7 +486,7 @@ func (s *uiState) viewTextStudio(c *ui.Context) {
 			ui.Select(c, &s.textMode, []string{string(rnp.SignModeCleartext), string(rnp.SignModeDetached), string(rnp.SignModeInline)}).Width(220)
 		})
 		ui.Field(c, s.tr("label.signer_fingerprint"), func() {
-			ui.TextInput(c, &s.textSigner)
+			s.signerPicker(c)
 		})
 		ui.Field(c, s.tr("label.detached_verify_sig"), func() {
 			ui.TextArea(c, &s.textVerifyDetached).Height(90)
@@ -513,10 +514,24 @@ func (s *uiState) viewTextStudio(c *ui.Context) {
 
 func (s *uiState) viewFileWorkbench(c *ui.Context) {
 	ui.Form(c, func() {
-		ui.Field(c, s.tr("label.source"), func() { ui.TextInput(c, &s.fileSrc) })
-		ui.Field(c, s.tr("label.destination"), func() { ui.TextInput(c, &s.fileDst) })
-		ui.Field(c, s.tr("label.signature_path"), func() { ui.TextInput(c, &s.fileSig) })
+		ui.Field(c, s.tr("label.source"), func() {
+			s.filePathEditors(c, &s.fileSrc, "dlg.browse_source", "", "")
+		})
+		ui.Field(c, s.tr("label.destination"), func() {
+			s.filePathEditors(c, &s.fileDst, "", "dlg.save_destination", s.fileSrc)
+		})
+		ui.Field(c, s.tr("label.signature_path"), func() {
+			s.filePathEditors(c, &s.fileSig, "dlg.browse_signature", "dlg.save_signature", s.fileSrc)
+		})
 		ui.Field(c, s.tr("label.detached_verify"), func() { ui.Switch(c, &s.fileDetached).Label(s.tr("toggle.detached")) })
+		ui.Field(c, s.tr("label.recipients"), func() { s.recipientPicker(c) })
+		ui.Field(c, s.tr("label.password"), func() {
+			ui.TextInput(c, &s.encPassword).Password().Placeholder(s.tr("placeholder.symm_pass"))
+		})
+		ui.Field(c, s.tr("label.signer_fingerprint"), func() { s.signerPicker(c) })
+		ui.Field(c, s.tr("toggle.encrypt_sign"), func() {
+			ui.Switch(c, &s.encSign).Label(s.tr("toggle.encrypt_sign"))
+		})
 	})
 	ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
 		if ui.PrimaryButton(c, s.tr("btn.encrypt_file")).Clicked() {
@@ -538,7 +553,9 @@ func (s *uiState) viewFileWorkbench(c *ui.Context) {
 
 func (s *uiState) viewPackets(c *ui.Context) {
 	ui.Form(c, func() {
-		ui.Field(c, s.tr("label.packet_input_file"), func() { ui.TextInput(c, &s.packetInput) })
+		ui.Field(c, s.tr("label.packet_input_file"), func() {
+			s.filePathEditors(c, &s.packetInput, "dlg.browse_packet", "", "")
+		})
 		ui.Field(c, s.tr("label.as_json"), func() { ui.Switch(c, &s.packetAsJSON).Label(s.tr("toggle.json")) })
 		ui.Field(c, s.tr("label.feature_query"), func() {
 			ui.TextInput(c, &s.featureQuery).Placeholder(s.tr("placeholder.feature_query"))

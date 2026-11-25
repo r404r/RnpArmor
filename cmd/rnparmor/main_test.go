@@ -853,3 +853,206 @@ func TestKeyManagerFilterSearchSortAndForms(t *testing.T) {
 		t.Fatal("primary row")
 	}
 }
+
+func TestStudioKeyPickersAndFileDialogPaths(t *testing.T) {
+	if err := ValidateCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	newKeys := []string{
+		"btn.add_recipient", "btn.clear_recipients", "btn.browse", "btn.save_as",
+		"signer.use_selected", "empty.recipient_keys",
+		"placeholder.recipients", "placeholder.signer", "placeholder.symm_pass",
+		"dlg.browse_source", "dlg.save_destination", "dlg.browse_signature", "dlg.save_signature", "dlg.browse_packet",
+		"filter.openpgp", "filter.all_files",
+	}
+	for _, k := range newKeys {
+		for _, l := range []Lang{LangEN, LangZH, LangJA} {
+			v := strings.TrimSpace(Tr(l, k))
+			if v == "" || v == k {
+				t.Fatalf("translation missing %s/%s: %q", k, l, v)
+			}
+		}
+	}
+
+	const aliceFP = "AAAAAAAABBBBBBBBCCCCCCCCDDDDDDDDEEEEEEEE"
+	const bobFP = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+	const subFP = "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+	const oldFP = "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
+	const bareFP = "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE"
+	keys := []rnp.KeySummary{
+		{
+			Fingerprint: "AAAA AAAA BBBB BBBB CCCC CCCC DDDD DDDD EEEE EEEE",
+			KeyID:       "1111222233334444",
+			PrimaryUID:  "Alice <alice@example.com>",
+			Algorithm:   "Ed25519",
+			HasSecret:   true,
+			IsPrimary:   true,
+		},
+		{
+			Fingerprint: bobFP,
+			KeyID:       "BBBBBBBBBBBBBBBB",
+			PrimaryUID:  "Bob <bob@example.com>",
+			Algorithm:   "RSA",
+			HasSecret:   false,
+			IsPrimary:   true,
+		},
+		{
+			Fingerprint: subFP,
+			KeyID:       "CCCCCCCCCCCCCCCC",
+			PrimaryUID:  "Sub User",
+			Algorithm:   "ECDH",
+			HasSecret:   true,
+			IsSub:       true,
+		},
+		{
+			Fingerprint: oldFP,
+			KeyID:       "DDDDDDDDDDDDDDDD",
+			PrimaryUID:  "Old <old@example.com>",
+			Algorithm:   "DSA",
+			HasSecret:   true,
+		},
+		{
+			Fingerprint: bareFP,
+			KeyID:       "EEEEEEEEEEEEEEEE",
+			Algorithm:   "ECDSA",
+			IsPrimary:   true,
+		},
+	}
+
+	labels, fps := recipientOptions(keys)
+	if len(labels) != 4 || len(fps) != 4 {
+		t.Fatalf("recipient options = %d labels, %d fps", len(labels), len(fps))
+	}
+	if labels[0] != "Alice <alice@example.com> [1111222233334444]" {
+		t.Fatalf("alice label = %q", labels[0])
+	}
+	if fps[0] != aliceFP {
+		t.Fatalf("alice fp = %q", fps[0])
+	}
+	if labels[1] != "Bob <bob@example.com> [BBBBBBBBBBBBBBBB]" || fps[1] != bobFP {
+		t.Fatalf("bob = %q %q", labels[1], fps[1])
+	}
+	for _, fp := range fps {
+		if fp == subFP {
+			t.Fatal("subkey listed as recipient")
+		}
+	}
+	if labels[3] != bareFP+" ECDSA" || fps[3] != bareFP {
+		t.Fatalf("no uid = %q %q", labels[3], fps[3])
+	}
+	noAlg := keyPickerLabel(rnp.KeySummary{Fingerprint: bareFP, IsPrimary: true})
+	if noAlg != bareFP {
+		t.Fatalf("fingerprint only = %q", noAlg)
+	}
+	idOnly := keyPickerLabel(rnp.KeySummary{KeyID: "0123456789ABCDEF", IsPrimary: true})
+	if idOnly != "0123456789ABCDEF" {
+		t.Fatalf("id only = %q", idOnly)
+	}
+
+	list := appendRecipientFingerprint("", "  ab cd ")
+	if list != "abcd" {
+		t.Fatalf("first append = %q", list)
+	}
+	if got := appendRecipientFingerprint(list, "AB CD"); got != list {
+		t.Fatalf("case-insensitive dup = %q", got)
+	}
+	spaced := "ABCD 1234 EFGH 5678"
+	if got := appendRecipientFingerprint(spaced, "abcd1234efgh5678"); got != spaced {
+		t.Fatalf("spaced dup rewrote list: %q", got)
+	}
+	if got := appendRecipientFingerprint(list, ""); got != list {
+		t.Fatalf("empty fp = %q", got)
+	}
+	if got := appendRecipientFingerprint(list, "   "); got != list {
+		t.Fatalf("blank fp = %q", got)
+	}
+	next := appendRecipientFingerprint(" AbCd , EF ", "1111")
+	if next != "AbCd, EF, 1111" {
+		t.Fatalf("second recipient = %q", next)
+	}
+	if clearRecipientList(next) != "" {
+		t.Fatal("clear")
+	}
+	cleared := clearRecipientList(next)
+	got := recipientFingerprints(actionInput{encRecipients: cleared, selected: "SELECTED"})
+	if len(got) != 1 || got[0] != "SELECTED" {
+		t.Fatalf("cleared fallback = %#v", got)
+	}
+
+	def := "Use selected key (default)"
+	sLabels, sFPs := signerOptions(keys, def)
+	if len(sLabels) != 3 || sLabels[0] != def || sFPs[0] != "" {
+		t.Fatalf("signer head = %q %q len %d", sLabels[0], sFPs[0], len(sLabels))
+	}
+	if sLabels[1] != labels[0] || sFPs[1] != aliceFP {
+		t.Fatalf("signer alice = %q %q", sLabels[1], sFPs[1])
+	}
+	if sLabels[2] != "Old <old@example.com> [DDDDDDDDDDDDDDDD]" || sFPs[2] != oldFP {
+		t.Fatalf("signer old = %q %q", sLabels[2], sFPs[2])
+	}
+	for _, fp := range sFPs {
+		if fp == bobFP || fp == subFP || fp == bareFP {
+			t.Fatalf("signer listed %s", fp)
+		}
+	}
+
+	manual := "deadbeef"
+	prev := signerLabelFor(manual, sLabels, sFPs)
+	if prev != def {
+		t.Fatalf("unknown signer label = %q", prev)
+	}
+	if got := applySignerPick(prev, prev, sLabels, sFPs, manual); got != manual {
+		t.Fatalf("manual override wiped: %q", got)
+	}
+	if got := applySignerPick(sLabels[1], prev, sLabels, sFPs, manual); got != aliceFP {
+		t.Fatalf("pick alice = %q", got)
+	}
+	mixed := "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeee"
+	if signerLabelFor(mixed, sLabels, sFPs) != sLabels[1] {
+		t.Fatal("signer match is case-sensitive")
+	}
+	if got := applySignerPick(def, sLabels[1], sLabels, sFPs, aliceFP); got != "" {
+		t.Fatalf("pick default = %q", got)
+	}
+	if signerLabelFor("", sLabels, sFPs) != def {
+		t.Fatal("empty signer")
+	}
+	if signerLabelFor("  ", nil, nil) != "" {
+		t.Fatal("no signer options")
+	}
+
+	ws := filepath.Join("work", "space")
+	sibling := filepath.Join("docs", "in.txt")
+	if got := dialogDefaultPath("", sibling, ws); got != filepath.Dir(sibling) {
+		t.Fatalf("sibling dir = %q", got)
+	}
+	if got := dialogDefaultPath("", "in.txt", ws); got != ws {
+		t.Fatalf("bare sibling = %q", got)
+	}
+	if got := dialogDefaultPath("  ", "  ", "  "+ws+"  "); got != ws {
+		t.Fatalf("workspace = %q", got)
+	}
+	current := filepath.Join("out", "dst.asc")
+	if got := dialogDefaultPath("  "+current+" ", sibling, ws); got != current {
+		t.Fatalf("current wins = %q", got)
+	}
+
+	filters := openPGPFileFilters("OpenPGP", "All files")
+	if len(filters) != 2 || filters[0].Name != "OpenPGP" || filters[1].Name != "All files" {
+		t.Fatalf("filters = %+v", filters)
+	}
+	seenAsc, seenAll := false, false
+	for _, ext := range filters[0].Extensions {
+		if ext == "asc" {
+			seenAsc = true
+		}
+	}
+	for _, ext := range filters[1].Extensions {
+		if ext == "*" {
+			seenAll = true
+		}
+	}
+	if !seenAsc || !seenAll {
+		t.Fatalf("filter extensions = %+v %+v", filters[0].Extensions, filters[1].Extensions)
+	}
+}
