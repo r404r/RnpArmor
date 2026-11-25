@@ -1055,4 +1055,16 @@ func TestStudioKeyPickersAndFileDialogPaths(t *testing.T) {
 	if !seenAsc || !seenAll {
 		t.Fatalf("filter extensions = %+v %+v", filters[0].Extensions, filters[1].Extensions)
 	}
+	for _, key := range []string{"dlg.browse_source", "dlg.save_destination"} {
+		df := fileDialogFilters(key, "OpenPGP", "All files")
+		if len(df) != 2 || df[0].Name != "All files" || df[1].Name != "OpenPGP" {
+			t.Fatalf("fileDialogFilters(%s) = %+v", key, df)
+		}
+	}
+	for _, key := range []string{"dlg.browse_signature", "dlg.save_signature", "dlg.browse_packet"} {
+		df := fileDialogFilters(key, "OpenPGP", "All files")
+		if len(df) != 2 || df[0].Name != "OpenPGP" || df[1].Name != "All files" {
+			t.Fatalf("fileDialogFilters(%s) = %+v", key, df)
+		}
+	}
 }
