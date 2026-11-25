@@ -1,0 +1,86 @@
+name: linux-screenshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_screenshots:
+        description: "Commit captured PNGs to docs/screenshots/ (non-main branches only)"
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - "scripts/capture-linux-screenshots.sh"
+      - ".github/workflows/linux-screenshot.yml"
+
+concurrency:
+  group: linux-screenshot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || '' }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+      - name: cache deps
+        uses: actions/cache@v4
+        with:
+          path: out/deps
+          key: ${{ runner.os }}-deps-v3-${{ hashFiles('deps/pins.json', 'scripts/build-librnp.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-v3-
+      - name: packages
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake python3 zlib1g-dev libbz2-dev pkg-config patchelf xvfb openbox scrot xdotool wmctrl libgtk-3-0 libgl1-mesa-dri libegl1 libgles2 fonts-dejavu-core fonts-noto-cjk imagemagick
+      - name: build pinned librnp
+        run: bash scripts/build-librnp.sh
+      - name: build rnparmor
+        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.appVersion=dev" -o out/rnparmor ./cmd/rnparmor
+      - name: capture screenshots
+        run: bash scripts/capture-linux-screenshots.sh --bin "$PWD/out/rnparmor" --lib "$PWD/out/lib/librnp.so" --out "$PWD/out/screenshots"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rnparmor-linux-screenshots
+          path: out/screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30
+      - name: commit screenshots to feature branch
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.commit_screenshots == true) ||
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "${TARGET_BRANCH}" || "${TARGET_BRANCH}" == "main" ]]; then
+            echo "Refusing to commit screenshots to main or empty branch: '${TARGET_BRANCH}'"
+            exit 0
+          fi
+          if [[ "${EVENT_NAME}" == "pull_request" ]] && \
+             [[ -f docs/screenshots/rnparmor-linux-en.png ]] && \
+             [[ -f docs/screenshots/rnparmor-linux-zh.png ]] && \
+             [[ -f docs/screenshots/rnparmor-linux-ja.png ]]; then
+            echo "All docs/screenshots/rnparmor-linux-*.png already exist; skipping auto-commit on pull_request."
+            exit 0
+          fi
+          mkdir -p docs/screenshots
+          cp out/screenshots/rnparmor-linux-en.png docs/screenshots/rnparmor-linux-en.png
+          cp out/screenshots/rnparmor-linux-zh.png docs/screenshots/rnparmor-linux-zh.png
+          cp out/screenshots/rnparmor-linux-ja.png docs/screenshots/rnparmor-linux-ja.png
+          if git diff --quiet -- docs/screenshots && [[ -z "$(git ls-files --others --exclude-standard -- docs/screenshots)" ]]; then
+            echo "Screenshots unchanged; nothing to commit."
+            exit 0
+          fi
+          git config user.name "OpenBot"
+          git config user.email "335604065+openbotgit[bot]@users.noreply.github.com"
+          git add docs/screenshots/rnparmor-linux-en.png docs/screenshots/rnparmor-linux-zh.png docs/screenshots/rnparmor-linux-ja.png
+          git commit -m "docs(screenshots): capture Linux en/zh/ja runtime screenshots" \
+            -m "Co-authored-by: OpenBot <335604065+openbotgit[bot]@users.noreply.github.com>"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"

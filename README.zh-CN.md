@@ -6,6 +6,26 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
 
 > 许可证：**Apache License, Version 2.0**（[`LICENSE`](LICENSE)）。第三方声明与许可文本见 [`third_party/NOTICES.md`](third_party/NOTICES.md) 及各平台分发包（Windows 与 Linux 位于 `LICENSE` 与 `licenses/`，macOS 位于 `RnpArmor.app/Contents/Resources/LICENSE` 与 `licenses/`）。
 
+## 界面截图
+
+Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / 工作区 / 语言 / 帮助`，`librnp 0.18.1`），通过 [`.github/workflows/linux-screenshot.yml`](.github/workflows/linux-screenshot.yml) 与 [`scripts/capture-linux-screenshots.sh`](scripts/capture-linux-screenshots.sh) 采集：
+
+![RnpArmor 主窗口（简体中文，Linux 运行时）](docs/screenshots/rnparmor-linux-zh.png)
+
+<details>
+<summary>英文界面截图</summary>
+
+![RnpArmor 主窗口（英文，Linux 运行时）](docs/screenshots/rnparmor-linux-en.png)
+
+</details>
+
+<details>
+<summary>日文界面截图</summary>
+
+![RnpArmor 主窗口（日文，Linux 运行时）](docs/screenshots/rnparmor-linux-ja.png)
+
+</details>
+
 ## 功能总览
 
 1. **MyGo 五大工作区 GUI + 原生 4 组三语菜单栏 + 独立 About 子窗口**
@@ -74,9 +94,11 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
   - `session_test.go`：兼容测试 + 扩展测试。
 - `scripts/build-windows.ps1`：Windows `-H=windowsgui` 便携包与 Inno Setup 6 安装包（`rnparmor-windows-amd64-setup.exe`）构建、PE 子系统与 DLL 导入校验、测试、`--smoke-out` 冒烟与打包。
 - `scripts/build-macos.sh`：macOS Apple Silicon（`arm64`）构建脚本，编译静态依赖（`Botan 3.10.0` + `json-c 0.19`）与 `librnp.dylib`，组装 `RnpArmor.app` 并执行 ad-hoc `codesign --verify --deep --strict`、`go test`、`--smoke-test`，最终打包 `rnparmor-macos-arm64.dmg`。
+- `scripts/capture-linux-screenshots.sh`：在无头 X11（`Xvfb` + `openbox`）下以 `--lang en|zh|ja` 启动 `rnparmor`，通过 `scrot` 抓取聚焦窗口截图并校验分辨率与非空白像素方差。
 - `packaging/windows/rnparmor.iss`：Windows 安装程序（`rnparmor-windows-amd64-setup.exe`）的 Inno Setup 6 脚本。
 - `.github/workflows/smoke.yml`：`linux`、`windows-portable` 与 `macos-arm64` 三平台 CI（含缓存与同分支并发自动取消）。
 - `.github/workflows/release.yml`：Tag/手动触发的多平台自动打包发布。
+- `.github/workflows/linux-screenshot.yml`：调用 `scripts/capture-linux-screenshots.sh` 采集 Linux 三语实机截图，上传 `rnparmor-linux-screenshots` artifact，并可在非 `main` 分支将更新后的 PNG 提交至 `docs/screenshots/`。
 
 ## 五大工作区说明
 
@@ -272,6 +294,14 @@ Windows 依赖构建钉扎并打包以下组件：
   - `windows-portable`：沿用相同的 `deps-v4` 缓存键与分段流水线（`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package -Version "${{ steps.tag.outputs.value }}"`），产出 `rnparmor-windows-amd64.zip`、`rnparmor-windows-amd64-setup.exe` 与 `windows-report.txt`
   - `macos-arm64`（`runs-on: macos-15`）：沿用相同的 `arm64-deps-v1` 缓存键与分段流水线（`deps -> save cache -> rnp -> package --version "${{ steps.tag.outputs.value }}"`），产出 `rnparmor-macos-arm64.dmg`
   - `publish-release`：三平台均通过后创建/更新 GitHub Release，上传 `rnparmor-macos-arm64.dmg`、`rnparmor-linux-amd64.tar.gz`、`rnparmor-windows-amd64-setup.exe`、`rnparmor-windows-amd64.zip`、`windows-report.txt` 与统一校验文件 `rnparmor-${TAG}-SHA256SUMS.txt`
+
+截图工作流：`.github/workflows/linux-screenshot.yml`
+
+- 触发条件：
+  - `workflow_dispatch`（可选 `commit_screenshots` 布尔输入，仅限非 `main` 分支）
+  - 修改 `scripts/capture-linux-screenshots.sh` 或 `.github/workflows/linux-screenshot.yml` 的 `pull_request`
+- `linux-screenshot` 作业（`runs-on: ubuntu-latest`）：
+  - 构建 pinned `librnp.so` 与 `rnparmor`，在 `Xvfb` + `openbox` 下运行 `scripts/capture-linux-screenshots.sh`，上传 `rnparmor-linux-screenshots`（`out/screenshots/*.png`），并按条件在非 `main` 分支提交 `docs/screenshots/rnparmor-linux-{en,zh,ja}.png`
 
 ## 安全边界与注意事项
 
