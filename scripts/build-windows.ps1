@@ -665,7 +665,15 @@ function Build-Package {
     $env:GOARCH = "amd64"
     $exeBuilt = Join-Path $work "rnparmor.exe"
     $ldflags = "-s -w -H=windowsgui -X main.appVersion=$Version"
-    Run $go @("build", "-trimpath", "-ldflags", $ldflags, "-o", $exeBuilt, ".\cmd\rnparmor")
+    $sysoPath = Join-Path $root "cmd\rnparmor\rsrc_windows_amd64.syso"
+    try {
+        Run $go @("run", ".\cmd\genwinres", "-ico", (Join-Path $root "assets\icons\rnparmor.ico"), "-out", $sysoPath)
+        Run $go @("build", "-trimpath", "-ldflags", $ldflags, "-o", $exeBuilt, ".\cmd\rnparmor")
+    } finally {
+        if (Test-Path -LiteralPath $sysoPath) {
+            Remove-Item -LiteralPath $sysoPath -Force
+        }
+    }
 
     if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
     New-Item -ItemType Directory -Force -Path $dist, (Join-Path $dist "licenses") | Out-Null
@@ -696,6 +704,9 @@ function Build-Package {
     }
     if ($headerText -notmatch '(?im)^\s*[0-9a-f]+\s+subsystem\s+.*\bWindows\s+GUI\b') {
         throw "rnparmor.exe subsystem is not Windows GUI (expected -H=windowsgui); dumpbin line: $subsystemLine"
+    }
+    if ($headerText -notmatch '(?im)SECTION HEADER.*\r?\n\s*\.rsrc\s+name') {
+        throw "rnparmor.exe is missing a .rsrc section; the icon resource was not linked"
     }
     Log "rnparmor.exe subsystem: $subsystemLine"
 

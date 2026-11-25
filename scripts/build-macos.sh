@@ -299,6 +299,7 @@ write_info_plist() {
   <key>CFBundleIdentifier</key><string>com.r404r.rnparmor</string>
   <key>CFBundleExecutable</key><string>rnparmor</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>RnpArmor</string>
   <key>CFBundleShortVersionString</key><string>${short_ver}</string>
   <key>CFBundleVersion</key><string>${bundle_ver}</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
@@ -348,6 +349,15 @@ package_stage() {
     cd "$app_macos"
     shasum -a 256 librnp.dylib > "$app_res/SHA256SUMS"
   )
+  cp -f "$root/assets/icons/RnpArmor.icns" "$app_res/RnpArmor.icns"
+  if [[ ! -s "$app_res/RnpArmor.icns" ]]; then
+    echo "RnpArmor.icns missing or empty" >&2
+    exit 1
+  fi
+  if ! grep -q '<key>CFBundleIconFile</key>' "$app_contents/Info.plist"; then
+    echo "Info.plist missing CFBundleIconFile" >&2
+    exit 1
+  fi
   run_cmd "codesign app" codesign --force --sign - "$app_root"
   run_cmd "codesign verify" codesign --verify --deep --strict "$app_root"
 

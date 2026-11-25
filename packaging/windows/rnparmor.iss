@@ -39,6 +39,7 @@ OutputBaseFilename={#OutputBaseFilename}
 VersionInfoVersion={#AppVersionInfo}
 UninstallDisplayName=RnpArmor
 UninstallDisplayIcon={app}\rnparmor.exe
+SetupIconFile=..\..\assets\icons\rnparmor.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

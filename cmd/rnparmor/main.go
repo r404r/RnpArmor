@@ -15,6 +15,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/r404r/RnpArmor/assets/icons"
 	"github.com/r404r/RnpArmor/internal/rnp"
 )
 
@@ -139,12 +140,20 @@ func main() {
 	}
 
 	mygo.App.WhenReady(func() {
+		if runtime.GOOS == "darwin" {
+			if err := mygo.App.Dock.SetIcon(icons.AppIconPNG); err != nil {
+				log.Printf("dock icon: %v", err)
+			}
+		}
 		w := mygo.NewWindow(mygo.WindowOptions{
 			Title:   "RnpArmor",
 			Width:   1120,
 			Height:  780,
 			Content: ui.View(st.view),
 		})
+		if err := w.SetIcon(icons.AppIconPNG); err != nil {
+			log.Printf("window icon: %v", err)
+		}
 		w.OnClosed(func() {
 			st.closeAboutWindow()
 		})
@@ -244,6 +253,9 @@ func (s *uiState) openAboutWindow() {
 		opts.Parent = s.mainWin
 	}
 	w := mygo.NewWindow(opts)
+	if err := w.SetIcon(icons.AppIconPNG); err != nil {
+		log.Printf("about icon: %v", err)
+	}
 	if runtime.GOOS != "darwin" {
 		w.SetMenu(nil)
 	}
