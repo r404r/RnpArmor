@@ -34,27 +34,28 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
 
 1. **MyGo 五大工作区 GUI + 原生 4 组三语菜单栏 + 独立 About 子窗口**
    - 工作区：
-     - 钥匙圈与生成
+     - 钥匙圈与生成（主从双栏密钥管理视图）
      - 文本加解密与签名验签
      - 文件加解密与签名验签
      - Packet 检视与算法特性
      - 便携钥匙圈存储
    - 三语词典位于 `cmd/rnparmor/i18n.go`，零外部依赖。
-   - 应用图标（通过 `assets/icons/icons.go` 内嵌透明 `256×256` PNG `assets/icons/rnparmor-256.png`，即 `icons.AppIconPNG`）在运行时通过 `w.SetIcon(...)` 设置到主窗口与 About 窗口，并在 macOS 上通过 `mygo.App.Dock.SetIcon(...)` 设置 Dock 图标。
+   - 应用图标（通过 `assets/icons/icons.go` 内嵌透明 `256×256` PNG `assets/icons/rnparmor-256.png`，即 `icons.AppIconPNG`）在运行时通过 `w.SetIcon(...)` 设置到主窗口及子窗口（**关于**、**新建密钥**、**粘贴导入密钥**），并在 macOS 上通过 `mygo.App.Dock.SetIcon(...)` 设置 Dock 图标。
    - 主窗口挂载原生 4 组三语菜单栏（文件 / 工作区 / 语言 / 帮助）：
-     - 文件：打开会话、加载钥匙圈、保存钥匙圈、退出。
+     - 文件：选择文件夹...、打开会话、加载钥匙圈、保存钥匙圈、退出。
      - 工作区：5 个单选菜单项，与工作区 Tab 双向联动。
-     - 语言：三语单选项（`English`、`中文`、`日本語`），切换后实时刷新菜单栏、主窗口与 About 子窗口。
+     - 语言：三语单选项（`English`、`中文`、`日本語`），切换后实时刷新菜单栏、主窗口与已打开的子窗口（**关于**、**新建密钥**、**粘贴导入密钥**）。
      - 帮助：打开独立 About 子窗口（关于）。
    - 语言可由 `--lang en|zh|ja`、`RNPARMOR_LANG`、`LANG` 预设。
    - **独立无菜单非模态 About 子窗口（`580×520`）**：
      - 单实例聚焦、固定尺寸、无菜单栏（非 macOS 平台调用 `SetMenu(nil)`）、带关闭按钮。
-     - 关闭 About 窗口不影响主窗口；主窗口关闭时联动关闭 About 窗口；语言切换时窗口标题与内容同步刷新。
-     - 展示应用版本（`appVersion`，如 `v0.0.1` 或 `dev`）、作者（`r404r (https://github.com/r404r)`）、仓库地址（`https://github.com/r404r/RnpArmor`）、RNP 上游地址与 `librnp` 版本、本地动态库路径（`rnp.dll` / `librnp.so`）、密钥库目录（便携工作区路径及 `pubring.gpg`/`secring.gpg` 存在状态）与 GUI 框架/运行时栈（MyGo / purego / Botan 版本）。
+     - 关闭 About 窗口不影响主窗口；主窗口关闭时联动关闭 **关于**、**新建密钥** 与 **粘贴导入密钥** 子窗口；语言切换时窗口标题与内容同步刷新。
+     - 展示应用版本（`appVersion`，如 `v0.0.2` 或 `dev`）、作者（`r404r (https://github.com/r404r)`）、仓库地址（`https://github.com/r404r/RnpArmor`）、RNP 上游地址与 `librnp` 版本、本地动态库路径（`rnp.dll` / `librnp.so`）、密钥库目录（便携工作区路径及 `pubring.gpg`/`secring.gpg` 存在状态）与 GUI 框架/运行时栈（MyGo / purego / Botan 版本）。
 
 2. **`internal/rnp` 能力扩展**
-   - 补齐密钥迭代/定位、导入导出、删除、JSON 导出。
-   - 基于 `rnp_generate_key_json` 的多算法密钥生成。
+   - 补齐密钥迭代/定位（主密钥摘要内嵌子密钥 `Subkeys`）、密钥导入（`ImportKeys`）、公私钥/吊销证书导出（`ExportRevocation`）、删除、JSON 导出。
+   - 支持无口令仅公钥/只读会话（`OpenOptionalPass`），以及仅 `pubring.gpg`（无 `secring.gpg`）的独立加载与保存。
+   - 基于 `rnp_generate_key_json` 的多算法密钥生成与可选过期时间。
    - 文本能力：加密/解密、clearsign/detached/inline 签名与验签。
    - 文件能力：带选项的加解密与签名验签。
    - Packet 文本/JSON 检视与算法特性查询。
@@ -63,8 +64,8 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
 3. **安全边界（portable 优先）**
    - 加载动态库前校验 `SHA256SUMS`。
    - Windows 端使用 `LoadLibraryEx` 约束搜索路径。
-   - 仅支持显式路径钥匙圈读写，不依赖默认钥匙圈。
-   - 文件发布遵循防覆盖语义。
+   - 仅支持显式路径钥匙圈读写，不依赖默认钥匙圈；启动默认空口令（不预填明文默认口令）、口令输入掩码化、私钥复制采用隐秘剪贴板标记，导出私钥与吊销证书使用 `0600` 权限。
+   - 只读操作不改写磁盘钥匙圈，文件发布遵循防覆盖语义。
 
 4. **Windows portable 构建、GUI 子系统与 smoke 流程加固**
    - Windows 构建使用 `-H=windowsgui`（Windows GUI 子系统），双击启动不弹出黑色控制台窗口。
@@ -91,18 +92,19 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
   - `rnparmor.png`、`rnparmor-256.png`、`rnparmor.ico`、`RnpArmor.icns`：多平台透明应用图标资产。
   - `icons.go`、`icons_test.go`：内嵌 `rnparmor-256.png`（`icons.AppIconPNG`）供运行时窗口与 Dock 图标使用。
 - `cmd/rnparmor/`
-  - `main.go`：MyGo 主程序、运行时窗口/Dock 图标设置、原生 4 组菜单栏、5 工作区 UI、`580×520` 非模态 About 子窗口、异步会话操作、`--smoke-out` 及构建注入 `appVersion` 展示/输出。
+  - `main.go`：MyGo 主程序、运行时窗口/Dock 图标设置、原生 4 组菜单栏（含 `文件 → 选择文件夹...`）、启动自动加载已有钥匙圈、默认空口令与 `OpenOptionalPass`、5 工作区切换、`580×520` 非模态 About 子窗口、便携页掩码口令输入、异步会话操作、`--smoke-out` 及构建注入 `appVersion` 展示/输出。
+  - `keys_ui.go`：Phase 1 主从双栏钥匙圈管理工作区（`+ 新建密钥`、`导入文件...`、`粘贴导入...`、`刷新`、只读工作目录 + 原生`选择文件夹...`）、所有权分段过滤（`全部` / `我的密钥` / `公钥`）、`密钥 ID (16)` ↔ `指纹 (40)` 切换、实时搜索、可排序主密钥列表、右侧详情检视栏（4 字符分组指纹复制、徽章、内嵌子密钥、带确认提示/隐秘剪贴板/`0600` 落盘的公钥/私钥/吊销证书导出、原生二次确认 `删除密钥...`、可折叠 `原始密钥 JSON`），以及`新建密钥` / `粘贴导入密钥`独立子窗口。
   - `i18n.go`：EN/ZH/JA 三语词典、语言解析与完整性校验。
-  - `main_test.go`：冒烟输出与文件写入、菜单模板结构、状态联动、文本解密/验签输入解析、收件人留空回退规则单元测试，以及基于真实 `librnp` 的端到端 GUI 动作回归单测（`TestUIStateActionsEndToEnd`）。
+  - `main_test.go`：冒烟输出与文件写入、菜单模板结构、状态联动、钥匙圈筛选/搜索/排序/ID 切换/`新建密钥`校验、文本解密/验签输入解析、收件人留空回退规则单元测试，以及基于真实 `librnp` 的端到端 GUI 动作回归单测（`TestUIStateActionsEndToEnd`，含吊销证书导出与仅公钥钥匙圈流程）。
 - `cmd/genwinres/`
   - `main.go`：零第三方依赖的纯 Go AMD64 COFF `.syso` 资源生成器，构建时将 `rnparmor.ico` 临时嵌入 `rnparmor.exe`。
 - `internal/loadlib/`
   - `open.go`：绝对路径解析 `librnp` 并于加载前校验 `SHA256SUMS`，针对 macOS `.app` 包结构支持从 `Contents/MacOS/SHA256SUMS` 回退至 `Contents/Resources/SHA256SUMS`。
 - `internal/rnp/`
   - `api.go`：purego 对 librnp 的 FFI 绑定。
-  - `session.go`：会话生命周期、口令回调控制、数据模型。
-  - `ops.go`：密钥管理、文本/文件加解密签名验签、Packet/特性接口。
-  - `session_test.go`：兼容测试 + 扩展测试。
+  - `session.go`：会话生命周期（`Open`、`OpenOptionalPass`）、口令回调控制、数据模型（含 `KeySummary.Subkeys`）。
+  - `ops.go`：密钥管理（含主密钥内嵌子密钥摘要、仅公钥 `SaveTo`/`LoadFrom`、吊销证书导出）、文本/文件加解密签名验签、Packet/特性接口。
+  - `session_test.go`：兼容测试 + 扩展测试（含子密钥与仅公钥钥匙圈测试）。
 - `scripts/build-windows.ps1`：Windows 构建脚本，调用 `cmd/genwinres` 嵌入临时 `.syso` 图标、编译 `-H=windowsgui` 便携包与 Inno Setup 6 安装包（`rnparmor-windows-amd64-setup.exe`）、校验 PE 子系统、`.rsrc` 资源节与 DLL 导入表，并运行测试、`--smoke-out` 冒烟与打包。
 - `scripts/build-macos.sh`：macOS Apple Silicon（`arm64`）构建脚本，编译静态依赖（`Botan 3.10.0` + `json-c 0.19`）与 `librnp.dylib`，组装 `RnpArmor.app`（写入 `Contents/Resources/RnpArmor.icns` 与 `Info.plist` 的 `CFBundleIconFile`），执行 ad-hoc `codesign --verify --deep --strict`、`go test`、`--smoke-test`，最终打包 `rnparmor-macos-arm64.dmg`。
 - `scripts/capture-linux-screenshots.sh`：在无头 X11（`Xvfb` + `openbox`）下以 `--lang en|zh|ja` 启动 `rnparmor`，通过 `scrot` 抓取聚焦窗口截图并校验分辨率与非空白像素方差。
@@ -118,13 +120,15 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
 
 ### 1）钥匙圈与生成
 
-- 用内存口令打开会话。
-- 按算法参数生成密钥。
-- 列表查看、公私钥导出、Key JSON、删除。
-- 显式保存/加载 `pubring.gpg` 与 `secring.gpg`（只读操作不改写磁盘钥匙圈，空会话显式保存受保护报错，删除最后一把密钥会清理空文件）。
+- 主从双栏密钥管理视图，顶部工具栏集成 `+ 新建密钥`、`导入文件...`、`粘贴导入...`、`刷新` 与只读工作目录 + 原生`选择文件夹...` 选择器。
+- 支持 `全部` / `我的密钥` / `公钥` 分段过滤、`密钥 ID (16)` ↔ `指纹 (40)` 切换、按 UID / Key ID / 指纹 / 算法实时搜索，以及可排序主密钥列表（子密钥归属在主密钥详情下）。
+- 右侧详情栏展示 4 字符分组完整指纹与一键复制、所有权/状态/能力徽章、子密钥列表、`复制公钥` / `导出公钥 (.asc)...`、私钥专属的确认弹窗`导出私钥 (.asc)...` / 隐秘剪贴板`复制私钥` / `吊销证书...`（`.rev.asc`）、原生二次确认`删除密钥...` 及可折叠`原始密钥 JSON`。
+- 独立 `+ 新建密钥` 弹窗校验名称/邮箱、掩码`口令` + `确认口令`、有效期（`永不` / `1 年` / `2 年` / `5 年`）与可折叠高级算法选项；启动默认空口令状态下即可浏览与导入仅公钥钥匙圈（仅 `pubring.gpg`）。
+- 只读操作不改写磁盘钥匙圈，空会话显式保存受保护报错，删除最后一把密钥会清理空文件。
 
 ### 2）文本工作区
 
+- `收件人（逗号分隔指纹）`、`签名者指纹`等保持文本框输入。
 - 文本加密（收件人模式 / 密码模式 / 可选加密同时签名；收件人与密码均留空时回退到当前已选择密钥）。
 - 文本解密（支持直接向明文框粘贴外部 PGP 密文或解密暂存输出）。
 - 三种签名模式：
@@ -135,6 +139,7 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
 
 ### 3）文件工作区
 
+- `源文件`、`目标文件`与`签名文件路径`保持绝对路径文本框输入。
 - 文件加密/解密。
 - 分离与内联签名验签。
 - 延续防覆盖发布语义。
@@ -146,12 +151,12 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
 
 ### 5）便携钥匙圈存储
 
-- 显式目录读写钥匙圈。
-- 口令仅在会话操作期间以内存形式使用。
+- 只读**工作目录**展示 + 原生**选择文件夹...** 选择器，支持显式`打开并加载`、`保存`与`刷新密钥`（兼容仅 `pubring.gpg` 与完整 `pubring.gpg` + `secring.gpg`）。
+- 掩码**口令**输入框（启动默认为空，仅在会话私钥解锁等操作期间以内存形式使用）。
 
 ### 6）原生 4 组菜单栏与独立 About 子窗口
 
-- 主窗口顶部原生菜单栏包含 4 组：文件（打开会话 / 加载与保存钥匙圈 / 退出）、工作区（5 个工作区单选联动）、语言（`English` / `中文` / `日本語` 单选实时刷新菜单与窗口）与帮助（关于）。
+- 主窗口顶部原生菜单栏包含 4 组：文件（选择文件夹... / 打开会话 / 加载与保存钥匙圈 / 退出）、工作区（5 个工作区单选联动）、语言（`English` / `中文` / `日本語` 单选实时刷新菜单与窗口）与帮助（关于）。
 - 点击「帮助 → 关于」打开 `580×520` 固定尺寸、非模态的独立无菜单子窗口（单实例聚焦、无菜单栏、带关闭按钮）。
 - 关闭 About 子窗口不影响主窗口；主窗口关闭时联动关闭 About 子窗口；切换语言时其标题与内容同步更新。
 - 仅展示只读信息（应用版本、作者、仓库、RNP 上游、本地动态库路径、便携密钥库目录及 `pubring.gpg`/`secring.gpg` 存在状态、运行时栈），并明确提示不读取系统默认钥匙圈。
@@ -321,14 +326,14 @@ Windows 依赖构建钉扎并打包以下组件：
 
 - 动态库加载路径受控并做完整性校验。
 - 不读写默认钥匙圈，必须显式目录。
-- 口令回调重入被设计性阻断。
+- 口令回调重入被设计性阻断；启动默认空口令（不再预填明文默认口令），界面口令框均作掩码遮蔽，私钥复制采用隐秘剪贴板标记。
 - 内存路径有输入/输出体积上限。
 - 当前阶段仍建议避免在测试环境使用真实生产密钥与口令。
 
 ## 仓库状态说明
 
 - `v0.0.1` 与 `v0.0.2` 多平台版本均已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）；其中 `v0.0.2` 已包含 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、三端应用图标与双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)）。
-- 当前分支已补充 GUI 动作死锁修复、只读操作不覆盖磁盘钥匙圈（含末把密钥删除清理与空会话保存保护）、默认优先选中可认证主私钥、文本工作区直接粘贴密文/签名与收件人留空回退、以及 `cmd/rnparmor/main_test.go` 中基于真实 `librnp` 的端到端 GUI 动作回归单测，将随后续版本发布。
+- 当前分支已落地 UI 升级 Phase 1（`cmd/rnparmor/keys_ui.go` 主从双栏 Keys 管理页、原生文件夹/文件/保存选择器、`新建密钥`与`粘贴导入`子窗口、`16`/`40` 字符 ID 切换、空初始口令与掩码输入、仅公钥 `pubring.gpg` 支持、吊销证书导出、同步更新的 Linux 三语实机截图，以及此前 GUI 死锁、只读不改写钥匙圈与文本工作区粘贴/回退修复），将随后续版本发布；文本工作区与文件工作区当前仍保持文本框输入（下拉选择与浏览按钮属后续 Phase 2 规划）。
 - 桌面端人工交互体验（Windows 10/11 中文输入法、高 DPI 与安装程序流程，以及 macOS Apple Silicon 首次启动未公证 Gatekeeper 提示）仍依赖真实桌面环境，需在专门手工测试中确认。
 
 ## 许可证

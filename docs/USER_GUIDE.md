@@ -14,11 +14,11 @@ Supported release targets:
 - **macOS Apple Silicon (`arm64`, macOS 13.0+)**: Application disk image (`rnparmor-macos-arm64.dmg` containing `RnpArmor.app`).
 - **Linux (`amd64`)**: Portable archive (`rnparmor-linux-amd64.tar.gz`).
 
-> **Important Security Note:** On startup, RnpArmor pre-fills the **Passphrase** field with the placeholder `"change-me"` and **User ID** with `"User <user@example.com>"`. Always replace `"change-me"` with a strong passphrase before generating or saving real keys.
+> **Passphrase & Public-Only Keyrings:** RnpArmor starts with an empty in-memory passphrase (no pre-filled default passphrase). You can open a folder, browse, and import a public-only keyring (`pubring.gpg` without `secring.gpg`) without entering a passphrase. Creating a key requires setting and confirming a masked passphrase in **New Key**; signing, decrypting, or exporting/copying secret keys uses the masked unlock **Passphrase** in **Portable Keyring** (or the passphrase adopted from **New Key**).
 
 ## 2. Download, Installation & First Launch
 
-Release packages are published via `.github/workflows/release.yml` (`v0.0.1` and `v0.0.2` are released; `v0.0.2` includes Apache-2.0 licensing, Linux runtime screenshots, multi-platform application icons, and the initial bilingual User Guide, while recent GUI deadlock fixes, non-clobbering keyring persistence, and direct Text Studio paste support will ship in the next release).
+Release packages are published via `.github/workflows/release.yml` (`v0.0.1` and `v0.0.2` are released; `v0.0.2` includes Apache-2.0 licensing, Linux runtime screenshots, multi-platform application icons, and the initial bilingual User Guide, while the master-detail Keys redesign, native folder/file dialogs, empty initial passphrase, public-only keyring support, and previous GUI deadlock/keyring fixes will ship in a subsequent release).
 
 ### Verifying Release Checksums
 
@@ -102,16 +102,17 @@ i18n=ok
 The main window (`1120×780`) displays the title, loaded `librnp` version, absolute library path, live status bar (`idle` / `busy` + last action or error), the 5 workspace tabs, and a native 4-group menu bar:
 
 1. **`File`**
-   - **Open session**: initializes an in-memory `librnp` session (and loads keys if `pubring.gpg` and `secring.gpg` already exist in `Workspace`).
-   - **Load keyring**: loads `pubring.gpg` and `secring.gpg` from the configured `Workspace` directory.
-   - **Save keyring**: writes `pubring.gpg` and `secring.gpg` to the `Workspace` directory.
+   - **Choose Folder...**: opens the native system folder picker, sets **Workspace**, and automatically loads keys from that folder.
+   - **Open session**: initializes an in-memory `librnp` session (and loads `pubring.gpg` / `secring.gpg` if present in **Workspace**).
+   - **Load keyring**: loads `pubring.gpg` (and `secring.gpg`, if present) from the configured **Workspace** directory.
+   - **Save keyring**: writes `pubring.gpg` (and `secring.gpg` when secret keys exist) to the **Workspace** directory.
    - **Quit**: closes the application.
 2. **`Workspace`**
    - Radio items synchronized bi-directionally with the 5 tabs: **Keys**, **Text Studio**, **File Workbench**, **Packet & Features**, **Portable Keyring**.
 3. **`Language`**
-   - Live radio switch between **`English`**, **`中文`**, and **`日本語`**. Updates the menu bar, main window title/controls, and the About window immediately without restarting.
+   - Live radio switch between **`English`**, **`中文`**, and **`日本語`**. Updates the menu bar, main window title/controls, and open child windows (**New Key**, **Import Key Text**, **About**) immediately without restarting.
 4. **`Help`**
-   - **About**: opens a standalone, menu-less, non-modal child window (`580×520`, fixed size, single-instance focused) with a **Close** button. Closing About keeps the main window open; closing the main window closes About automatically.
+   - **About**: opens a standalone, menu-less, non-modal child window (`580×520`, fixed size, single-instance focused) with a **Close** button. Closing About keeps the main window open; closing the main window closes About, New Key, and Import Key Text automatically.
    - Read-only fields shown in About: **Application Version**, **Author**, **Repository URL**, **RNP Upstream & Version**, **Local RNP Library Path**, **Keyring Directory (portable workspace)**, **pubring.gpg exists**, **secring.gpg exists**, **UI Framework & Runtime** (`MyGo v0.10.0 | purego v0.11.1 | Botan 3.10.0`), plus a reminder that the system default keyring is not read.
 
 ## 4. Step-by-Step Guide for All 5 Workspaces
@@ -120,30 +121,52 @@ The main window (`1120×780`) displays the title, loaded `librnp` version, absol
 
 ### Workspace 1: `① Keys`
 
-Use this workspace to manage your session, generate keys, inspect key details, and export/delete keys.
+Use this workspace as a master-detail key manager to browse your keyring folder, create or import keys, inspect primary/subkey metadata, export keys or revocation certificates, and delete keys.
 
-**Fields & Defaults:**
+**Toolbar & Filter Bar:**
 
-- **Passphrase**: defaults to `"change-me"` — **change this to a strong passphrase before generating keys**.
-- **Workspace**: defaults to the current working directory; points to your portable keyring folder.
-- **User ID**: defaults to `"User <user@example.com>"`.
-- **Primary**: algorithm (`EDDSA`, `RSA`, `ECDSA`, `DSA`; default `EDDSA`), `curve` (default `Ed25519`), bit length (`0`–`8192`; used for `RSA` / `DSA`, e.g., `3072` or `4096`).
-- **Subkey**: algorithm (`ECDH`, `RSA`, `ELGAMAL`, or empty `""`; default `ECDH`), `curve` (default `Curve25519`), bit length (`0`–`8192`).
-- **Crypto**: key protection hash (`SHA256`, `SHA384`, `SHA512`, `SHA3-256`; default `SHA256`) and symmetric cipher (`AES256`, `AES192`, `AES128`, `Camellia256`; default `AES256`).
+- **Top Toolbar**:
+  - **`+ New Key`**: opens the standalone **`New Key`** window (`520×560`).
+  - **`Import File...`**: opens a native file picker filtered for `.asc`, `.pgp`, `.gpg`, and `.key`, imports keys into the active session, and updates disk keyring files if **Workspace** is non-empty.
+  - **`Import Text...`**: opens the **`Import Key Text`** child window (`560×420`), where you can paste an ASCII-armored public/secret key or click **`Paste from Clipboard`**, then click **`Import`**.
+  - **`Refresh`**: reloads and refreshes the keyring list from **Workspace**.
+  - **Workspace chooser**: displays the current **Workspace** path (read-only; defaults to the startup working directory and auto-loads on launch if `pubring.gpg` or `secring.gpg` exists) alongside **`Choose Folder...`**, which opens a native directory chooser and loads the selected folder automatically.
+- **Filter, ID Switch & Search Bar**:
+  - Ownership filter: **`All`** / **`My Keys`** (keys with a secret key) / **`Public`** (public-only keys).
+  - Column ID toggle: **`Key ID (16)`** ↔ **`Fingerprint (40)`**.
+  - Search box (**`Search UID, Key ID, fingerprint, algorithm`**): filters primary keys in real time.
 
-**Common Workflow:**
+**Master Table & Detail Inspector:**
 
-1. Set **Workspace** to an absolute directory path and replace **Passphrase** (`"change-me"`) with your own passphrase.
-2. Click **Open session** (optional if generating immediately; if `pubring.gpg` and `secring.gpg` already exist in **Workspace**, keys are loaded automatically).
-3. Configure **User ID**, **Primary**, **Subkey**, and **Crypto**, then click **Generate key**.
-   - Supported ECC curve names include `Curve25519` (`X25519`), `Ed25519`, `NIST P-256` (`P-256` / `secp256r1`), `NIST P-384` (`P-384` / `secp384r1`), `NIST P-521` (`P-521` / `secp521r1`), and `secp256k1`.
-4. Click **Reload keys** at any time to refresh the list under **Keyring** (if no key is selected yet, RnpArmor automatically prefers a certifiable primary secret key).
-5. Click any key button in the **Keyring** list to select it (**Selected** displays its full fingerprint). With a key selected, you can click:
-   - **Key JSON**: shows structured key metadata in the **key JSON / export output** box.
-   - **Export public** / **Export secret**: exports the ASCII-armored public or secret key block into the output box.
-   - **Delete key**: removes the selected key (public, secret, and subkeys) from the session keyring and updates disk files if **Workspace** is non-empty; deleting the last remaining key cleanly removes empty `pubring.gpg` and `secring.gpg` files.
-6. Click **Save keyring** to write `pubring.gpg` and `secring.gpg` to **Workspace** (or **Load keyring** to reload from disk).
-   - **Non-clobbering keyring persistence**: Read-only actions (**Open session**, **Reload keys**, **Query features**, **Key JSON**, **Export public** / **Export secret**, text/file crypto & signing/verification, and **Dump packets**) never rewrite or overwrite `pubring.gpg` / `secring.gpg` on disk. Only **Generate key**, **Delete key** (when **Workspace** is non-empty), and explicit **Save keyring** / **Save** modify keyring files on disk. Explicitly saving an empty session (`0` keys) returns an error (`no matching key found`) and leaves any existing keyring files on disk intact.
+- **Left Pane (Sortable Primary Key Table)**: columns **`Type`** (`Secret` / `Public`), **`Name / Email`**, **`Key ID`** or **`Fingerprint`**, **`Algorithm`**, and **`Status`** (`Valid` / `Expired` / `Revoked`). Subkeys stay grouped under their primary key instead of cluttering the top-level list. When loading or refreshing keys with no prior selection, RnpArmor automatically prefers a certifiable primary secret key.
+- **Right Pane (Detail Inspector)**:
+  - **Header & Badges**: primary UID, ownership badge (`Secret+Public` or `Public`), status badge (`Valid`, `Expired`, or `Revoked`), and capability badges (`Certify`, `Sign`, `Encrypt`).
+  - **Metadata**: 40-character **Fingerprint** formatted in 4-character groups with **`Copy Fingerprint`**, 16-character **Key ID**, **Algorithm**, **Created**, and **Expires** (`YYYY-MM-DD` UTC or `Never`).
+  - **Subkeys**: lists each subkey's algorithm, 16-char Key ID, capabilities, and expiration date.
+  - **Public Actions**: **`Copy Public Key`** (copies ASCII-armored public key to clipboard) and **`Export Public (.asc)...`** (native Save dialog).
+  - **Secret Actions** *(shown only when the selected key includes a secret key)*:
+    - **`Export Secret (.asc)...`**: displays a native warning confirmation prompt first, then opens a Save dialog and writes the file with `0600` permissions.
+    - **`Copy Secret`**: copies the secret key to the clipboard using concealed clipboard mode (and wipes the temporary buffer).
+    - **`Revocation Cert...`**: saves an ASCII-armored revocation certificate (`<last16fp>.rev.asc`) with `0600` permissions via a Save dialog.
+  - **`Delete Key...`**: opens a native warning confirmation dialog showing the key fingerprint and whether only the public key or both public and secret keys will be removed; deleting the last remaining key cleans up empty `pubring.gpg` and `secring.gpg` files on disk.
+  - **Collapsible `Raw Key JSON`**: click **`Load JSON`** to inspect raw structured key JSON.
+
+**Creating a Key (`+ New Key` Window):**
+
+1. Enter **`Name`** and/or **`Email`** (at least one is required; both combine as `Name <Email>`).
+2. Enter and confirm a masked **`Passphrase`** and **`Confirm Passphrase`** (required and must match; there is no pre-filled default). Upon successful generation, RnpArmor adopts this passphrase into the active in-memory session and clears the form inputs.
+3. Choose **`Expiration`**: `Never`, `1 Year`, `2 Years`, or `5 Years`.
+4. Optionally expand **`Advanced algorithms`**:
+   - **Primary**: algorithm (`EDDSA`, `RSA`, `ECDSA`, `DSA`; default `EDDSA`), curve (`Ed25519`, `Curve25519` / `X25519`, `NIST P-256`, `NIST P-384`, `NIST P-521`, `secp256k1`; default `Ed25519`), and bit length (`0`–`8192`).
+   - **Subkey**: algorithm (`ECDH`, `RSA`, `ELGAMAL`, or empty `""`; default `ECDH`), curve (default `Curve25519`), and bit length (`0`–`8192`).
+   - **Crypto**: hash (`SHA256`, `SHA384`, `SHA512`, `SHA3-256`; default `SHA256`) and symmetric cipher (`AES256`, `AES192`, `AES128`, `Camellia256`; default `AES256`).
+5. Click **`Generate Key`**.
+
+**Non-clobbering Keyring Persistence:**
+
+- Read-only actions (**Open session**, **Refresh**, **Load keyring**, **Open+Load**, **Query features**, **Load JSON**, **Copy Public Key** / **Export Public (.asc)...**, **Copy Secret** / **Export Secret (.asc)...**, **Revocation Cert...**, text/file crypto & signing/verification, and **Dump packets**) never rewrite or overwrite `pubring.gpg` / `secring.gpg` on disk.
+- When **Workspace** is non-empty, **`Generate Key`**, **Import** (`Import File...` / `Import Text...`), and **`Delete Key...`** automatically persist changes to **Workspace**. Public-only keyrings write only `pubring.gpg` (no `secring.gpg`); keyrings with secret keys write both `pubring.gpg` and `0600` `secring.gpg`; deleting the last remaining key removes empty files.
+- Explicit **`File → Save keyring`** / **`Portable Keyring → Save`** writes the active session keys; saving an empty session (`0` keys) returns an error and leaves existing files on disk intact.
 
 ### Workspace 2: `② Text Studio`
 
@@ -206,25 +229,25 @@ Use this workspace to inspect OpenPGP packet structures and audit supported algo
 
 ### Workspace 5: `⑤ Portable Keyring`
 
-Use this workspace to load, save, and migrate explicit portable keyrings.
+Use this workspace to load, save, and migrate explicit portable keyrings, or to enter your masked unlock passphrase when using secret keys.
 
-- **Workspace**: absolute path to your portable keyring directory.
-- **Passphrase**: passphrase used in memory only for the active session.
-- **Open+Load**: loads `pubring.gpg` and `secring.gpg` from **Workspace** into the session without rewriting the files on disk.
-- **Save**: saves the current session keys as `pubring.gpg` and `secring.gpg` inside **Workspace** (creates the directory with `0700` permissions if needed; `secring.gpg` is written with `0600` permissions on Unix). Saving an empty session (`0` keys) returns an error and leaves existing files untouched.
+- **Workspace**: read-only path display with **`Choose Folder...`** (native folder picker).
+- **Passphrase**: masked text input (`Password` mode, initially empty `""`) with placeholder `"Passphrase to unlock secret keys"`. Leave empty to browse or import a public-only keyring (`pubring.gpg`); enter your passphrase here whenever you need to decrypt, sign, or export/copy a secret key (if not already adopted from creating a key in **New Key**).
+- **Open+Load**: loads `pubring.gpg` (and `secring.gpg` if present) from **Workspace** into the session without rewriting the files on disk.
+- **Save**: saves the current session keys inside **Workspace** (`pubring.gpg` only for public-only sessions, or `pubring.gpg` + `0600` `secring.gpg` when secret keys are present; creates the directory with `0700` permissions if needed). Saving an empty session (`0` keys) returns an error and leaves existing files untouched.
 - **Reload keys**: refreshes the loaded key summaries.
 
 **Backup & Migration:**
 
 1. Close RnpArmor or ensure no operation is `busy`.
-2. Copy both `pubring.gpg` and `secring.gpg` from your **Workspace** folder to an encrypted backup drive or another machine. Keep `secring.gpg` strictly private.
-3. On the destination machine, open RnpArmor, enter the target folder's absolute path in **Workspace** and your **Passphrase**, then click **Open+Load**.
+2. Copy `pubring.gpg` (and `secring.gpg` if your keyring includes secret keys) from your **Workspace** folder to an encrypted backup drive or another machine. Keep `secring.gpg` strictly private.
+3. On the destination machine, open RnpArmor, click **`Choose Folder...`** (or go to **Portable Keyring**, select the folder via **`Choose Folder...`**, enter your masked **Passphrase** if needed for secret keys), then click **Open+Load**.
 
 ## 5. Security, Verification & Troubleshooting
 
 ### Security Reminders
 
-- **Change `"change-me"` immediately**: `"change-me"` is only a test default in `cmd/rnparmor/main.go`.
+- **Masked passphrases & concealed secret copies**: RnpArmor never pre-fills a default passphrase (`""` at startup). Passphrases in **New Key** and **Portable Keyring** are masked; **Copy Secret** marks clipboard content as concealed; exported secret key files and `.rev.asc` revocation certificates are written with `0600` permissions on Unix.
 - **No implicit system keyring**: RnpArmor never reads or modifies `~/.gnupg` or any default OS keyring.
 - **Math validity vs. identity trust**: `[Math: VALID]` confirms the cryptographic signature matches the key and data; `[Identity: UNVERIFIED]` reminds you that RnpArmor does not evaluate Web-of-Trust or policy trust. Always verify key fingerprints out-of-band.
 - **In-flight call cancellation**: An active `librnp` C call cannot be interrupted mid-flight; timeouts discard the result only after the C call finishes.
@@ -234,10 +257,10 @@ Use this workspace to load, save, and migrate explicit portable keyrings.
 | Symptom | Cause | Resolution |
 | --- | --- | --- |
 | `librnp bundle checksum failed` on startup | Missing `SHA256SUMS`, modified library, or mismatched `RNPARMOR_LIBRNP` | Re-extract the original release archive without modifying `rnp.dll`/`librnp.so`/`librnp.dylib` or `SHA256SUMS`; if using `RNPARMOR_LIBRNP`, use an absolute path alongside its valid `SHA256SUMS` |
-| `path must be absolute` | Relative path entered in **File Workbench**, **Packet input file**, or **Workspace** | Enter a full absolute path (e.g., `C:\Users\name\docs\file.txt` on Windows or `/home/name/file.txt` on Linux/macOS) |
+| `path must be absolute` | Relative path entered in **File Workbench** or **Packet input file** | Enter a full absolute path (e.g., `C:\Users\name\docs\file.txt` on Windows or `/home/name/file.txt` on Linux/macOS), or use **`Choose Folder...`** for **Workspace** |
 | `refusing to overwrite an existing file` | Output path in **Destination** or **Signature path** already exists | Choose a new output filename that does not already exist |
 | `input exceeds the memory limit` | Input file exceeds 32 MiB (`MaxInput`) | RnpArmor currently buffers files up to 32 MiB in memory |
-| Operations fail with `passphrase unavailable` or key-not-found | **Passphrase** is empty, wrong for `secring.gpg`, or session keyring not loaded | Enter the matching passphrase, verify `Workspace` contains `pubring.gpg` and `secring.gpg`, and click **Load keyring** / **Open+Load** |
+| Operations fail with `passphrase unavailable` or key-not-found | Unlock **Passphrase** is empty, wrong for `secring.gpg`, or keyring folder not loaded | Enter the matching passphrase in **Portable Keyring**, click **`Choose Folder...`** to select the folder containing `pubring.gpg` (and `secring.gpg` for secret operations), and click **Refresh** / **Open+Load** |
 | Windows SmartScreen / macOS Gatekeeper warning | Unsigned Windows binary or ad-hoc signed (unnotarized) macOS app | Verify release SHA-256 checksums first; on Windows click **More info → Run anyway**; on macOS **Control-click → Open** |
 | Need CLI diagnostics without GUI | Diagnosing library loading or translations | Run `rnparmor --smoke-test --smoke-out smoke.txt` and inspect `status=ok`, `library=`, `version=`, and `i18n=ok` |
 
