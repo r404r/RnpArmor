@@ -1,0 +1,246 @@
+# RnpArmor 用户指南
+
+[English](USER_GUIDE.md) | 简体中文 | [README](../README.zh-CN.md)
+
+<p><img src="../assets/icons/rnparmor-256.png" alt="RnpArmor 图标" width="88" height="88" /></p>
+
+## 1. 概述与快速上手
+
+RnpArmor 是基于 MyGo 原生界面与 `librnp v0.18.1` 构建的 OpenPGP 桌面图形工具，专注于在用户显式指定的目录中管理便携钥匙圈文件（`pubring.gpg` 与 `secring.gpg`），不会读写系统默认 GnuPG 钥匙圈。
+
+当前支持的发布目标平台：
+
+- **Windows 10/11（`amd64`）**：当前用户安装版（`rnparmor-windows-amd64-setup.exe`）与便携压缩包（`rnparmor-windows-amd64.zip`）。
+- **macOS Apple Silicon（`arm64`，macOS 13.0 及以上）**：磁盘镜像（`rnparmor-macos-arm64.dmg`，内含 `RnpArmor.app`）。
+- **Linux（`amd64`）**：便携压缩包（`rnparmor-linux-amd64.tar.gz`）。
+
+> **重要安全提醒：** 程序启动时，**口令**字段预填为占位值 `"change-me"`，**用户 ID** 预填为 `"User <user@example.com>"`。在生成或保存真实密钥前，请务必将 `"change-me"` 修改为强口令。
+
+## 2. 下载、安装与首次启动
+
+发布产物由 `.github/workflows/release.yml` 构建与分发（`v0.0.1` 已发布；即将推出的 `v0.0.2` 将包含新版多平台应用图标与本用户指南）。
+
+### 校验发布包 SHA-256
+
+每次发布均提供统一校验文件 `rnparmor-<TAG>-SHA256SUMS.txt`，建议在解压或安装前先核对哈希：
+
+```bash
+# Linux / macOS
+sha256sum -c rnparmor-<TAG>-SHA256SUMS.txt --ignore-missing
+# 若 macOS 未安装 GNU sha256sum，可使用：
+shasum -a 256 rnparmor-macos-arm64.dmg
+```
+
+```powershell
+# Windows (PowerShell)
+Get-FileHash .\rnparmor-windows-amd64-setup.exe -Algorithm SHA256
+Get-FileHash .\rnparmor-windows-amd64.zip -Algorithm SHA256
+```
+
+此外，每个平台分发包内部均带有 `SHA256SUMS` 文件。RnpArmor 每次启动都会先通过 `internal/loadlib` 校验动态库（`rnp.dll`、`librnp.so` 或 `librnp.dylib`）的完整性，校验通过后才会加载。
+
+### Windows 安装版（`rnparmor-windows-amd64-setup.exe`）
+
+1. 下载 `rnparmor-windows-amd64-setup.exe`。
+2. 双击运行 Inno Setup 安装向导：
+   - 默认以**当前用户免管理员权限**安装（`PrivilegesRequired=lowest`，也可在向导对话框中按需切换）。
+   - 自动创建**开始菜单**快捷方式（`RnpArmor`）、提供可选**桌面快捷方式**（默认不勾选），并支持 Windows 标准卸载。
+3. 安装完成后，从开始菜单或桌面快捷方式启动 **RnpArmor**。
+
+### Windows 便携版（`rnparmor-windows-amd64.zip`）
+
+1. 将 `rnparmor-windows-amd64.zip` 解压到独立文件夹（请保持 `rnparmor.exe`、`rnp.dll`、`SHA256SUMS`、`LICENSE` 与 `licenses\` 在同一目录下）。
+2. 双击运行 `rnparmor.exe`：
+   - 构建时使用 `-H=windowsgui`（Windows GUI 子系统）并嵌入了 `.ico` 图标资源，启动时**不会弹出黑色控制台窗口**。
+   - 程序通过 `LoadLibraryEx` 限制搜索范围，仅从自身所在目录绝对路径加载 `rnp.dll`，不搜索当前工作目录或 `PATH`。
+3. **Windows SmartScreen 提示说明**：由于 CI 产物尚未进行商业代码签名，首次运行时 Windows Defender SmartScreen 可能提示“Windows 已保护你的电脑”。请先核对 `rnparmor-<TAG>-SHA256SUMS.txt` 中的哈希值，确认无误后点击**详细信息** → **仍要运行**。
+
+### macOS Apple Silicon（`rnparmor-macos-arm64.dmg`）
+
+1. 打开 `rnparmor-macos-arm64.dmg`。
+2. 将 `RnpArmor.app` 拖入右侧 `Applications`（应用程序）快捷方式。
+3. **首次打开与 Gatekeeper 说明**：`RnpArmor.app` 仅作 ad-hoc 签名且**未经 Apple 公证**。首次直接双击可能触发 Gatekeeper 安全拦截提示：
+   - 请在访达中右键（或按住 **Control 键点击**）`RnpArmor.app` → 选择**打开** → 再次确认**打开**，或在**系统设置 → 隐私与安全性**中允许打开。
+4. 启动后，`Contents/MacOS/rnparmor` 会自动依据 `Contents/Resources/SHA256SUMS` 校验 `Contents/MacOS/librnp.dylib`。
+
+### Linux 便携版（`rnparmor-linux-amd64.tar.gz`）
+
+1. 解压压缩包并进入目录运行：
+
+```bash
+tar -xzf rnparmor-linux-amd64.tar.gz
+cd rnparmor-linux-amd64
+./rnparmor
+```
+
+包内包含 `rnparmor`、`librnp.so`、`libbotan-3.so.10`、`libjson-c.so.5`、`SHA256SUMS`、`rnparmor.png`、`LICENSE` 与 `licenses/`。
+
+### 命令行参数与环境变量
+
+| 参数 / 变量 | 用途 | 说明 |
+| --- | --- | --- |
+| `--lang en\|zh\|ja` | 预设界面语言 | 优先级：`--lang` > `RNPARMOR_LANG` > `LANG` > `en` |
+| `RNPARMOR_LANG` | 语言环境变量 | 支持 `en`、`zh`、`ja`（及 `zh_CN.UTF-8` 等地区前缀） |
+| `--smoke-test` | 无窗口冒烟自检 | 探测 `librnp`、校验 `SHA256SUMS` 与三语词典，输出结果后退出而不启动 GUI |
+| `--smoke-out <path>` | 将冒烟输出写入文件 | 自动创建父目录；在 Windows `-H=windowsgui` 无控制台环境下尤为实用 |
+| `RNPARMOR_LIBRNP` | 覆盖动态库路径 | 必须为**绝对路径**，且所在目录（或 macOS `Contents/Resources`）须包含有效的 `SHA256SUMS` |
+
+`--smoke-test` 示例输出：
+
+```text
+status=ok
+app_version=v0.0.1
+library=/path/to/librnp.so
+version=0.18.1+git...
+i18n=ok
+```
+
+## 3. 界面概览与菜单栏
+
+![RnpArmor 主窗口（简体中文，Linux 运行时）](screenshots/rnparmor-linux-zh.png)
+
+主窗口（`1120×780`）顶部显示应用标题、当前加载的 `librnp` 版本、动态库绝对路径、实时状态栏（`空闲` / `忙碌` + 最近操作结果或报错），中部为 5 个工作区选项卡，顶部挂载原生 4 组菜单栏：
+
+1. **文件**
+   - **打开会话**：初始化内存 `librnp` 会话（若**工作目录**已存在 `pubring.gpg` 与 `secring.gpg`，会自动加载）。
+   - **加载钥匙圈**：从**工作目录**加载 `pubring.gpg` 与 `secring.gpg`。
+   - **保存钥匙圈**：将当前钥匙圈写入**工作目录**下的 `pubring.gpg` 与 `secring.gpg`。
+   - **退出**：关闭应用程序。
+2. **工作区**
+   - 5 个单选菜单项，与界面工作区 Tab 双向同步：**钥匙圈与生成**、**文本加解密与签名**、**文件加解密与签名**、**Packet 检视与算法特性**、**便携钥匙圈存储**。
+3. **语言**
+   - 实时单选切换 **`English`**、**`中文`**、**`日本語`**，切换后无需重启即可同步刷新菜单栏、主窗口与 About 子窗口。
+4. **帮助**
+   - **关于**：打开独立的无菜单非模态 About 子窗口（`580×520`、固定尺寸、单实例聚焦），右上角带**关闭**按钮。关闭 About 窗口不影响主窗口；关闭主窗口会自动关闭 About 窗口。
+   - About 窗口展示只读信息：**应用版本**、**作者**、**仓库地址**、**RNP 地址与版本**、**本地 RNP 动态库路径**、**密钥库目录（便携工作区）**、**pubring.gpg 存在**、**secring.gpg 存在**、**GUI 框架与运行时**（`MyGo v0.10.0 | purego v0.11.1 | Botan 3.10.0`），并明确提示不会读取系统默认钥匙圈。
+
+## 4. 五大工作区操作指南
+
+> 所有工作区操作均在后台异步执行（超时上限 2 分钟）。操作执行期间状态栏会显示 `忙碌`，此时会忽略重复触发直到本次调用返回。
+
+### 工作区 1：`① 钥匙圈与生成`
+
+用于打开会话、生成密钥对、查看详情及导出或删除密钥。
+
+**字段与默认值：**
+
+- **口令**：默认 `"change-me"` —— **生成或保存真实密钥前请务必更换为强口令**。
+- **工作目录**：默认当前启动目录，用于存放便携钥匙圈文件。
+- **用户 ID**：默认 `"User <user@example.com>"`。
+- **主密钥**：算法（`EDDSA`、`RSA`、`ECDSA`、`DSA`，默认 `EDDSA`）、曲线（默认 `Ed25519`）、位数（`0`–`8192`，用于 `RSA` / `DSA`，如 `3072` 或 `4096`）。
+- **子密钥**：算法（`ECDH`、`RSA`、`ELGAMAL` 或空 `""`，默认 `ECDH`）、曲线（默认 `Curve25519`）、位数（`0`–`8192`）。
+- **密码参数**：私钥保护哈希（`SHA256`、`SHA384`、`SHA512`、`SHA3-256`，默认 `SHA256`）与对称加密算法（`AES256`、`AES192`、`AES128`、`Camellia256`，默认 `AES256`）。
+
+**常用操作流程：**
+
+1. 在**工作目录**填入目标文件夹的绝对路径，并将**口令**从 `"change-me"` 修改为你的强口令。
+2. 点击**打开会话**（也可直接生成密钥；若**工作目录**已有 `pubring.gpg` 与 `secring.gpg`，操作时会自动加载）。
+3. 配置**用户 ID**、**主密钥**、**子密钥**与**密码参数**后，点击**生成密钥**。
+   - 支持的 ECC 曲线包括 `Curve25519`（`X25519`）、`Ed25519`、`NIST P-256`（`P-256` / `secp256r1`）、`NIST P-384`（`P-384` / `secp384r1`）、`NIST P-521`（`P-521` / `secp521r1`）及 `secp256k1`。
+4. 可随时点击**刷新密钥**更新**钥匙圈**列表。
+5. 点击**钥匙圈**列表中的任意密钥即可选中（**已选择**处会显示完整指纹），随后可执行：
+   - **密钥 JSON**：在**密钥 JSON / 导出结果**文本框输出结构化密钥信息。
+   - **导出公钥** / **导出私钥**：导出 ASCII 封装格式的公钥或私钥文本。
+   - **删除密钥**：从当前会话钥匙圈移除该密钥（含公私钥与子密钥）。
+6. 点击**保存钥匙圈**将 `pubring.gpg` 与 `secring.gpg` 写入**工作目录**（或点击**加载钥匙圈**重新读取）。只要**工作目录**非空，操作成功后也会自动持久化保存 `pubring.gpg` 与 `secring.gpg`。
+
+### 工作区 2：`② 文本加解密与签名`
+
+用于 ASCII 封装格式的文本加密、解密、签名与验签。
+
+**字段说明：**
+
+- **明文**：默认 `"hello from RnpArmor"`。
+- **收件人（逗号分隔指纹）**：填写一个或多个收件人指纹（以英文逗号分隔）。若**收件人**与**密码**均留空，程序会尝试使用当前会话生成的加密子密钥。
+- **密码**：可选对称加密密码（可单独使用或与收件人公钥同时使用）。
+- **加密算法 / 压缩**：对称算法（`AES256`、`AES192`、`AES128`、`Camellia256`，默认 `AES256`）、压缩（`zlib`、`bzip2`、`zip`、`uncompressed`，默认 `zlib`）以及**加密并签名**开关。
+- **签名模式**：`cleartext`（明文签名）、`detached`（分离签名，默认）或 `inline`（内联签名）。
+- **签名者指纹**：可选显式指定签名密钥指纹（留空时，**加密并签名**使用当前**已选择**密钥，**文本签名**使用当前会话主密钥）。
+- **分离验签签名**：进行分离验签时在此粘贴 ASCII 封装的分离签名文本。
+
+**操作说明：**
+
+- **加密文本**：加密**明文**并将结果输出到**结果输出**框（同时在会话内暂存密文供**解密文本**使用）。
+- **解密文本**：解密刚由**加密文本**或**文本签名**暂存的消息，并在**结果输出**框显示明文。（注：当前版本工作区 2 未单独提供外部密文输入框；如需解密磁盘上的 `.asc` / `.pgp` 外部文件，请使用工作区 3 **文件加解密与签名**。）
+- **文本签名**：按所选**签名模式**（`cleartext`、`detached` 或 `inline`，哈希为 `SHA256`）对**明文**签名并输出到**结果输出**框（选择 `detached` 时还会自动将签名同步到**分离验签签名**框）。
+- **验签文本**：验证当前暂存的签名消息（或**明文** + **分离验签签名**），结果包含：
+  - 数学有效徽章：`[数学有效: 是]` 或 `[数学有效: 否]`
+  - 身份可信徽章：`[身份: 未验证]` 或 `[身份: 已信任]`（*当前版本仅报告密码学数学有效性，不自动断言信任策略，因此始终显示 `[身份: 未验证]`*）
+  - 签名元数据：`状态`、`KeyID`、`指纹`、`哈希`、`创建时间`、`过期时间`。
+
+### 工作区 3：`③ 文件加解密与签名`
+
+用于安全地对磁盘文件进行加密、解密、签名与验签。
+
+**重要路径与安全约束：**
+
+- **源文件**、**目标文件**、**签名文件路径**均必须填写**绝对路径**。
+- **源文件**与**目标文件**不能为同一路径。
+- **防覆盖语义**：RnpArmor 拒绝覆盖已存在的**目标文件**或**签名文件路径**（`refusing to overwrite an existing file`），每次输出请指定尚未存在的新文件路径。
+- **体积上限**：仅支持普通非空文件，单文件输入上限为 **32 MiB**（`MaxInput`），内存输出上限为 **40 MiB**（`MaxOutput`）。
+
+**操作说明：**
+
+- **加密文件**：填写**源文件**与**目标文件**，沿用**文本工作区**中的收件人、密码、加密算法、压缩与**加密并签名**设置后点击**加密文件**。当**目标文件**以 `.asc` 结尾时自动输出 ASCII 封装格式，否则输出二进制 OpenPGP 格式。
+- **解密文件**：在**源文件**填写加密文件路径，**目标文件**填写新输出路径，点击**解密文件**。
+- **文件签名**：填写**源文件**与**签名文件路径**，通过**文本工作区**的**签名模式**选择 `detached` 或 `inline`（使用 ASCII 封装与 `SHA256`），按需填写**签名者指纹**后点击**文件签名**。
+- **验签文件**：
+  - 分离签名验签：打开**分离**开关，**源文件**填写原始文件，**签名文件路径**填写 `.asc`/`.sig` 签名文件，点击**验签文件**。
+  - 内联签名验签：关闭**分离**开关，**源文件**填写内联签名文件，点击**验签文件**。
+
+### 工作区 4：`④ Packet 检视与算法特性`
+
+用于解析 OpenPGP 消息包结构，并审计 `librnp` 支持的算法特性矩阵。
+
+- **解析 Packet**：
+  1. 在 **Packet 输入文件**填入 `.asc` / `.pgp` / `.gpg` 文件的绝对路径（最大 32 MiB）。
+  2. 通过 **JSON** 开关选择 JSON 输出（默认开启）或文本输出。
+  3. 点击**解析 Packet**，在 **Packet 输出**框查看结构明细。
+- **查询算法特性**：
+  - 将**特性查询**留空，点击**查询算法特性**，可一次性列出 6 类算法支持清单（`symmetric algorithm`、`hash algorithm`、`public key algorithm`、`elliptic curve`、`compression algorithm`、`aead algorithm`）。
+  - 输入单个类别名（如 `elliptic curve`）或 `类型:名称`（如 `public key algorithm:EDDSA`），可精确查询支持状态。
+
+### 工作区 5：`⑤ 便携钥匙圈存储`
+
+用于显式加载、保存和迁移独立便携钥匙圈目录。
+
+- **工作目录**：便携钥匙圈目录的绝对路径。
+- **口令**：仅在当前会话期间以内存形式使用的口令。
+- **打开并加载**：从**工作目录**读取 `pubring.gpg` 与 `secring.gpg` 到当前会话。
+- **保存**：将当前会话密钥保存为**工作目录**下的 `pubring.gpg` 与 `secring.gpg`（目录不存在时按 `0700` 权限创建；Unix 下私钥文件 `secring.gpg` 按 `0600` 权限写入）。
+- **刷新密钥**：重新读取会话中的密钥列表。
+
+**备份与跨设备迁移：**
+
+1. 确认 RnpArmor 没有正在执行的 `忙碌` 操作或先关闭程序。
+2. 将**工作目录**中的 `pubring.gpg` 与 `secring.gpg` 一并复制到加密备份盘或新设备（务必妥善保管 `secring.gpg`）。
+3. 在新设备启动 RnpArmor，在**工作目录**填写新目录绝对路径、填入对应**口令**，点击**打开并加载**即可恢复使用。
+
+## 5. 安全提醒、验签语义与常见排查
+
+### 安全提醒
+
+- **立即修改 `"change-me"`**：`"change-me"` 仅为代码预设占位口令，切勿用于保护真实私钥。
+- **不读取系统默认钥匙圈**：RnpArmor 不会读取或修改 `~/.gnupg` 或操作系统默认密钥环。
+- **区分“数学有效”与“身份可信”**：`[数学有效: 是]` 仅证明签名在密码学上匹配对应密钥与数据；`[身份: 未验证]` 提示软件未做信任链或策略背书，请务必通过可信渠道核对签名者指纹。
+- **长操作取消语义**：正在执行的 `librnp` C 调用无法在底层中途打断；超时或取消仅在 C 调用返回后丢弃结果。
+
+### 常见问题排查
+
+| 现象 | 原因 | 解决方法 |
+| --- | --- | --- |
+| 启动报 `librnp bundle checksum failed` | 缺少 `SHA256SUMS`、动态库被修改或 `RNPARMOR_LIBRNP` 路径不匹配 | 保持原始解压目录完整（勿删改 `rnp.dll`/`librnp.so`/`librnp.dylib` 与 `SHA256SUMS`）；使用 `RNPARMOR_LIBRNP` 时须提供绝对路径且同目录存在有效 `SHA256SUMS` |
+| 提示 `path must be absolute` | **文件工作区**、**Packet 输入文件**或**工作目录**填入了相对路径 | 改为完整绝对路径（如 Windows `C:\Users\name\doc.txt` 或 Linux/macOS `/home/name/doc.txt`） |
+| 提示 `refusing to overwrite an existing file` | **目标文件**或**签名文件路径**已存在同名文件 | 更换一个尚未存在的新输出文件名 |
+| 提示 `input exceeds the memory limit` | 输入文件超过 32 MiB（`MaxInput`） | 当前版本文件操作走内存缓冲，单文件上限为 32 MiB |
+| 提示 `passphrase unavailable` 或找不到密钥 | **口令**为空、与 `secring.gpg` 不匹配或尚未加载钥匙圈 | 填写正确口令、确认**工作目录**下同时存在 `pubring.gpg` 与 `secring.gpg`，并点击**加载钥匙圈** / **打开并加载** |
+| Windows SmartScreen / macOS Gatekeeper 拦截提示 | Windows 尚未商业签名 / macOS 仅 ad-hoc 签名未公证 | 先校验发布 SHA-256；Windows 点击**详细信息 → 仍要运行**；macOS 右键（Control+点击）→ **打开** |
+| 需要脱离 GUI 排查动态库或词典问题 | 窗口未弹出或环境异常 | 运行 `rnparmor --smoke-test --smoke-out smoke.txt`，核查输出中的 `status=ok`、`library=`、`version=` 与 `i18n=ok` |
+
+### 许可证与第三方声明
+
+- RnpArmor 项目许可证：**Apache License, Version 2.0**（[`../LICENSE`](../LICENSE)）。
+- 第三方依赖钉扎与完整许可声明见 [`../third_party/NOTICES.md`](../third_party/NOTICES.md)。
+- 各平台包内许可证位置：
+  - Windows 与 Linux：包根目录下的 `LICENSE` 与 `licenses/`。
+  - macOS：`RnpArmor.app/Contents/Resources/LICENSE` 与 `RnpArmor.app/Contents/Resources/licenses/`。
