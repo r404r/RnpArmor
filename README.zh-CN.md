@@ -6,6 +6,8 @@
 
 RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工具，提供 Windows 10/11 便携版与安装版（`rnparmor.exe` + `rnp.dll`）、macOS Apple Silicon（`arm64`）`.app`/`.dmg` 应用包以及 Linux（`amd64`）便携构建与测试链路。
 
+> **用户指南**：安装部署、校验方法、五大工作区图文步骤与故障排查请见 [用户指南（`docs/USER_GUIDE.zh-CN.md`）](docs/USER_GUIDE.zh-CN.md)。
+>
 > 许可证：**Apache License, Version 2.0**（[`LICENSE`](LICENSE)）。第三方声明与许可文本见 [`third_party/NOTICES.md`](third_party/NOTICES.md) 及各平台分发包（Windows 与 Linux 位于 `LICENSE` 与 `licenses/`，macOS 位于 `RnpArmor.app/Contents/Resources/LICENSE` 与 `licenses/`）。
 
 ## 界面截图
@@ -105,6 +107,9 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
 - `scripts/build-macos.sh`：macOS Apple Silicon（`arm64`）构建脚本，编译静态依赖（`Botan 3.10.0` + `json-c 0.19`）与 `librnp.dylib`，组装 `RnpArmor.app`（写入 `Contents/Resources/RnpArmor.icns` 与 `Info.plist` 的 `CFBundleIconFile`），执行 ad-hoc `codesign --verify --deep --strict`、`go test`、`--smoke-test`，最终打包 `rnparmor-macos-arm64.dmg`。
 - `scripts/capture-linux-screenshots.sh`：在无头 X11（`Xvfb` + `openbox`）下以 `--lang en|zh|ja` 启动 `rnparmor`，通过 `scrot` 抓取聚焦窗口截图并校验分辨率与非空白像素方差。
 - `packaging/windows/rnparmor.iss`：Windows 安装程序（`rnparmor-windows-amd64-setup.exe`）的 Inno Setup 6 脚本（含 `SetupIconFile`）。
+- `docs/`
+  - `USER_GUIDE.md` / `USER_GUIDE.zh-CN.md`：中英文双语终端用户安装、工作区操作与排查指南。
+  - `screenshots/`：Linux 三语运行时实机截图（`rnparmor-linux-{en,zh,ja}.png`）。
 - `.github/workflows/smoke.yml`：`linux`、`windows-portable` 与 `macos-arm64` 三平台 CI（含缓存与同分支并发自动取消）。
 - `.github/workflows/release.yml`：Tag/手动触发的多平台自动打包发布。
 - `.github/workflows/linux-screenshot.yml`：调用 `scripts/capture-linux-screenshots.sh` 采集 Linux 三语实机截图（含 `assets/icons/**` 变更触发），上传 `rnparmor-linux-screenshots` artifact，并可在非 `main` 分支将更新后的 PNG 提交至 `docs/screenshots/`。
@@ -322,7 +327,7 @@ Windows 依赖构建钉扎并打包以下组件：
 
 ## 仓库状态说明
 
-- `v0.0.1` 多平台版本已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）；项目现已正式采用 Apache License, Version 2.0（[`LICENSE`](LICENSE)），后续发布版本将随包分发该许可证。
+- `v0.0.1` 多平台版本已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）。当前 `main` 已合入 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、多平台应用图标及双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)），为 `v0.0.2` 发布做好准备。
 - 桌面端人工交互体验（Windows 10/11 中文输入法、高 DPI 与安装程序流程，以及 macOS Apple Silicon 首次启动未公证 Gatekeeper 提示）仍依赖真实桌面环境，需在专门手工测试中确认。
 
 ## 许可证

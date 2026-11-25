@@ -6,6 +6,8 @@ English | [简体中文](README.zh-CN.md)
 
 RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, delivering Windows 10/11 portable & installer builds (`rnparmor.exe` + `rnp.dll`), macOS Apple Silicon (`arm64`) `.app`/`.dmg` bundles, and Linux (`amd64`) portable builds/tests.
 
+> **User Guide**: See [User Guide (`docs/USER_GUIDE.md`)](docs/USER_GUIDE.md) for installation, checksum verification, step-by-step usage of all 5 workspaces, and troubleshooting.
+>
 > License: **Apache License, Version 2.0** ([`LICENSE`](LICENSE)). Third-party notices and license texts are included in [`third_party/NOTICES.md`](third_party/NOTICES.md) and distributed bundles (`LICENSE` and `licenses/` on Windows and Linux; `RnpArmor.app/Contents/Resources/LICENSE` and `licenses/` on macOS).
 
 ## Screenshots
@@ -111,6 +113,9 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
   - launches `rnparmor` under headless X11 (`Xvfb` + `openbox`) for `--lang en|zh|ja`, captures focused window PNGs via `scrot`, and verifies dimensions and non-blank pixel variance.
 - `packaging/windows/rnparmor.iss`
   - Inno Setup 6 script for the Windows per-user installer (`rnparmor-windows-amd64-setup.exe`) with `SetupIconFile`.
+- `docs/`
+  - `USER_GUIDE.md` / `USER_GUIDE.zh-CN.md`: bilingual end-user installation, workspace, and troubleshooting guides.
+  - `screenshots/`: Linux tri-lingual runtime screenshots (`rnparmor-linux-{en,zh,ja}.png`).
 - `.github/workflows/smoke.yml`
   - `linux`, `windows-portable`, and `macos-arm64` jobs with dependency caches + per-branch concurrency cancel.
 - `.github/workflows/release.yml`
@@ -331,7 +336,7 @@ Workflow: `.github/workflows/linux-screenshot.yml`
 
 ## Repository Status Notes
 
-- `v0.0.1` has been released across macOS (`arm64`), Linux (`amd64`), and Windows (`amd64`); RnpArmor has now adopted the Apache License, Version 2.0 ([`LICENSE`](LICENSE)), which will be bundled in subsequent releases.
+- `v0.0.1` has been released across macOS (`arm64`), Linux (`amd64`), and Windows (`amd64`). Current `main` now includes Apache-2.0 licensing ([`LICENSE`](LICENSE)), Linux runtime screenshots, multi-platform application icons, and the bilingual user guides ([`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)) in preparation for `v0.0.2`.
 - Desktop manual UX validation—including Windows 10/11 Chinese IME, high-DPI, and Inno Setup installer flow, plus macOS Apple Silicon first-launch Gatekeeper handling—remains environment-dependent and must be confirmed in dedicated manual runs.
 
 ## License
