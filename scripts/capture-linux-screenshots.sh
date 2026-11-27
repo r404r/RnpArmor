@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Capture en/zh/ja RnpArmor main-window screenshots on a headless X11 desktop.
+# Capture RnpArmor screenshots on a headless X11 desktop.
+# Eleven shots: keys (en/zh/ja), text, file, packet, and the About child.
 set -Eeuo pipefail
 if locale -a 2>/dev/null | grep -qiE '^C\.utf-?8$'; then
   export LC_ALL=C.UTF-8
@@ -10,9 +11,10 @@ fi
 BIN=""
 LIB=""
 OUT=""
+SEEDER=""
 
 usage() {
-  echo "usage: $0 --bin <path> --lib <path> --out <dir>" >&2
+  echo "usage: $0 --bin <path> --lib <path> --out <dir> --seeder <path>" >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -29,6 +31,10 @@ while [[ $# -gt 0 ]]; do
       OUT="${2:-}"
       shift 2
       ;;
+    --seeder)
+      SEEDER="${2:-}"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -41,8 +47,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$BIN" || -z "$LIB" || -z "$OUT" ]]; then
+if [[ -z "$BIN" || -z "$LIB" || -z "$OUT" || -z "$SEEDER" ]]; then
   usage
+  exit 1
+fi
+if [[ -z "${HOME:-}" ]]; then
+  echo "HOME is empty" >&2
   exit 1
 fi
 if [[ ! -x "$BIN" ]]; then
@@ -56,8 +66,10 @@ fi
 
 BIN=$(readlink -f "$BIN")
 LIB=$(readlink -f "$LIB")
+SEEDER=$(readlink -f "$SEEDER")
 mkdir -p "$OUT"
 OUT=$(readlink -f "$OUT")
+DEMO_DIR="$HOME/RnpArmor-Demo"
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/rnparmor-shot.XXXXXX")
 xdg=$(mktemp -d "${TMPDIR:-/tmp}/rnparmor-xdg.XXXXXX")
@@ -162,6 +174,11 @@ cleanup() {
   if [[ -n "${xdg:-}" && -d "${xdg:-}" ]]; then
     rm -rf "$xdg"
   fi
+  case "${DEMO_DIR:-}" in
+    */RnpArmor-Demo)
+      rm -rf "$DEMO_DIR"
+      ;;
+  esac
   exit "$ec"
 }
 
@@ -365,23 +382,118 @@ start_desktop() {
   fi
 }
 
-capture_lang() {
+seed_demo() {
+  CURRENT_CMD="seeddemo"
+  if [[ ! -x "$SEEDER" ]]; then
+    FAIL_DETAIL="seeder is not executable: $SEEDER"
+    echo "$FAIL_DETAIL" >&2
+    exit 1
+  fi
+  rm -rf "$DEMO_DIR"
+  mkdir -p "$DEMO_DIR"
+  chmod 700 "$DEMO_DIR"
+  LAST_LOG="$work/seeddemo.log"
+  if ! RNPARMOR_LIBRNP="$LIB" "$SEEDER" --dir "$DEMO_DIR" >"$work/seeddemo.log" 2>&1; then
+    FAIL_DETAIL="seeddemo failed"
+    echo "$FAIL_DETAIL" >&2
+    cat "$work/seeddemo.log" >&2 || true
+    exit 1
+  fi
+}
+
+# find_about_window prints the About child id. The main window is 1120x780
+# and titled RnpArmor, so a title hit or a size near 580x520 wins.
+find_about_window() {
+  local pid="$1"
+  local -A pid_ids=()
+  local id name geom w h score title_hit
+  local best_id="" best_score=0 best_w=0 best_h=0 best_name=""
+  local ids="" extra
+  extra=$(xdotool search --onlyvisible --pid "$pid" 2>/dev/null || true)
+  ids+=$'\n'"$extra"
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    pid_ids["$id"]=1
+  done <<<"$extra"
+  for name in "About" "关于" "について" "RnpArmor"; do
+    extra=$(xdotool search --onlyvisible --name "$name" 2>/dev/null || true)
+    ids+=$'\n'"$extra"
+  done
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    name=$(xdotool getwindowname "$id" 2>/dev/null || true)
+    geom=$(xdotool getwindowgeometry --shell "$id" 2>/dev/null || true)
+    w=$(awk -F= '/^WIDTH=/{print $2; exit}' <<<"$geom")
+    h=$(awk -F= '/^HEIGHT=/{print $2; exit}' <<<"$geom")
+    [[ -z "${w:-}" || -z "${h:-}" ]] && continue
+    score=0
+    title_hit=0
+    if [[ -n "${pid_ids[$id]:-}" ]]; then
+      score=$((score + 1))
+    fi
+    if [[ "$name" == *"About"* || "$name" == *"关于"* || "$name" == *"について"* ]]; then
+      title_hit=1
+      score=$((score + 10))
+    fi
+    if (( w >= 500 && w <= 720 && h >= 440 && h <= 620 )); then
+      score=$((score + 5))
+    fi
+    if (( w >= 900 && title_hit == 0 )); then
+      continue
+    fi
+    if (( score > best_score )); then
+      best_score=$score
+      best_id=$id
+      best_w=$w
+      best_h=$h
+      best_name=$name
+    fi
+  done < <(printf '%s\n' "$ids" | awk 'NF && !seen[$0]++')
+  if [[ -z "$best_id" || "$best_score" -lt 5 ]]; then
+    return 1
+  fi
+  echo "about window id=${best_id} name=${best_name} ${best_w}x${best_h}" >&2
+  printf '%s\n' "$best_id"
+}
+
+focus_window() {
+  local wid="$1"
+  local tag="$2"
+  CURRENT_CMD="place-window-$tag"
+  if ! timeout 8 xdotool windowmove --sync "$wid" 40 40; then
+    xdotool windowmove "$wid" 40 40
+  fi
+  if ! timeout 8 xdotool windowactivate --sync "$wid"; then
+    xdotool windowactivate "$wid" || true
+  fi
+  if ! timeout 8 xdotool windowfocus --sync "$wid"; then
+    xdotool windowfocus "$wid" || echo "windowfocus returned non-zero for $wid" >&2
+  fi
+}
+
+capture_shot() {
   local lang="$1"
-  local png="$OUT/rnparmor-linux-$lang.png"
-  local log="$work/rnparmor-$lang.log"
+  local scene="$2"
+  local png_name="$3"
+  local about="$4"
+  local png="$OUT/$png_name"
+  local log="$work/$png_name.log"
   local wid=""
   local _
 
   stop_app
-  CURRENT_CMD="rnparmor-$lang"
+  CURRENT_CMD="rnparmor-$png_name"
   LAST_LOG="$log"
-  RNPARMOR_LIBRNP="$LIB" "$BIN" --lang "$lang" >"$log" 2>&1 &
+  (
+    cd "$DEMO_DIR"
+    exec env RNPARMOR_LIBRNP="$LIB" RNPARMOR_DEMO_SCENE="$scene" "$BIN" --lang "$lang"
+  ) >"$log" 2>&1 &
   APP_PID=$!
 
-  CURRENT_CMD="find-window-$lang"
+  CURRENT_CMD="find-window-$png_name"
   for _ in $(seq 1 20); do
     if ! kill -0 "$APP_PID" 2>/dev/null; then
-      FAIL_DETAIL="rnparmor exited before the window appeared (lang=$lang)"
+      FAIL_DETAIL="rnparmor exited before the window appeared ($png_name)"
       echo "$FAIL_DETAIL" >&2
       exit 1
     fi
@@ -392,40 +504,60 @@ capture_lang() {
     sleep 0.5
   done
   if [[ -z "$wid" ]]; then
-    FAIL_DETAIL="main window not found for lang=$lang"
+    FAIL_DETAIL="main window not found for $png_name"
     echo "$FAIL_DETAIL" >&2
     exit 1
   fi
 
-  CURRENT_CMD="place-window-$lang"
-  if ! timeout 8 xdotool windowmove --sync "$wid" 40 40; then
-    xdotool windowmove "$wid" 40 40
+  if [[ "$about" == "1" ]]; then
+    CURRENT_CMD="find-about-$png_name"
+    wid=""
+    for _ in $(seq 1 40); do
+      if ! kill -0 "$APP_PID" 2>/dev/null; then
+        FAIL_DETAIL="rnparmor exited before the About window appeared ($png_name)"
+        echo "$FAIL_DETAIL" >&2
+        exit 1
+      fi
+      wid=$(find_about_window "$APP_PID" || true)
+      if [[ -n "$wid" ]]; then
+        break
+      fi
+      sleep 0.5
+    done
+    if [[ -z "$wid" ]]; then
+      FAIL_DETAIL="About window not found for $png_name"
+      echo "$FAIL_DETAIL" >&2
+      exit 1
+    fi
+    focus_window "$wid" "$png_name"
+    sleep 1
+  else
+    focus_window "$wid" "$png_name"
+    sleep 5
   fi
-  if ! timeout 8 xdotool windowactivate --sync "$wid"; then
-    xdotool windowactivate "$wid" || true
-  fi
-  if ! timeout 8 xdotool windowfocus --sync "$wid"; then
-    xdotool windowfocus "$wid" || echo "windowfocus returned non-zero for $wid" >&2
-  fi
-  sleep 2.5
 
   rm -f "$png"
-  CURRENT_CMD="scrot-focused-$lang"
+  CURRENT_CMD="scrot-focused-$png_name"
   if ! scrot --focused --border "$png"; then
-    CURRENT_CMD="scrot-$lang"
+    if [[ "$about" == "1" ]]; then
+      FAIL_DETAIL="focused scrot failed for About window $png_name"
+      echo "$FAIL_DETAIL" >&2
+      exit 1
+    fi
+    CURRENT_CMD="scrot-$png_name"
     scrot "$png"
   fi
 
-  CURRENT_CMD="stop-rnparmor-$lang"
+  CURRENT_CMD="stop-rnparmor-$png_name"
   stop_app
 }
 
 measure_png() {
   local png="$1"
-  local lang="$2"
+  local label="$2"
   local bytes meta w h std
-  CURRENT_CMD="validate-$lang"
-  LAST_LOG="$work/rnparmor-$lang.log"
+  CURRENT_CMD="validate-$label"
+  LAST_LOG="$work/${label}.png.log"
   if [[ ! -f "$png" ]]; then
     FAIL_DETAIL="missing screenshot: $png"
     echo "$FAIL_DETAIL" >&2
@@ -437,7 +569,7 @@ measure_png() {
     echo "$FAIL_DETAIL" >&2
     exit 1
   fi
-  if command -v identify >/dev/null 2>&1 && meta=$(identify -format '%w %h %[fx:standard_deviation]' "$png" 2>"$work/identify-$lang.err"); then
+  if command -v identify >/dev/null 2>&1 && meta=$(identify -format '%w %h %[fx:standard_deviation]' "$png" 2>"$work/identify-$label.err"); then
     :
   else
     meta=$(png_metrics "$png")
@@ -457,12 +589,27 @@ measure_png() {
     echo "$FAIL_DETAIL" >&2
     exit 1
   fi
-  emit_notice "linux-screenshots" "rnparmor-linux-${lang}.png ${w}x${h} bytes=${bytes} stddev=${std}"
+  emit_notice "linux-screenshots" "${label}.png ${w}x${h} bytes=${bytes} stddev=${std}"
 }
 
+seed_demo
 start_desktop
-for lang in en zh ja; do
-  capture_lang "$lang"
-  measure_png "$OUT/rnparmor-linux-$lang.png" "$lang"
+shots=(
+  "en keys rnparmor-linux-en 0"
+  "zh keys rnparmor-linux-zh 0"
+  "ja keys rnparmor-linux-ja 0"
+  "en text rnparmor-linux-text-en 0"
+  "zh text rnparmor-linux-text-zh 0"
+  "en file rnparmor-linux-file-en 0"
+  "zh file rnparmor-linux-file-zh 0"
+  "en packet rnparmor-linux-packet-en 0"
+  "zh packet rnparmor-linux-packet-zh 0"
+  "en about rnparmor-linux-about-en 1"
+  "zh about rnparmor-linux-about-zh 1"
+)
+for spec in "${shots[@]}"; do
+  read -r lang scene stem about <<<"$spec"
+  capture_shot "$lang" "$scene" "${stem}.png" "$about"
+  measure_png "$OUT/${stem}.png" "$stem"
 done
-emit_notice "linux-screenshots" "captured en zh ja into $OUT"
+emit_notice "linux-screenshots" "captured 11 screenshots into $OUT"

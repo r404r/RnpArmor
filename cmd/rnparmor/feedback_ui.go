@@ -130,13 +130,20 @@ func (s *uiState) copyTextAndToast(text, title string) {
 }
 
 func (s *uiState) enqueueToast(title, desc, kind string) {
+	s.enqueueToastFor(title, desc, kind, toastLifetime)
+}
+
+func (s *uiState) enqueueToastFor(title, desc, kind string, timeout time.Duration) {
+	if timeout <= 0 {
+		timeout = toastLifetime
+	}
 	s.toastSeq++
 	s.pendingToasts = append(s.pendingToasts, ui.Toast{
 		ID:          fmt.Sprintf("fb-%d", s.toastSeq),
 		Title:       title,
 		Description: desc,
 		Type:        kind,
-		Timeout:     toastLifetime,
+		Timeout:     timeout,
 	})
 }
 

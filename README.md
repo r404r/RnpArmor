@@ -12,7 +12,7 @@ RnpArmor is a MyGo-native OpenPGP GUI powered by `librnp v0.18.1`, delivering Wi
 
 ## Screenshots
 
-Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / Language / Help` menu bar, `librnp 0.18.1`), captured via [`.github/workflows/linux-screenshot.yml`](.github/workflows/linux-screenshot.yml) and [`scripts/capture-linux-screenshots.sh`](scripts/capture-linux-screenshots.sh):
+Linux runtime main-window screenshot (`1120×780`, integrated `File / Workspace / Language / Help` menu bar, light Fluent two-layer cards, pinned bottom status bar showing `librnp 0.18.1` and `3 keys · Ready`), seeded with a 3-key demo keyring (`Alice Chen` with 2 subkeys, `Carol Smith`, and `Bob Tanaka` public-only) via [`.github/workflows/linux-screenshot.yml`](.github/workflows/linux-screenshot.yml), `cmd/seeddemo` (screenshot-CI only, excluded from release builds), and [`scripts/capture-linux-screenshots.sh`](scripts/capture-linux-screenshots.sh):
 
 ![RnpArmor main window (English, Linux runtime)](docs/screenshots/rnparmor-linux-en.png)
 
@@ -27,6 +27,27 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
 <summary>Japanese UI screenshot</summary>
 
 ![RnpArmor main window (Japanese, Linux runtime)](docs/screenshots/rnparmor-linux-ja.png)
+
+</details>
+
+<details>
+<summary>Additional workspaces &amp; standalone About window screenshots (English)</summary>
+
+**Text Studio** (`② Text Studio`, pre-filled demo plaintext, recipient picker & fingerprint list, `AES256` / `zlib`, signer selector, and 4 text action buttons):
+
+![RnpArmor Text Studio (English, Linux runtime)](docs/screenshots/rnparmor-linux-text-en.png)
+
+**File Workbench** (`③ File Workbench`, demo source/destination/signature paths, recipient fingerprints, and 4 file action buttons):
+
+![RnpArmor File Workbench (English, Linux runtime)](docs/screenshots/rnparmor-linux-file-en.png)
+
+**Packet & Features** (`④ Packet & Features`, live JSON packet dump of `demo-signed.asc` alongside `librnp 0.18.1` supported feature matrix):
+
+![RnpArmor Packet & Features (English, Linux runtime)](docs/screenshots/rnparmor-linux-packet-en.png)
+
+**Standalone About Child Window** (`Help → About`, `580×520`, menu-less non-modal window showing `v0.0.7`, author, repository URL, `librnp 0.18.1`, and local library path):
+
+![RnpArmor About window (English, Linux runtime)](docs/screenshots/rnparmor-linux-about-en.png)
 
 </details>
 
@@ -114,6 +135,8 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
   - `main_test.go`: unit tests for smoke output generation/writing, menu template structure, `TestFluentGlassChrome` (Windows Mica/hidden title bar vs Linux/macOS default title bar, integrated menu bar rules, light theme high-contrast/text-scale preferences, secondary/primary/danger button faces, and `menuGlass` / `toastGlass` styling), state synchronization, key-manager filter/search/sort/ID-mode/`New Key` validation (protected & empty-passphrase cases), `TestKeygenPresetsSyncAndTips`, `TestSubkeyTableExpiryUsageAndCatalog`, `TestStudioKeyPickersAndFileDialogPaths`, `TestI18nComplete`, `TestStatusBarAndFeedback`, decrypt/verify input resolution, recipient fallback rules, and real `librnp` end-to-end GUI action regression tests (`TestUIStateActionsEndToEnd` and `TestUIStateEmptyPassphraseLifecycle`).
 - `cmd/genwinres/`
   - `main.go`: zero-dependency pure Go AMD64 COFF `.syso` resource generator embedding `rnparmor.ico` into `rnparmor.exe` at build time.
+- `cmd/seeddemo/`
+  - `main.go`, `main_test.go`: screenshot-CI-only helper binary (`--dir`) seeding the disposable 3-key demo keyring (`Alice Chen` protected with an extra signing subkey, `Carol Smith` unprotected, `Bob Tanaka` public-only) plus `demo-note.txt`, `demo-signed.asc`, and `demo-encrypted.pgp`; excluded from release builds.
 - `internal/loadlib/`
   - `open.go`: absolute-path `librnp` resolution and `SHA256SUMS` verification before loading, including fallback from `Contents/MacOS/SHA256SUMS` to `Contents/Resources/SHA256SUMS` for macOS `.app` bundles.
 - `internal/rnp/`
@@ -126,18 +149,18 @@ Linux runtime main-window screenshot (`1120×780`, native `File / Workspace / La
 - `scripts/build-macos.sh`
   - builds pinned static deps (`Botan 3.10.0` + `json-c 0.19`), `librnp.dylib`, and `RnpArmor.app` (with `Contents/Resources/RnpArmor.icns` and `CFBundleIconFile` in `Info.plist`), runs ad-hoc `codesign --verify --deep --strict`, `go test`, and `--smoke-test`, and packages `rnparmor-macos-arm64.dmg`.
 - `scripts/capture-linux-screenshots.sh`
-  - launches `rnparmor` under headless X11 (`Xvfb` + `openbox`) for `--lang en|zh|ja`, captures focused window PNGs via `scrot`, and verifies dimensions and non-blank pixel variance.
+  - seeds the demo keyring via `--seeder`, launches `rnparmor` under headless X11 (`Xvfb` + `openbox`) across `--lang en|zh|ja` and `RNPARMOR_DEMO_SCENE`, captures all 11 focused PNGs via `scrot`, and verifies dimensions and non-blank pixel variance.
 - `packaging/windows/rnparmor.iss`
   - Inno Setup 6 script for the Windows per-user installer (`rnparmor-windows-amd64-setup.exe`) with `SetupIconFile`.
 - `docs/`
   - `USER_GUIDE.md` / `USER_GUIDE.zh-CN.md`: bilingual end-user installation, workspace, and troubleshooting guides.
-  - `screenshots/`: Linux tri-lingual runtime screenshots (`rnparmor-linux-{en,zh,ja}.png`).
+  - `screenshots/`: 11 Linux runtime demo-keyring screenshots (`rnparmor-linux-{en,zh,ja}.png`, plus `rnparmor-linux-{text,file,packet,about}-{en,zh}.png`).
 - `.github/workflows/smoke.yml`
   - `linux`, `windows-portable`, and `macos-arm64` jobs with dependency caches + per-branch concurrency cancel.
 - `.github/workflows/release.yml`
   - tag-driven/manual multi-platform packaging and release publication.
 - `.github/workflows/linux-screenshot.yml`
-  - captures tri-lingual Linux runtime screenshots via `scripts/capture-linux-screenshots.sh` (including on `assets/icons/**` changes), uploads `rnparmor-linux-screenshots` artifacts, and can commit updated PNGs to `docs/screenshots/` on non-`main` branches.
+  - builds `librnp.so`, `rnparmor`, and `seeddemo`, runs `scripts/capture-linux-screenshots.sh` under `Xvfb` + `openbox` (including on `cmd/rnparmor/**`, `cmd/seeddemo/**`, `scripts/capture-linux-screenshots.sh`, `.github/workflows/linux-screenshot.yml`, or `assets/icons/**` PR changes), uploads `rnparmor-linux-screenshots` artifacts, and can commit all 11 updated PNGs to `docs/screenshots/` on non-`main` branches.
 
 ## GUI Workspaces
 
@@ -357,9 +380,9 @@ Workflow: `.github/workflows/linux-screenshot.yml`
 
 - triggers:
   - `workflow_dispatch` (optional `commit_screenshots` boolean, non-`main` branches only)
-  - `pull_request` modifying `scripts/capture-linux-screenshots.sh`, `.github/workflows/linux-screenshot.yml`, or `assets/icons/**`
+  - `pull_request` modifying `scripts/capture-linux-screenshots.sh`, `.github/workflows/linux-screenshot.yml`, `assets/icons/**`, `cmd/rnparmor/**`, or `cmd/seeddemo/**`
 - `linux-screenshot` job (`runs-on: ubuntu-latest`):
-  - builds pinned `librnp.so` and `rnparmor`, runs `scripts/capture-linux-screenshots.sh` under `Xvfb` + `openbox`, uploads `rnparmor-linux-screenshots` (`out/screenshots/*.png`), and optionally commits `docs/screenshots/rnparmor-linux-{en,zh,ja}.png` on non-`main` branches
+  - builds pinned `librnp.so`, `rnparmor`, and `seeddemo`, runs `scripts/capture-linux-screenshots.sh` under `Xvfb` + `openbox`, uploads `rnparmor-linux-screenshots` (`out/screenshots/*.png`), and optionally commits the 11 `docs/screenshots/rnparmor-linux-*.png` images on non-`main` branches
 
 ## Security & Operational Boundaries
 
@@ -371,8 +394,8 @@ Workflow: `.github/workflows/linux-screenshot.yml`
 
 ## Repository Status Notes
 
-- `v0.0.1`–`v0.0.6` have been released across macOS (`arm64`), Linux (`amd64`), and Windows (`amd64`): `v0.0.2` added Apache-2.0 licensing ([`LICENSE`](LICENSE)), Linux runtime screenshots, multi-platform application icons, and the bilingual user guides ([`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)); `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 (master-detail Key Manager, 16/40-char ID switch, masked New Key dialog, public-only empty-passphrase startup, native folder picker) and Phase 2 (`cmd/rnparmor/studio_ui.go` recipient/signer pickers, masked symmetric passphrase, native file `Browse...` / `Save As...` dialogs), plus release upload hardening; `v0.0.5` delivered PR #14 (`+ New Key` algorithm presets, curve/size linking, tri-lingual tips, `Primary Key / Subkey` terminology, `TestKeygenPresetsSyncAndTips`) and PR #15 (`cmd/rnparmor/subkey_ui.go`, left-pane hierarchical collapsible subkey tree, full subkey lifecycle `AddSubkey`/`SetKeyExpiration`/`RevokeKey`/`DeleteSubkey`, `TestSubkeyLifecycle`, `TestSubkeyTableExpiryUsageAndCatalog`, and expanded `TestUIStateActionsEndToEnd`); `v0.0.6` delivered PR #16 (RFC 4880 empty-passphrase unprotected key generation, `No Passphrase` badges, optional passphrases across subkey lifecycle and crypto flows, `TestEmptyPassphraseKeyLifecycle`, and `TestUIStateEmptyPassphraseLifecycle`).
-- Merged to `main` (PR #17) and pending in current branch `feat/fluent-glass-ui` for the next release (`v0.0.7` has not been tagged yet): PR #17 added `cmd/rnparmor/feedback_ui.go`, the pinned bottom status bar, click-to-copy library path toast, Scheme A graded result notifications, `TestI18nComplete`, and `TestStatusBarAndFeedback`; current branch `feat/fluent-glass-ui` adds `cmd/rnparmor/style_ui.go` (light Fluent theme honoring system high-contrast/text-scale/accent preferences, two-layer `#edf1f7`/Windows 11 Mica canvas + white `rnpCard` panels, raised gradient/1-DIP-press buttons, Windows hidden-title-bar/Linux integrated draggable menu bar vs macOS system menu bar, `mygo/plugins/glass` frosted popovers/menus/toasts) and `TestFluentGlassChrome`.
+- `v0.0.1`–`v0.0.7` have been released across macOS (`arm64`), Linux (`amd64`), and Windows (`amd64`): `v0.0.2` added Apache-2.0 licensing ([`LICENSE`](LICENSE)), Linux runtime screenshots, multi-platform application icons, and the bilingual user guides ([`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)); `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 (master-detail Key Manager, 16/40-char ID switch, masked New Key dialog, public-only empty-passphrase startup, native folder picker) and Phase 2 (`cmd/rnparmor/studio_ui.go` recipient/signer pickers, masked symmetric passphrase, native file `Browse...` / `Save As...` dialogs), plus release upload hardening; `v0.0.5` delivered PR #14 (`+ New Key` algorithm presets, curve/size linking, tri-lingual tips, `Primary Key / Subkey` terminology, `TestKeygenPresetsSyncAndTips`) and PR #15 (`cmd/rnparmor/subkey_ui.go`, left-pane hierarchical collapsible subkey tree, full subkey lifecycle `AddSubkey`/`SetKeyExpiration`/`RevokeKey`/`DeleteSubkey`, `TestSubkeyLifecycle`, `TestSubkeyTableExpiryUsageAndCatalog`, and expanded `TestUIStateActionsEndToEnd`); `v0.0.6` delivered PR #16 (RFC 4880 empty-passphrase unprotected key generation, `No Passphrase` badges, optional passphrases across subkey lifecycle and crypto flows, `TestEmptyPassphraseKeyLifecycle`, and `TestUIStateEmptyPassphraseLifecycle`); `v0.0.7` delivered PR #17 (`cmd/rnparmor/feedback_ui.go` pinned bottom status bar, Scheme A graded notifications, `TestI18nComplete`, `TestStatusBarAndFeedback`) and PR #18 (`cmd/rnparmor/style_ui.go` light Fluent theme honoring OS preferences, `#edf1f7`/Windows 11 Mica canvas + white `rnpCard` panels, raised tactile buttons, platform menu bars, `mygo/plugins/glass` overlays, and `TestFluentGlassChrome`).
+- Current branch `feat/rich-doc-screenshots` adds the screenshot-CI-only demo seeder (`cmd/seeddemo`), refreshes all 11 Linux runtime demo screenshots in `docs/screenshots/` (Keys in EN/ZH/JA plus Text, File, Packet & Features, and About in EN/ZH), and embeds them across `README.md`, `README.zh-CN.md`, `docs/USER_GUIDE.md`, and `docs/USER_GUIDE.zh-CN.md`.
 - Desktop manual UX validation—including Windows 10/11 Chinese IME, high-DPI, and Inno Setup installer flow, plus macOS Apple Silicon first-launch Gatekeeper handling—remains environment-dependent and must be confirmed in dedicated manual runs.
 
 ## License

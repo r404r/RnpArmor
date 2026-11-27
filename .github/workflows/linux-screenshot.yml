@@ -13,6 +13,7 @@ on:
       - ".github/workflows/linux-screenshot.yml"
       - "assets/icons/**"
       - "cmd/rnparmor/**"
+      - "cmd/seeddemo/**"
 
 concurrency:
   group: linux-screenshot-${{ github.ref }}
@@ -28,6 +29,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || '' }}
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.4"
@@ -43,9 +46,15 @@ jobs:
       - name: build pinned librnp
         run: bash scripts/build-librnp.sh
       - name: build rnparmor
-        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.appVersion=dev" -o out/rnparmor ./cmd/rnparmor
+        run: |
+          set -Eeuo pipefail
+          APP_VER=$(git describe --tags --abbrev=0 2>/dev/null || echo dev)
+          echo "app version ${APP_VER}"
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.appVersion=${APP_VER}" -o out/rnparmor ./cmd/rnparmor
+      - name: build seeddemo
+        run: CGO_ENABLED=0 go build -trimpath -o out/seeddemo ./cmd/seeddemo
       - name: capture screenshots
-        run: bash scripts/capture-linux-screenshots.sh --bin "$PWD/out/rnparmor" --lib "$PWD/out/lib/librnp.so" --out "$PWD/out/screenshots"
+        run: bash scripts/capture-linux-screenshots.sh --bin "$PWD/out/rnparmor" --lib "$PWD/out/lib/librnp.so" --out "$PWD/out/screenshots" --seeder "$PWD/out/seeddemo"
       - uses: actions/upload-artifact@v4
         with:
           name: rnparmor-linux-screenshots
@@ -65,24 +74,54 @@ jobs:
             echo "Refusing to commit screenshots to main or empty branch: '${TARGET_BRANCH}'"
             exit 0
           fi
-          if [[ "${EVENT_NAME}" == "pull_request" ]] && \
-             [[ -f docs/screenshots/rnparmor-linux-en.png ]] && \
-             [[ -f docs/screenshots/rnparmor-linux-zh.png ]] && \
-             [[ -f docs/screenshots/rnparmor-linux-ja.png ]]; then
-            echo "All docs/screenshots/rnparmor-linux-*.png already exist; skipping auto-commit on pull_request."
-            exit 0
+          shots=(
+            rnparmor-linux-en.png
+            rnparmor-linux-zh.png
+            rnparmor-linux-ja.png
+            rnparmor-linux-text-en.png
+            rnparmor-linux-text-zh.png
+            rnparmor-linux-file-en.png
+            rnparmor-linux-file-zh.png
+            rnparmor-linux-packet-en.png
+            rnparmor-linux-packet-zh.png
+            rnparmor-linux-about-en.png
+            rnparmor-linux-about-zh.png
+          )
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            missing=0
+            for name in "${shots[@]}"; do
+              if [[ ! -f "docs/screenshots/${name}" ]]; then
+                missing=1
+                break
+              fi
+            done
+            if [[ "$missing" -eq 0 ]]; then
+              echo "All 11 docs/screenshots/rnparmor-linux-*.png already exist; skipping auto-commit on pull_request."
+              exit 0
+            fi
           fi
           mkdir -p docs/screenshots
-          cp out/screenshots/rnparmor-linux-en.png docs/screenshots/rnparmor-linux-en.png
-          cp out/screenshots/rnparmor-linux-zh.png docs/screenshots/rnparmor-linux-zh.png
-          cp out/screenshots/rnparmor-linux-ja.png docs/screenshots/rnparmor-linux-ja.png
+          for name in "${shots[@]}"; do
+            cp "out/screenshots/${name}" "docs/screenshots/${name}"
+          done
           if git diff --quiet -- docs/screenshots && [[ -z "$(git ls-files --others --exclude-standard -- docs/screenshots)" ]]; then
             echo "Screenshots unchanged; nothing to commit."
             exit 0
           fi
           git config user.name "OpenBot"
           git config user.email "335604065+openbotgit[bot]@users.noreply.github.com"
-          git add docs/screenshots/rnparmor-linux-en.png docs/screenshots/rnparmor-linux-zh.png docs/screenshots/rnparmor-linux-ja.png
-          git commit -m "docs(screenshots): capture Linux en/zh/ja runtime screenshots" \
+          git add -- \
+            docs/screenshots/rnparmor-linux-en.png \
+            docs/screenshots/rnparmor-linux-zh.png \
+            docs/screenshots/rnparmor-linux-ja.png \
+            docs/screenshots/rnparmor-linux-text-en.png \
+            docs/screenshots/rnparmor-linux-text-zh.png \
+            docs/screenshots/rnparmor-linux-file-en.png \
+            docs/screenshots/rnparmor-linux-file-zh.png \
+            docs/screenshots/rnparmor-linux-packet-en.png \
+            docs/screenshots/rnparmor-linux-packet-zh.png \
+            docs/screenshots/rnparmor-linux-about-en.png \
+            docs/screenshots/rnparmor-linux-about-zh.png
+          git commit -m "docs(screenshots): capture Linux demo keyring scenes" \
             -m "Co-authored-by: OpenBot <335604065+openbotgit[bot]@users.noreply.github.com>"
           git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
