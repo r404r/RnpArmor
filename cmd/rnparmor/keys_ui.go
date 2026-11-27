@@ -428,8 +428,15 @@ func (s *uiState) reportAsyncErr(err error) {
 }
 
 func (s *uiState) openNewKeyWindow() {
+	s.resetNewKeyPassUI()
+	already := s.newKeyWin != nil && !s.newKeyWin.IsDestroyed()
 	w, h := newKeyWindowSize()
 	s.openChild(s.tr("title.new_key"), w, h, s.viewNewKey, &s.newKeyWin)
+	if !already && s.newKeyWin != nil && !s.newKeyWin.IsDestroyed() {
+		s.newKeyWin.OnClosed(func() {
+			s.resetNewKeyPassUI()
+		})
+	}
 }
 
 func (s *uiState) openImportTextWindow() {
@@ -469,9 +476,19 @@ func (s *uiState) openChild(title string, width, height int, content func(*ui.Co
 }
 
 func (s *uiState) closeNewKeyWindow() {
+	s.resetNewKeyPassUI()
 	if s.newKeyWin != nil && !s.newKeyWin.IsDestroyed() {
 		s.newKeyWin.Close()
 	}
+}
+
+// resetNewKeyPassUI hides both passphrases, clears the inline error, and
+// drops the submit-check flag. Open, close, and a successful generate call it.
+func (s *uiState) resetNewKeyPassUI() {
+	s.newKeyShowPass = false
+	s.newKeyShowPass2 = false
+	s.newKeyErr = ""
+	s.newKeyChecked = false
 }
 
 func (s *uiState) closeImportWindow() {

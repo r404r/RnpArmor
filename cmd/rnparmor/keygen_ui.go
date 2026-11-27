@@ -219,6 +219,48 @@ func (s *uiState) takeNewKeyPassphrase() {
 	s.newKeyPass2 = ""
 }
 
+// submitNewKey validates, then either shows the mismatch and stops or
+// starts generation. A mismatch never adopts the passphrase or calls run.
+func (s *uiState) submitNewKey() bool {
+	s.newKeyChecked = true
+	req, errKey := validateNewKey(s.newKeyName, s.newKeyEmail, s.newKeyPass, s.newKeyPass2, s.newKeyExpiry, s.keyReq)
+	if errKey != "" {
+		s.newKeyErr = s.tr(errKey)
+		return false
+	}
+	s.newKeyErr = ""
+	s.newKeyChecked = false
+	s.takeNewKeyPassphrase()
+	s.newKeyShowPass = false
+	s.newKeyShowPass2 = false
+	s.keyReq = req
+	s.run("action.generate_key", s.generateKey)
+	return true
+}
+
+func (s *uiState) syncNewKeyPassError() {
+	if s.newKeyPass == s.newKeyPass2 && s.newKeyErr == s.tr("err.pass_mismatch") {
+		s.newKeyErr = ""
+	}
+}
+
+func (s *uiState) passMismatchVisible() bool {
+	if s.newKeyPass == s.newKeyPass2 {
+		return false
+	}
+	return s.newKeyPass2 != "" || s.newKeyChecked
+}
+
+func (s *uiState) passphraseRow(c *ui.Context, value *string, shown *bool, placeholder string) {
+	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+		input := ui.TextInput(c, value).Grow(1).Placeholder(placeholder)
+		if shown == nil || !*shown {
+			input.Password()
+		}
+		rnpPassEye(c, shown, s.tr("tip.show_passphrase"), s.tr("tip.hide_passphrase"))
+	})
+}
+
 func (s *uiState) viewNewKey(c *ui.Context) {
 	prepareSurface(c)
 	t := c.Theme()
@@ -247,6 +289,7 @@ func (s *uiState) viewNewKey(c *ui.Context) {
 			curPreset = labels[i]
 		}
 	}
+	s.syncNewKeyPassError()
 	passDesc := "desc.pass_protected"
 	if s.newKeyPass == "" && s.newKeyPass2 == "" {
 		passDesc = "desc.pass_unprotected"
@@ -265,11 +308,16 @@ func (s *uiState) viewNewKey(c *ui.Context) {
 							ui.TextInput(c, &s.newKeyEmail).Placeholder(s.tr("placeholder.email"))
 						})
 						ui.Field(c, s.tr("label.passphrase"), func() {
-							ui.TextInput(c, &s.newKeyPass).Password().Placeholder(s.tr("placeholder.new_pass"))
+							s.passphraseRow(c, &s.newKeyPass, &s.newKeyShowPass, s.tr("placeholder.new_pass"))
 						})
-						ui.Field(c, s.tr("label.confirm_pass"), func() {
-							ui.TextInput(c, &s.newKeyPass2).Password().Placeholder(s.tr("placeholder.confirm_pass"))
-						}).Description(s.tr(passDesc))
+						confirm := ui.Field(c, s.tr("label.confirm_pass"), func() {
+							s.passphraseRow(c, &s.newKeyPass2, &s.newKeyShowPass2, s.tr("placeholder.confirm_pass"))
+						})
+						if s.passMismatchVisible() {
+							confirm.Error(s.tr("err.pass_mismatch"))
+						} else {
+							confirm.Description(s.tr(passDesc))
+						}
 						ui.Field(c, s.tr("label.expiration"), func() {
 							ui.Select(c, &curExp, choices)
 						})
@@ -302,19 +350,13 @@ func (s *uiState) viewNewKey(c *ui.Context) {
 						}).Description(s.tr("tip.crypto.desc"))
 					})
 					if s.newKeyErr != "" {
-						ui.Text(c, s.newKeyErr).TextColor(t.Danger)
+						ui.Column(c).Padding(8, 10).Radius(8).Border(1, t.Danger).Background(ui.Hex("#fef2f2")).Children(func() {
+							ui.Text(c, s.newKeyErr).TextColor(t.Danger)
+						})
 					}
 					ui.Row(c).Gap(8).Children(func() {
 						if rnpPrimaryButton(c, s.tr("btn.generate")).Clicked() {
-							req, errKey := validateNewKey(s.newKeyName, s.newKeyEmail, s.newKeyPass, s.newKeyPass2, s.newKeyExpiry, s.keyReq)
-							if errKey != "" {
-								s.newKeyErr = s.tr(errKey)
-								return
-							}
-							s.newKeyErr = ""
-							s.takeNewKeyPassphrase()
-							s.keyReq = req
-							s.run("action.generate_key", s.generateKey)
+							s.submitNewKey()
 						}
 						if rnpButton(c, s.tr("btn.close")).Clicked() {
 							s.closeNewKeyWindow()
