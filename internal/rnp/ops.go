@@ -725,12 +725,10 @@ func (s *Session) AddSubkey(ctx context.Context, primaryFprint string, req Subke
 		if err := bound.check("generate_subkey", bound.genHash(op, hash)); err != nil {
 			return err
 		}
-		if req.Unprotected {
-			// Binding-signature hash stays. Protection params would encrypt the secret.
-			if err := bound.check("generate_subkey", bound.genReqPass(op, false)); err != nil {
-				return err
-			}
-		} else {
+		if !req.Unprotected {
+			// librnp v0.18.1 defaults op->request_password to false and returns
+			// RNP_ERROR_NULL_POINTER if rnp_op_generate_set_request_password is
+			// called with false, so unprotected subkeys simply omit protection.
 			cipher := defaultAlg(req.Cipher, "AES256")
 			if err := bound.check("generate_subkey", bound.genCipher(op, cipher)); err != nil {
 				return err
