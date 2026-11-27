@@ -53,7 +53,7 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
      - 展示应用版本（`appVersion`，如 `v0.0.4` 或 `dev`）、作者（`r404r (https://github.com/r404r)`）、仓库地址（`https://github.com/r404r/RnpArmor`）、RNP 上游地址与 `librnp` 版本、本地动态库路径（`rnp.dll` / `librnp.so`）、密钥库目录（便携工作区路径及 `pubring.gpg`/`secring.gpg` 存在状态）与 GUI 框架/运行时栈（MyGo / purego / Botan 版本）。
 
 2. **`internal/rnp` 能力扩展**
-   - 补齐密钥迭代/定位（主密钥摘要内嵌子密钥 `Subkeys`）、密钥导入（`ImportKeys`）、公私钥/吊销证书导出（`ExportRevocation`）、删除、JSON 导出。
+   - 补齐密钥迭代/定位（主密钥摘要内嵌子密钥 `Subkeys`）、密钥导入（`ImportKeys`）、公私钥/吊销证书导出（`ExportRevocation`）、完整子密钥生命周期管理（`AddSubkey`、`SetKeyExpiration`、`RevokeKey`、`DeleteSubkey`，含用途算法合法性校验 `UsageAllowsAlg` 与拒绝误删主密钥保护）、删除、JSON 导出。
    - 支持无口令仅公钥/只读会话（`OpenOptionalPass`），以及仅 `pubring.gpg`（无 `secring.gpg`）的独立加载与保存。
    - 基于 `rnp_generate_key_json` 的多算法密钥生成与可选过期时间。
    - 文本能力：加密/解密、clearsign/detached/inline 签名与验签。
@@ -93,20 +93,21 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
   - `icons.go`、`icons_test.go`：内嵌 `rnparmor-256.png`（`icons.AppIconPNG`）供运行时窗口与 Dock 图标使用。
 - `cmd/rnparmor/`
   - `main.go`：MyGo 主程序、运行时窗口/Dock 图标设置、原生 4 组菜单栏（含 `文件 → 选择文件夹...`）、启动自动加载已有钥匙圈、默认空口令与 `OpenOptionalPass`、5 工作区切换（在文本与文件工作区集成共享收件人/签名者下拉选择器与掩码对称口令，并在文件与 Packet 页嵌入原生文件选择按钮）、`580×520` 非模态 About 子窗口、便携页掩码口令输入、异步会话操作、`--smoke-out` 及构建注入 `appVersion` 展示/输出。
-  - `keys_ui.go`：Phase 1 主从双栏钥匙圈管理工作区（`+ 新建密钥`、`导入文件...`、`粘贴导入...`、`刷新`、只读工作目录 + 原生`选择文件夹...`）、所有权分段过滤（`全部` / `我的密钥` / `公钥`）、`密钥 ID (16)` ↔ `指纹 (40)` 切换、实时搜索、可排序主密钥列表、右侧详情检视栏（4 字符分组指纹复制、徽章、内嵌子密钥、带确认提示/隐秘剪贴板/`0600` 落盘的公钥/私钥/吊销证书导出、原生二次确认 `删除密钥...`、可折叠 `原始密钥 JSON`），以及`粘贴导入密钥`独立子窗口。
+  - `keys_ui.go`：Phase 1 主从双栏钥匙圈管理工作区（`+ 新建密钥`、`导入文件...`、`粘贴导入...`、`刷新`、只读工作目录 + 原生`选择文件夹...`）、所有权分段过滤（`全部` / `我的密钥` / `公钥`）、`密钥 ID (16)` ↔ `指纹 (40)` 切换、实时搜索（覆盖主密钥与子密钥）、可排序可折叠主密钥树形表（`▾` / `▸`）、右侧详情检视栏（4 字符分组指纹复制、徽章含主密钥`认证`、内嵌子密钥操作卡片与 `+ 添加子密钥...`、带确认提示/隐秘剪贴板/`0600` 落盘的公钥/私钥/吊销证书导出、原生二次确认 `删除密钥...`、可折叠 `原始密钥 JSON`），以及`粘贴导入密钥`独立子窗口。
+  - `subkey_ui.go`：左侧树形可折叠子密钥行构建与选中高亮联动（默认展开的 `  └ 子密钥` 缩进行，联动 16/40 位 ID 展示）以及完整子密钥生命周期弹窗（`添加子密钥` `560×680` 按用途约束算法与曲线/位宽联动、`修改子密钥有效期` `480×420`、`吊销子密钥` `500×460` + 二次确认、警告确认`删除...`，并在会话题未解锁时提示输入并采用掩码会话口令）。
   - `keygen_ui.go`：可滚动的 `560×640` `+ 新建密钥` 弹窗，提供 5 档算法预设（`现代推荐（Ed25519 + Curve25519）` 默认推荐、`RSA 4096 + RSA 4096`、`RSA 3072 + RSA 3072`、`NIST P-256（合规）` 与自动展开高级区的`自定义`）、预设偏离自动切回自定义逻辑、随所选主密钥/加密子密钥算法联动的有效曲线或位数选择器，以及三语动态说明与悬停 Tooltip 提示。
   - `studio_ui.go`：Phase 2 共享主密钥收件人下拉选择器（`+ 添加` 忽略大小写与空格去重、`清除` 及手动编辑列表）、含私钥主密钥签名者下拉框（`使用当前选中密钥（默认）` + 手动指纹覆盖）以及文件工作区与 Packet 页的原生 `浏览...` / `另存为...` 文件对话窗封装。
-  - `i18n.go`：EN/ZH/JA 三语词典（中文统一使用「主密钥 / 子密钥」，英文 `Primary Key / Subkey`，日文 `主鍵 / 副鍵`）、新建密钥预设说明与悬停提示、语言解析与完整性校验。
-  - `main_test.go`：冒烟输出与文件写入、菜单模板结构、状态联动、钥匙圈筛选/搜索/排序/ID 切换/`新建密钥`校验、`TestKeygenPresetsSyncAndTips`（5 档预设、动态参数联动、统一术语与提示词校验）、`TestStudioKeyPickersAndFileDialogPaths`（收件人/签名者下拉、对话窗默认路径回退与过滤器顺序）、文本解密/验签输入解析、收件人留空回退规则单元测试，以及基于真实 `librnp` 的端到端 GUI 动作回归单测（`TestUIStateActionsEndToEnd`，含吊销证书导出与仅公钥钥匙圈流程）。
+  - `i18n.go`：EN/ZH/JA 三语词典（中文统一使用「主密钥 / 子密钥」，英文 `Primary Key / Subkey`，日文 `主鍵 / 副鍵`）、新建密钥预设与子密钥管理说明/悬停提示、语言解析与完整性校验。
+  - `main_test.go`：冒烟输出与文件写入、菜单模板结构、状态联动、钥匙圈筛选/搜索/排序/ID 切换/`新建密钥`校验、`TestKeygenPresetsSyncAndTips`（5 档预设、动态参数联动、统一术语与提示词校验）、`TestSubkeyTableExpiryUsageAndCatalog`（可折叠树形表、子密钥搜索/选中、有效期换算、用途算法校验与三语术语词条校验）、`TestStudioKeyPickersAndFileDialogPaths`（收件人/签名者下拉、对话窗默认路径回退与过滤器顺序）、文本解密/验签输入解析、收件人留空回退规则单元测试，以及基于真实 `librnp` 的端到端 GUI 动作回归单测（`TestUIStateActionsEndToEnd`，含 `exerciseSubkeyLifecycle` 子密钥全生命周期验证、吊销证书导出与仅公钥钥匙圈流程）。
 - `cmd/genwinres/`
   - `main.go`：零第三方依赖的纯 Go AMD64 COFF `.syso` 资源生成器，构建时将 `rnparmor.ico` 临时嵌入 `rnparmor.exe`。
 - `internal/loadlib/`
   - `open.go`：绝对路径解析 `librnp` 并于加载前校验 `SHA256SUMS`，针对 macOS `.app` 包结构支持从 `Contents/MacOS/SHA256SUMS` 回退至 `Contents/Resources/SHA256SUMS`。
 - `internal/rnp/`
   - `api.go`：purego 对 librnp 的 FFI 绑定。
-  - `session.go`：会话生命周期（`Open`、`OpenOptionalPass`）、口令回调控制、数据模型（含 `KeySummary.Subkeys`）。
-  - `ops.go`：密钥管理（含主密钥内嵌子密钥摘要、仅公钥 `SaveTo`/`LoadFrom`、吊销证书导出）、文本/文件加解密签名验签、Packet/特性接口。
-  - `session_test.go`：兼容测试 + 扩展测试（含子密钥与仅公钥钥匙圈测试）。
+  - `session.go`：会话生命周期（`Open`、`OpenOptionalPass`）、口令回调控制、数据模型（含 `KeySummary.Subkeys`、`IsSub`、`CanAuth`、`SubkeyGenRequest`）。
+  - `ops.go`：密钥管理（含主密钥内嵌子密钥摘要、`UsageAllowsAlg`、`AddSubkey`、`SetKeyExpiration`、`RevokeKey`、带防误删主密钥保护的 `DeleteSubkey`、仅公钥 `SaveTo`/`LoadFrom`、吊销证书导出）、文本/文件加解密签名验签、Packet/特性接口。
+  - `session_test.go`：兼容测试 + 扩展测试（含 `TestSubkeyLifecycle` 子密钥全生命周期集成测试与仅公钥钥匙圈测试）。
 - `scripts/build-windows.ps1`：Windows 构建脚本，调用 `cmd/genwinres` 嵌入临时 `.syso` 图标、编译 `-H=windowsgui` 便携包与 Inno Setup 6 安装包（`rnparmor-windows-amd64-setup.exe`）、校验 PE 子系统、`.rsrc` 资源节与 DLL 导入表，并运行测试、`--smoke-out` 冒烟与打包。
 - `scripts/build-macos.sh`：macOS Apple Silicon（`arm64`）构建脚本，编译静态依赖（`Botan 3.10.0` + `json-c 0.19`）与 `librnp.dylib`，组装 `RnpArmor.app`（写入 `Contents/Resources/RnpArmor.icns` 与 `Info.plist` 的 `CFBundleIconFile`），执行 ad-hoc `codesign --verify --deep --strict`、`go test`、`--smoke-test`，最终打包 `rnparmor-macos-arm64.dmg`。
 - `scripts/capture-linux-screenshots.sh`：在无头 X11（`Xvfb` + `openbox`）下以 `--lang en|zh|ja` 启动 `rnparmor`，通过 `scrot` 抓取聚焦窗口截图并校验分辨率与非空白像素方差。
@@ -123,8 +124,8 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
 ### 1）钥匙圈与生成
 
 - 主从双栏密钥管理视图，顶部工具栏集成 `+ 新建密钥`、`导入文件...`、`粘贴导入...`、`刷新` 与只读工作目录 + 原生`选择文件夹...` 选择器。
-- 支持 `全部` / `我的密钥` / `公钥` 分段过滤、`密钥 ID (16)` ↔ `指纹 (40)` 切换、按 UID / Key ID / 指纹 / 算法实时搜索，以及可排序主密钥列表（子密钥归属在主密钥详情下）。
-- 右侧详情栏展示 4 字符分组完整指纹与一键复制、所有权/状态/能力徽章、子密钥列表、`复制公钥` / `导出公钥 (.asc)...`、私钥专属的确认弹窗`导出私钥 (.asc)...` / 隐秘剪贴板`复制私钥` / `吊销证书...`（`.rev.asc`）、原生二次确认`删除密钥...` 及可折叠`原始密钥 JSON`。
+- 支持 `全部` / `我的密钥` / `公钥` 分段过滤、`密钥 ID (16)` ↔ `指纹 (40)` 切换、按 UID / Key ID / 指纹 / 算法实时搜索（同时匹配主密钥与子密钥），以及可排序的树形可折叠主密钥列表（带 `▾` / `▸` 折叠按钮，默认展开显示缩进的 `  └ 子密钥` 行与用途/ID/算法/状态，点击子密钥行同步选中主密钥详情并高亮对应子密钥卡片）。
+- 右侧详情栏展示 4 字符分组完整指纹与一键复制、所有权/状态/能力徽章（含主密钥`认证`徽章）、`子密钥`卡片列表与含私钥主密钥下的完整子密钥生命周期操作（`+ 添加子密钥...` `560×680` 按用途校验允许算法、`续期 / 改有效期...` `480×420`、`吊销...` `500×460` + 二次确认，以及带保护提示且拒绝误删主密钥的`删除...`）、`复制公钥` / `导出公钥 (.asc)...`、私钥专属的确认弹窗`导出私钥 (.asc)...` / 隐秘剪贴板`复制私钥` / `吊销证书...`（`.rev.asc`）、原生二次确认`删除密钥...` 及可折叠`原始密钥 JSON`。
 - 独立 `+ 新建密钥` 弹窗（`560×640`）校验名称/邮箱、掩码`口令` + `确认口令`、有效期（`永不` / `1 年` / `2 年` / `5 年`），提供 5 档算法预设（`现代推荐（Ed25519 + Curve25519）` 默认推荐、`RSA 4096 + RSA 4096`、`RSA 3072 + RSA 3072`、`NIST P-256（合规）` 与`自定义`）以及可折叠高级算法选项（按主密钥/加密子密钥算法联动有效曲线与位数，并提供三语动态说明与悬停提示，推荐 `Ed25519 + Curve25519`、`SHA256 / SHA512` 与 `AES256`，标明 `DSA` / `ELGAMAL` 为历史兼容算法）；启动默认空口令状态下即可浏览与导入仅公钥钥匙圈（仅 `pubring.gpg`）。
 - 只读操作不改写磁盘钥匙圈，空会话显式保存受保护报错，删除最后一把密钥会清理空文件。
 
@@ -338,7 +339,7 @@ Windows 依赖构建钉扎并打包以下组件：
 ## 仓库状态说明
 
 - `v0.0.1`–`v0.0.4` 多平台版本均已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）：`v0.0.2` 合入 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、三端应用图标与双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)），`v0.0.3` 修复了 GUI 操作重入死锁与钥匙圈持久化边界问题，`v0.0.4` 合并发布 Phase 1（主从双栏 Keys 管理页、16/40 位 ID 切换、掩码双口令新建密钥弹窗、空口令公钥只读打开与原生文件夹选择器）、Phase 2（`cmd/rnparmor/studio_ui.go` 共享收件人/签名者下拉、掩码对称口令与文件/Packet 原生文件对话窗）及 Release 发布重试与取消草稿加固。
-- 当前分支（`feat/keygen-presets-tips`）新增 `+ 新建密钥` 算法预设与提示优化（`cmd/rnparmor/keygen_ui.go`：`现代推荐（Ed25519 + Curve25519）` 等 5 档预设、有效曲线/位数动态联动、统一`主密钥 / 子密钥`术语、三语动态字段说明与悬停 Tooltip，并附带 `TestKeygenPresetsSyncAndTips` 单测），将随后续版本发布。
+- 待随下一版本发布（`v0.0.5` 尚未发布）：PR #14 合入 `+ 新建密钥` 算法预设与提示优化（`cmd/rnparmor/keygen_ui.go`：`现代推荐（Ed25519 + Curve25519）` 等 5 档预设、有效曲线/位数动态联动、统一`主密钥 / 子密钥`术语、三语动态字段说明与悬停 Tooltip，及 `TestKeygenPresetsSyncAndTips` 单测）；PR #15（当前分支 `feat/subkey-management-tree`）新增 `cmd/rnparmor/subkey_ui.go`、左侧树形可折叠子密钥列表、完整子密钥生命周期接口（`AddSubkey`、`SetKeyExpiration`、`RevokeKey`、`DeleteSubkey`）、`TestSubkeyLifecycle`、`TestSubkeyTableExpiryUsageAndCatalog` 及扩展的 `TestUIStateActionsEndToEnd` 端到端回归测试。
 - 桌面端人工交互体验（Windows 10/11 中文输入法、高 DPI 与安装程序流程，以及 macOS Apple Silicon 首次启动未公证 Gatekeeper 提示）仍依赖真实桌面环境，需在专门手工测试中确认。
 
 ## 许可证
