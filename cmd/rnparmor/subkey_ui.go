@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/r404r/RnpArmor/internal/rnp"
@@ -704,10 +703,7 @@ func (s *uiState) viewSubkeyCard(c *ui.Context, parentHasSecret bool, sub rnp.Ke
 			grouped := groupFingerprint(sub.Fingerprint)
 			ui.Text(c, grouped).FontSize(12)
 			if ui.Button(c, s.tr("btn.copy_fingerprint")).Clicked() {
-				text := grouped
-				go func() {
-					_ = mygo.Clipboard.Write(transfer.TextData(text))
-				}()
+				s.copyFingerprintText(grouped)
 			}
 		}
 		if parentHasSecret {
