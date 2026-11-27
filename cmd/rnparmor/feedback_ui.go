@@ -30,7 +30,8 @@ func (s *uiState) flushPendingToasts(c *ui.Context) {
 func (s *uiState) viewStatusBar(c *ui.Context) {
 	t := c.Theme()
 	ui.Row(c).Shrink(0).Padding(6, 12).Gap(12).AlignItems(ui.Center).
-		Background(t.Surface).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).
+		Background(ui.RGBA(255, 255, 255, 0.82)).
+		BorderWidth(1, 0, 0, 0).BorderColor(ui.Hex("#d8dfe9")).
 		Role(ui.RoleStatus).Children(func() {
 		ui.Textf(c, "librnp %s", s.version).SingleLine().Shrink(0).TextColor(t.TextMuted)
 		shown := s.libPath
@@ -51,15 +52,14 @@ func (s *uiState) viewStatusBar(c *ui.Context) {
 }
 
 func (s *uiState) viewToastViewport(c *ui.Context) {
-	t := c.Theme()
 	ui.ToastViewportBase(c, func(viewport ui.Element, toasts []ui.Toast) {
 		viewport.Bottom(44).AlignItems(ui.Center).Gap(8).Padding(0, 16)
 		for _, ts := range toasts {
 			p := ui.ToastBase(c, ts)
-			bg, fg := toastColors(t, ts.Type)
-			p.Root.Row().AlignItems(ui.Center).Gap(12).Padding(10, 14).Radius(8).
-				MaxWidth(520).Background(bg).TextColor(fg).
-				Shadow(0, 6, 20, 0, ui.RGBA(0, 0, 0, 0.25))
+			g, fg, border := toastGlass(ts.Type)
+			p.Root.Row().AlignItems(ui.Center).Gap(12).Padding(10, 14).Radius(10).
+				MaxWidth(520).Material(g).Border(1, border).TextColor(fg).
+				Shadow(0, 8, 24, 0, ui.RGBA(15, 23, 42, 0.16))
 			p.Root.Children(func() {
 				ui.Column(c).Shrink(1).Gap(2).Children(func() {
 					ui.Text(c, ts.Title).Bold().SingleLine()
@@ -73,18 +73,6 @@ func (s *uiState) viewToastViewport(c *ui.Context) {
 			})
 		}
 	})
-}
-
-func toastColors(t *ui.Theme, kind string) (bg, fg ui.Color) {
-	fg = t.AccentText
-	switch kind {
-	case "error":
-		return t.Danger, fg
-	case "info":
-		return t.Accent, fg
-	default:
-		return t.Success, fg
-	}
 }
 
 func countPrimaryKeys(keys []rnp.KeySummary) int {

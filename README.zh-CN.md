@@ -32,7 +32,12 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
 
 ## 功能总览
 
-1. **MyGo 五大工作区 GUI + 原生 4 组三语菜单栏 + 独立 About 子窗口**
+1. **浅色 Fluent 与磨砂玻璃视觉壳 + MyGo 五大工作区 GUI + 4 组菜单栏 + 独立 About 子窗口**
+   - **浅色 Fluent 主题与双层景深（`cmd/rnparmor/style_ui.go`）**：
+     - 专注浅色外观（`rnpLightTheme`），同时遵循系统高对比度、字号缩放与强调色偏好。
+     - 双层景深布局：浅冷灰画布（`#edf1f7`，Windows 11 下开启原生 **Mica** 透底材质，Windows 10 与 Linux 自动降级为浅冷灰）托起各工作区与子窗口的纯白（`#ffffff`）圆角阴影卡片（`rnpCard`）。
+     - 克制立体质感按钮（`rnpButton` / `rnpPrimaryButton` / `rnpDangerButton`）：主/次/危险按钮采用细腻垂直渐变、顶部高光与底部折边、悬停微浮阴影以及按下微沉 `1 DIP` 反馈。
+     - 应用内下拉选择框、右键菜单、菜单面板与 Toast 轻提示统一接入 `mygo/plugins/glass` 磨砂玻璃与圆角投影效果。
    - 工作区：
      - 钥匙圈与生成（主从双栏密钥管理视图）
      - 文本加解密与签名验签
@@ -41,7 +46,8 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
      - 便携钥匙圈存储
    - 三语词典位于 `cmd/rnparmor/i18n.go`，零外部依赖。
    - 应用图标（通过 `assets/icons/icons.go` 内嵌透明 `256×256` PNG `assets/icons/rnparmor-256.png`，即 `icons.AppIconPNG`）在运行时通过 `w.SetIcon(...)` 设置到主窗口及子窗口（**关于**、**新建密钥**、**粘贴导入密钥**），并在 macOS 上通过 `mygo.App.Dock.SetIcon(...)` 设置 Dock 图标。
-   - 主窗口挂载原生 4 组三语菜单栏（文件 / 工作区 / 语言 / 帮助）：
+   - 适配三平台的 4 组三语菜单栏（文件 / 工作区 / 语言 / 帮助）：
+     - **Windows**：隐藏传统标题栏（`TitleBarHidden`，`40 DIP` 顶栏配 Mica 材质）并在窗口内顶部启用自绘融合式菜单栏（留出右上角系统窗口控制按钮安全区，标题与空白区域可直接拖动窗口）；**Linux**：保留窗口管理器标题栏并内嵌同款现代菜单栏；**macOS**：保持顶部原生系统菜单栏。
      - 文件：选择文件夹...、打开会话、加载钥匙圈、保存钥匙圈、退出。
      - 工作区：5 个单选菜单项，与工作区 Tab 双向联动。
      - 语言：三语单选项（`English`、`中文`、`日本語`），切换后实时刷新菜单栏、主窗口与已打开的子窗口（**关于**、**新建密钥**、**粘贴导入密钥**）。
@@ -95,14 +101,15 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
   - `rnparmor.png`、`rnparmor-256.png`、`rnparmor.ico`、`RnpArmor.icns`：多平台透明应用图标资产。
   - `icons.go`、`icons_test.go`：内嵌 `rnparmor-256.png`（`icons.AppIconPNG`）供运行时窗口与 Dock 图标使用。
 - `cmd/rnparmor/`
-  - `main.go`：MyGo 主程序、运行时窗口/Dock 图标设置、原生 4 组菜单栏（含 `文件 → 选择文件夹...`）、顶部精简标题配合主窗口底部固定状态栏与 `AlertDialog` 宿主、启动静默自动加载钥匙圈（`runSilent`）、默认空口令与 `OpenOptionalPass`、5 工作区切换（在文本与文件工作区集成共享收件人/签名者下拉选择器与掩码对称口令，并在文件与 Packet 页嵌入原生文件选择按钮）、`580×520` 非模态 About 子窗口、便携页掩码口令输入、异步会话操作、`--smoke-out` 及构建注入 `appVersion` 展示/输出。
-  - `feedback_ui.go`：主窗口底部固定状态栏（`viewStatusBar`：`librnp` 版本、单行省略可悬停看全路径并点击复制的动态库路径、主密钥数量计数与 `就绪` / `忙碌 · <操作>` 状态）、位于状态栏正上方的轻提示视口（`viewToastViewport`，`toastLifetime = 4s`、悬停暂停、手动 `×` 关闭）、方案 A 分级路由（`noteActionFeedback` / `feedbackRoute`：成功 Toast、验签结果与主窗口错误 `AlertDialog`、未关闭子窗口内联报错保留、启动静默加载）与 `safeNotice` 脱敏（口令替换 `••••` 并隐藏 `BEGIN PGP PRIVATE` / `BEGIN PGP SECRET` 区块）。
-  - `keys_ui.go`：Phase 1 主从双栏钥匙圈管理工作区（`+ 新建密钥`、`导入文件...`、`粘贴导入...`、`刷新`、只读工作目录 + 原生`选择文件夹...`）、所有权分段过滤（`全部` / `我的密钥` / `公钥`）、`密钥 ID (16)` ↔ `指纹 (40)` 切换、实时搜索（覆盖主密钥与子密钥）、可排序可折叠主密钥树形表（`▾` / `▸`）、右侧详情检视栏（4 字符分组指纹复制并触发 `copyFingerprintText` 轻提示、徽章含主密钥`认证`与`无口令保护`、内嵌子密钥操作卡片与 `+ 添加子密钥...`、带确认提示/隐秘剪贴板/`0600` 落盘的公钥/私钥/吊销证书导出、原生二次确认 `删除密钥...`、可折叠 `原始密钥 JSON`）、脱敏异步错误弹窗（`reportAsyncErr`）、`validateNewKey`（两项口令均留空时生成无口令私钥、仅填一项时仍拦截不一致），以及`粘贴导入密钥`独立子窗口。
-  - `subkey_ui.go`：左侧树形可折叠子密钥行构建与选中高亮联动（默认展开的 `  └ 子密钥` 缩进行，联动 16/40 位 ID 展示）以及完整子密钥生命周期弹窗（`添加子密钥` `560×680` 按用途约束算法与曲线/位宽联动、`修改子密钥有效期` `480×420`、`吊销子密钥` `500×460` + 二次确认、警告确认`删除...`、子密钥`无口令保护`徽章、子密钥指纹复制轻提示，以及对无口令主密钥免填会话口令的支持——主动填写口令时仍可单独加密新子密钥）。
-  - `keygen_ui.go`：可滚动的 `560×640` `+ 新建密钥` 弹窗，提供 5 档算法预设（`现代推荐（Ed25519 + Curve25519）` 默认推荐、`RSA 4096 + RSA 4096`、`RSA 3072 + RSA 3072`、`NIST P-256（合规）` 与自动展开高级区的`自定义`）、预设偏离自动切回自定义逻辑、随所选主密钥/加密子密钥算法联动的有效曲线或位数选择器、实时加密/未加密保存提示（双口令均留空时生成 RFC 4880 无口令私钥并通过 `takeNewKeyPassphrase` 保留现有会话口令），以及三语动态说明与悬停 Tooltip 提示。
-  - `studio_ui.go`：Phase 2 共享主密钥收件人下拉选择器（`+ 添加` 忽略大小写与空格去重、`清除` 及手动编辑列表）、含私钥主密钥签名者下拉框（`使用当前选中密钥（默认）` + 手动指纹覆盖）以及文件工作区与 Packet 页的原生 `浏览...` / `另存为...` 文件对话窗封装。
+  - `main.go`：MyGo 主程序、分平台窗口外观策略（`mainWindowOptions`：Windows 隐藏标题栏并启用 Mica，Linux/macOS 保留默认标题栏）、运行时窗口/Dock 图标设置、自绘融合式或系统 4 组菜单栏（含 `文件 → 选择文件夹...`）、浅色 Fluent 画布/卡片与按钮适配（`prepareSurface` / `rnpCard` / `rnpButton`）、主窗口底部固定状态栏与 `AlertDialog` 宿主、启动静默自动加载钥匙圈（`runSilent`）、默认空口令与 `OpenOptionalPass`、5 工作区切换（在文本与文件工作区集成共享收件人/签名者下拉选择器与掩码对称口令，并在文件与 Packet 页嵌入原生文件选择按钮）、`580×520` 非模态 About 子窗口、便携页掩码口令输入、异步会话操作、`--smoke-out` 及构建注入 `appVersion` 展示/输出。
+  - `style_ui.go`：浅色 Fluent 与局部磨砂玻璃视觉实现层（遵循系统高对比度/字号/强调色偏好的 `rnpLightTheme`、`#edf1f7` 画布与 Windows 11 原生 Mica 透底兼容、`rnpCard` 纯白圆角阴影卡片、带垂直渐变/高光/折边/1 DIP 按压下沉的 `rnpButton` / `rnpPrimaryButton` / `rnpDangerButton`、表格紧凑展开按钮 `rnpDisclosure`、`useIntegratedMenuBar` / `viewIntegratedMenuBar` 可拖动融合菜单栏、`ui.PopoverMenus` + `mygo/plugins/glass` `menuGlass` / `glassMenuPanel` 下拉与右键磨砂浮层，以及 `toastGlass` 磨砂轻提示样式）。
+  - `feedback_ui.go`：主窗口底部固定状态栏（`viewStatusBar`：半透明浅色底栏展示 `librnp` 版本、单行省略可悬停看全路径并点击复制的动态库路径、主密钥数量计数与 `就绪` / `忙碌 · <操作>` 状态）、位于状态栏正上方的 `toastGlass` 磨砂玻璃轻提示视口（`viewToastViewport`，`toastLifetime = 4s`、悬停暂停、手动 `×` 关闭）、方案 A 分级路由（`noteActionFeedback` / `feedbackRoute`：成功 Toast、验签结果与主窗口错误 `AlertDialog`、未关闭子窗口内联报错保留、启动静默加载）与 `safeNotice` 脱敏（口令替换 `••••` 并隐藏 `BEGIN PGP PRIVATE` / `BEGIN PGP SECRET` 区块）。
+  - `keys_ui.go`：Phase 1 `rnpCard` 双栏钥匙圈管理工作区（`+ 新建密钥`、`导入文件...`、`粘贴导入...`、`刷新`、只读工作目录 + 原生`选择文件夹...`）、所有权分段过滤（`全部` / `我的密钥` / `公钥`）、`密钥 ID (16)` ↔ `指纹 (40)` 切换、实时搜索（覆盖主密钥与子密钥）、可排序可折叠主密钥树形表（`▾` / `▸` 采用 `rnpDisclosure`）、右侧详情检视栏（4 字符分组指纹复制并触发 `copyFingerprintText` 轻提示、徽章含主密钥`认证`与`无口令保护`、内嵌子密钥操作卡片与 `+ 添加子密钥...`、带确认提示/隐秘剪贴板/`0600` 落盘的公钥/私钥/吊销证书导出、原生二次确认 `删除密钥...`、可折叠 `原始密钥 JSON`）、脱敏异步错误弹窗（`reportAsyncErr`）、`validateNewKey`（两项口令均留空时生成无口令私钥、仅填一项时仍拦截不一致），以及 `rnpCard` 样式的`粘贴导入密钥`独立子窗口。
+  - `subkey_ui.go`：左侧树形可折叠子密钥行构建与选中高亮联动（默认展开的 `  └ 子密钥` 缩进行，联动 16/40 位 ID 展示）以及基于 `rnpCard` 的完整子密钥生命周期弹窗（`添加子密钥` `560×680` 按用途约束算法与曲线/位宽联动、`修改子密钥有效期` `480×420`、`吊销子密钥` `500×460` + 二次确认、警告确认`删除...`、子密钥`无口令保护`徽章、子密钥指纹复制轻提示，以及对无口令主密钥免填会话口令的支持——主动填写口令时仍可单独加密新子密钥）。
+  - `keygen_ui.go`：采用 `rnpCard` 布局的可滚动 `560×640` `+ 新建密钥` 弹窗，提供 5 档算法预设（`现代推荐（Ed25519 + Curve25519）` 默认推荐、`RSA 4096 + RSA 4096`、`RSA 3072 + RSA 3072`、`NIST P-256（合规）` 与自动展开高级区的`自定义`）、预设偏离自动切回自定义逻辑、随所选主密钥/加密子密钥算法联动的有效曲线或位数选择器、实时加密/未加密保存提示（双口令均留空时生成 RFC 4880 无口令私钥并通过 `takeNewKeyPassphrase` 保留现有会话口令），以及三语动态说明与悬停 Tooltip 提示。
+  - `studio_ui.go`：Phase 2 共享主密钥收件人下拉选择器（`+ 添加` 忽略大小写与空格去重、`清除` 及手动编辑列表）、含私钥主密钥签名者下拉框（`使用当前选中密钥（默认）` + 手动指纹覆盖）以及文件工作区与 Packet 页的 Fluent 按钮与原生 `浏览...` / `另存为...` 文件对话窗封装。
   - `i18n.go`：EN/ZH/JA 三语词典（中文统一使用「主密钥 / 子密钥」，英文 `Primary Key / Subkey`，日文 `主鍵 / 副鍵`）、状态栏/轻提示/弹窗词条、新建密钥预设、无口令保护徽章/未加密提示与子密钥管理说明/悬停提示、语言解析与完整性校验。
-  - `main_test.go`：冒烟输出与文件写入、菜单模板结构、状态联动、钥匙圈筛选/搜索/排序/ID 切换/`新建密钥`校验（含设口令与空口令）、`TestKeygenPresetsSyncAndTips`、`TestSubkeyTableExpiryUsageAndCatalog`、`TestStudioKeyPickersAndFileDialogPaths`、`TestI18nComplete`、`TestStatusBarAndFeedback`（主密钥计数、状态栏就绪/忙碌文案、方案 A 分级路由、启动静默与口令/私钥脱敏）、文本解密/验签输入解析、收件人留空回退规则单元测试，以及基于真实 `librnp` 的端到端 GUI 动作回归单测（`TestUIStateActionsEndToEnd` 与 `TestUIStateEmptyPassphraseLifecycle`）。
+  - `main_test.go`：冒烟输出与文件写入、菜单模板结构、`TestFluentGlassChrome`（Windows 隐藏标题栏+Mica vs Linux/macOS 默认标题栏、融合菜单栏开关、浅色画布与高对比度/字号偏好、主/次/危险按钮外观及 `menuGlass` / `toastGlass` 校验）、状态联动、钥匙圈筛选/搜索/排序/ID 切换/`新建密钥`校验（含设口令与空口令）、`TestKeygenPresetsSyncAndTips`、`TestSubkeyTableExpiryUsageAndCatalog`、`TestStudioKeyPickersAndFileDialogPaths`、`TestI18nComplete`、`TestStatusBarAndFeedback`、文本解密/验签输入解析、收件人留空回退规则单元测试，以及基于真实 `librnp` 的端到端 GUI 动作回归单测（`TestUIStateActionsEndToEnd` 与 `TestUIStateEmptyPassphraseLifecycle`）。
 - `cmd/genwinres/`
   - `main.go`：零第三方依赖的纯 Go AMD64 COFF `.syso` 资源生成器，构建时将 `rnparmor.ico` 临时嵌入 `rnparmor.exe`。
 - `internal/loadlib/`
@@ -164,9 +171,13 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
 - 只读**工作目录**展示 + 原生**选择文件夹...** 选择器，支持显式`打开并加载`、`保存`与`刷新密钥`（兼容仅 `pubring.gpg` 与完整 `pubring.gpg` + `secring.gpg`）。
 - 掩码**口令**输入框（启动默认为空，仅在会话私钥解锁等操作期间以内存形式使用）。
 
-### 6）原生 4 组菜单栏与独立 About 子窗口
+### 6）分平台 4 组菜单栏、磨砂浮层与独立 About 子窗口
 
-- 主窗口顶部原生菜单栏包含 4 组：文件（选择文件夹... / 打开会话 / 加载与保存钥匙圈 / 退出）、工作区（5 个工作区单选联动）、语言（`English` / `中文` / `日本語` 单选实时刷新菜单与窗口）与帮助（关于）。
+- 窗口外观与 4 组菜单栏（文件 / 工作区 / 语言 / 帮助）：
+  - **Windows**：隐藏传统标题栏（`40 DIP` 顶栏，Windows 11 开启原生 Mica 透底，Windows 10 自动降级浅冷灰画布），在窗口顶部自绘融合式菜单栏并留出右上角系统窗口按钮区，应用标题与菜单空白区支持直接拖动窗口。
+  - **Linux**：保留窗口管理器原生标题栏与控制按钮，同时在窗口顶部内嵌同款融合式菜单栏。
+  - **macOS**：保持顶部原生系统菜单栏，并在选项卡上方显示应用标题。
+- 各工作区与独立子窗口内容均置于浅冷灰/Mica 背景上的纯白 `#ffffff` 圆角卡片（`rnpCard`）中，搭配渐变高光按压微沉按钮以及基于 `mygo/plugins/glass` 的磨砂下拉框、右键菜单与轻提示。
 - 点击「帮助 → 关于」打开 `580×520` 固定尺寸、非模态的独立无菜单子窗口（单实例聚焦、无菜单栏、带关闭按钮）。
 - 关闭 About 子窗口不影响主窗口；主窗口关闭时联动关闭 About 子窗口；切换语言时其标题与内容同步更新。
 - 仅展示只读信息（应用版本、作者、仓库、RNP 上游、本地动态库路径、便携密钥库目录及 `pubring.gpg`/`secring.gpg` 存在状态、运行时栈），并明确提示不读取系统默认钥匙圈。
@@ -352,7 +363,7 @@ Windows 依赖构建钉扎并打包以下组件：
 ## 仓库状态说明
 
 - `v0.0.1`–`v0.0.6` 多平台版本均已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）：`v0.0.2` 合入 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、三端应用图标与双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)），`v0.0.3` 修复了 GUI 操作重入死锁与钥匙圈持久化边界问题，`v0.0.4` 合并发布 Phase 1（主从双栏 Keys 管理页、16/40 位 ID 切换、掩码双口令新建密钥弹窗、空口令公钥只读打开与原生文件夹选择器）、Phase 2（`cmd/rnparmor/studio_ui.go` 共享收件人/签名者下拉、掩码对称口令与文件/Packet 原生文件对话窗）及 Release 发布重试与取消草稿加固，`v0.0.5` 合入 PR #14（`+ 新建密钥` 5 档算法预设、动态参数联动、统一`主密钥 / 子密钥`术语、三语动态说明与悬停提示及 `TestKeygenPresetsSyncAndTips`）和 PR #15（`cmd/rnparmor/subkey_ui.go`、左侧树形可折叠子密钥列表、完整子密钥生命周期接口 `AddSubkey`/`SetKeyExpiration`/`RevokeKey`/`DeleteSubkey`、`TestSubkeyLifecycle`、`TestSubkeyTableExpiryUsageAndCatalog` 及扩展 `TestUIStateActionsEndToEnd`），`v0.0.6` 合入 PR #16（双空口令 RFC 4880 无口令保护私钥生成、`无口令保护`徽章、无口令主密钥下子密钥与加解密免口令支持、`TestEmptyPassphraseKeyLifecycle` 及 `TestUIStateEmptyPassphraseLifecycle`）。
-- 待随下一版本发布（`v0.0.7` 尚未发布）：当前分支 `feat/statusbar-notifications` 新增 `cmd/rnparmor/feedback_ui.go`、主窗口底部固定状态栏（精简移除顶部堆叠状态文字）、点击库路径复制轻提示、方案 A 分级通知反馈（4 秒自动收起轻提示、验签与主窗口错误 `AlertDialog`、子窗口内联报错保留、启动静默加载、`safeNotice` 脱敏）、`TestI18nComplete` 及 `TestStatusBarAndFeedback`。
+- 已合入 `main`（PR #17）及待随下一版本（`v0.0.7` 尚未打 Tag 发布）推出的变更：PR #17 合入 `cmd/rnparmor/feedback_ui.go`、底部固定状态栏、点击库路径复制轻提示、方案 A 分级通知反馈、`TestI18nComplete` 与 `TestStatusBarAndFeedback`；当前分支 `feat/fluent-glass-ui` 新增 `cmd/rnparmor/style_ui.go`（遵循系统高对比度/字号/强调色偏好的浅色 Fluent 主题、#edf1f7 / Windows 11 Mica 与纯白 `rnpCard` 双层景深、渐变高光 1 DIP 按压立体按钮、Windows 隐藏标题栏/Linux 融合式可拖动菜单栏与 macOS 系统菜单栏、`mygo/plugins/glass` 磨砂下拉/右键/Toast 浮层）与 `TestFluentGlassChrome` 单元测试。
 - 桌面端人工交互体验（Windows 10/11 中文输入法、高 DPI 与安装程序流程，以及 macOS Apple Silicon 首次启动未公证 Gatekeeper 提示）仍依赖真实桌面环境，需在专门手工测试中确认。
 
 ## 许可证

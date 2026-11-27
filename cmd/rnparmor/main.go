@@ -220,12 +220,9 @@ func main() {
 				log.Printf("dock icon: %v", err)
 			}
 		}
-		w := mygo.NewWindow(mygo.WindowOptions{
-			Title:   "RnpArmor",
-			Width:   1120,
-			Height:  780,
-			Content: ui.View(st.view),
-		})
+		opts := mainWindowOptions(runtime.GOOS)
+		opts.Content = ui.View(st.view)
+		w := mygo.NewWindow(opts)
 		if err := w.SetIcon(icons.AppIconPNG); err != nil {
 			log.Printf("window icon: %v", err)
 		}
@@ -455,22 +452,24 @@ func (s *uiState) menuTemplate() []*mygo.MenuItem {
 }
 
 func (s *uiState) applyMainMenu() {
+	if useIntegratedMenuBar(runtime.GOOS) {
+		return
+	}
 	if s.mainWin == nil || s.mainWin.IsDestroyed() {
 		return
 	}
-	menu := mygo.NewMenu(s.menuTemplate())
-	if runtime.GOOS == "darwin" {
-		mygo.App.SetMenu(menu)
-		return
-	}
-	s.mainWin.SetMenu(menu)
+	mygo.App.SetMenu(mygo.NewMenu(s.menuTemplate()))
 }
 
 func (s *uiState) view(c *ui.Context) {
+	prepareSurface(c)
 	s.flushPendingToasts(c)
 	ui.Column(c).Fill().Children(func() {
+		s.viewIntegratedMenuBar(c)
 		ui.Column(c).Padding(14).Gap(10).Grow(1).MinHeight(0).Children(func() {
-			ui.Text(c, s.tr("title.app")).FontSize(24).Bold()
+			if !useIntegratedMenuBar(runtime.GOOS) {
+				ui.Text(c, s.tr("title.app")).FontSize(24).Bold()
+			}
 			prevTab := s.tab
 			ui.Tabs(c, &s.tab,
 				s.tr("tab.keys"),
@@ -524,141 +523,150 @@ func (s *uiState) statusLine() string {
 }
 
 func (s *uiState) viewTextStudio(c *ui.Context) {
-	ui.Form(c, func() {
-		ui.Field(c, s.tr("label.plain_text"), func() {
-			ui.TextArea(c, &s.textInput).Height(120)
-		})
-		ui.Field(c, s.tr("label.recipients"), func() {
-			s.recipientPicker(c)
-		})
-		ui.Field(c, s.tr("label.password"), func() {
-			ui.TextInput(c, &s.encPassword).Password().Placeholder(s.tr("placeholder.symm_pass"))
-		})
-		ui.Field(c, s.tr("label.cipher_compression"), func() {
-			ui.Row(c).Gap(8).Children(func() {
-				ui.Select(c, &s.encCipher, []string{"AES256", "AES192", "AES128", "Camellia256"}).Width(180)
-				ui.Select(c, &s.encCompress, []string{"zlib", "bzip2", "zip", "uncompressed"}).Width(180)
-				ui.Switch(c, &s.encSign).Label(s.tr("toggle.encrypt_sign"))
+	rnpCard(c).Padding(14).Gap(8).Children(func() {
+		ui.Form(c, func() {
+			ui.Field(c, s.tr("label.plain_text"), func() {
+				ui.TextArea(c, &s.textInput).Height(120)
+			})
+			ui.Field(c, s.tr("label.recipients"), func() {
+				s.recipientPicker(c)
+			})
+			ui.Field(c, s.tr("label.password"), func() {
+				ui.TextInput(c, &s.encPassword).Password().Placeholder(s.tr("placeholder.symm_pass"))
+			})
+			ui.Field(c, s.tr("label.cipher_compression"), func() {
+				ui.Row(c).Gap(8).Children(func() {
+					ui.Select(c, &s.encCipher, []string{"AES256", "AES192", "AES128", "Camellia256"}).Width(180)
+					ui.Select(c, &s.encCompress, []string{"zlib", "bzip2", "zip", "uncompressed"}).Width(180)
+					ui.Switch(c, &s.encSign).Label(s.tr("toggle.encrypt_sign"))
+				})
+			})
+			ui.Field(c, s.tr("label.sign_mode"), func() {
+				ui.Select(c, &s.textMode, []string{string(rnp.SignModeCleartext), string(rnp.SignModeDetached), string(rnp.SignModeInline)}).Width(220)
+			})
+			ui.Field(c, s.tr("label.signer_fingerprint"), func() {
+				s.signerPicker(c)
+			})
+			ui.Field(c, s.tr("label.detached_verify_sig"), func() {
+				ui.TextArea(c, &s.textVerifyDetached).Height(90)
 			})
 		})
-		ui.Field(c, s.tr("label.sign_mode"), func() {
-			ui.Select(c, &s.textMode, []string{string(rnp.SignModeCleartext), string(rnp.SignModeDetached), string(rnp.SignModeInline)}).Width(220)
-		})
-		ui.Field(c, s.tr("label.signer_fingerprint"), func() {
-			s.signerPicker(c)
-		})
-		ui.Field(c, s.tr("label.detached_verify_sig"), func() {
-			ui.TextArea(c, &s.textVerifyDetached).Height(90)
-		})
-	})
 
-	ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
-		if ui.PrimaryButton(c, s.tr("btn.encrypt_text")).Clicked() {
-			s.run("action.encrypt_text", s.encryptText)
-		}
-		if ui.Button(c, s.tr("btn.decrypt_text")).Clicked() {
-			s.run("action.decrypt_text", s.decryptText)
-		}
-		if ui.Button(c, s.tr("btn.sign_text")).Clicked() {
-			s.run("action.sign_text", s.signText)
-		}
-		if ui.Button(c, s.tr("btn.verify_text")).Clicked() {
-			s.run("action.verify_text", s.verifyText)
-		}
+		ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
+			if rnpPrimaryButton(c, s.tr("btn.encrypt_text")).Clicked() {
+				s.run("action.encrypt_text", s.encryptText)
+			}
+			if rnpButton(c, s.tr("btn.decrypt_text")).Clicked() {
+				s.run("action.decrypt_text", s.decryptText)
+			}
+			if rnpButton(c, s.tr("btn.sign_text")).Clicked() {
+				s.run("action.sign_text", s.signText)
+			}
+			if rnpButton(c, s.tr("btn.verify_text")).Clicked() {
+				s.run("action.verify_text", s.verifyText)
+			}
+		})
+		ui.Text(c, s.tr("hint.text_alg")).FontSize(12)
+		ui.Text(c, s.tr("hint.verify_badge")).FontSize(12)
+		ui.TextArea(c, &s.textOutput).Height(280).Placeholder(s.tr("placeholder.result_output"))
 	})
-	ui.Text(c, s.tr("hint.text_alg")).FontSize(12)
-	ui.Text(c, s.tr("hint.verify_badge")).FontSize(12)
-	ui.TextArea(c, &s.textOutput).Height(280).Placeholder(s.tr("placeholder.result_output"))
 }
 
 func (s *uiState) viewFileWorkbench(c *ui.Context) {
-	ui.Form(c, func() {
-		ui.Field(c, s.tr("label.source"), func() {
-			s.filePathEditors(c, &s.fileSrc, "dlg.browse_source", "", "")
+	rnpCard(c).Padding(14).Gap(8).Children(func() {
+		ui.Form(c, func() {
+			ui.Field(c, s.tr("label.source"), func() {
+				s.filePathEditors(c, &s.fileSrc, "dlg.browse_source", "", "")
+			})
+			ui.Field(c, s.tr("label.destination"), func() {
+				s.filePathEditors(c, &s.fileDst, "", "dlg.save_destination", s.fileSrc)
+			})
+			ui.Field(c, s.tr("label.signature_path"), func() {
+				s.filePathEditors(c, &s.fileSig, "dlg.browse_signature", "dlg.save_signature", s.fileSrc)
+			})
+			ui.Field(c, s.tr("label.detached_verify"), func() { ui.Switch(c, &s.fileDetached).Label(s.tr("toggle.detached")) })
+			ui.Field(c, s.tr("label.recipients"), func() { s.recipientPicker(c) })
+			ui.Field(c, s.tr("label.password"), func() {
+				ui.TextInput(c, &s.encPassword).Password().Placeholder(s.tr("placeholder.symm_pass"))
+			})
+			ui.Field(c, s.tr("label.signer_fingerprint"), func() { s.signerPicker(c) })
+			ui.Field(c, s.tr("toggle.encrypt_sign"), func() {
+				ui.Switch(c, &s.encSign).Label(s.tr("toggle.encrypt_sign"))
+			})
 		})
-		ui.Field(c, s.tr("label.destination"), func() {
-			s.filePathEditors(c, &s.fileDst, "", "dlg.save_destination", s.fileSrc)
+		ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
+			if rnpPrimaryButton(c, s.tr("btn.encrypt_file")).Clicked() {
+				s.run("action.encrypt_file", s.encryptFile)
+			}
+			if rnpButton(c, s.tr("btn.decrypt_file")).Clicked() {
+				s.run("action.decrypt_file", s.decryptFile)
+			}
+			if rnpButton(c, s.tr("btn.sign_file")).Clicked() {
+				s.run("action.sign_file", s.signFile)
+			}
+			if rnpButton(c, s.tr("btn.verify_file")).Clicked() {
+				s.run("action.verify_file", s.verifyFile)
+			}
 		})
-		ui.Field(c, s.tr("label.signature_path"), func() {
-			s.filePathEditors(c, &s.fileSig, "dlg.browse_signature", "dlg.save_signature", s.fileSrc)
-		})
-		ui.Field(c, s.tr("label.detached_verify"), func() { ui.Switch(c, &s.fileDetached).Label(s.tr("toggle.detached")) })
-		ui.Field(c, s.tr("label.recipients"), func() { s.recipientPicker(c) })
-		ui.Field(c, s.tr("label.password"), func() {
-			ui.TextInput(c, &s.encPassword).Password().Placeholder(s.tr("placeholder.symm_pass"))
-		})
-		ui.Field(c, s.tr("label.signer_fingerprint"), func() { s.signerPicker(c) })
-		ui.Field(c, s.tr("toggle.encrypt_sign"), func() {
-			ui.Switch(c, &s.encSign).Label(s.tr("toggle.encrypt_sign"))
-		})
+		ui.Text(c, s.tr("hint.file_alg")).FontSize(12)
+		ui.TextArea(c, &s.textOutput).Height(320).Placeholder(s.tr("placeholder.result_output"))
 	})
-	ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
-		if ui.PrimaryButton(c, s.tr("btn.encrypt_file")).Clicked() {
-			s.run("action.encrypt_file", s.encryptFile)
-		}
-		if ui.Button(c, s.tr("btn.decrypt_file")).Clicked() {
-			s.run("action.decrypt_file", s.decryptFile)
-		}
-		if ui.Button(c, s.tr("btn.sign_file")).Clicked() {
-			s.run("action.sign_file", s.signFile)
-		}
-		if ui.Button(c, s.tr("btn.verify_file")).Clicked() {
-			s.run("action.verify_file", s.verifyFile)
-		}
-	})
-	ui.Text(c, s.tr("hint.file_alg")).FontSize(12)
-	ui.TextArea(c, &s.textOutput).Height(320).Placeholder(s.tr("placeholder.result_output"))
 }
 
 func (s *uiState) viewPackets(c *ui.Context) {
-	ui.Form(c, func() {
-		ui.Field(c, s.tr("label.packet_input_file"), func() {
-			s.filePathEditors(c, &s.packetInput, "dlg.browse_packet", "", "")
+	rnpCard(c).Padding(14).Gap(8).Children(func() {
+		ui.Form(c, func() {
+			ui.Field(c, s.tr("label.packet_input_file"), func() {
+				s.filePathEditors(c, &s.packetInput, "dlg.browse_packet", "", "")
+			})
+			ui.Field(c, s.tr("label.as_json"), func() { ui.Switch(c, &s.packetAsJSON).Label(s.tr("toggle.json")) })
+			ui.Field(c, s.tr("label.feature_query"), func() {
+				ui.TextInput(c, &s.featureQuery).Placeholder(s.tr("placeholder.feature_query"))
+			})
 		})
-		ui.Field(c, s.tr("label.as_json"), func() { ui.Switch(c, &s.packetAsJSON).Label(s.tr("toggle.json")) })
-		ui.Field(c, s.tr("label.feature_query"), func() {
-			ui.TextInput(c, &s.featureQuery).Placeholder(s.tr("placeholder.feature_query"))
+		ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
+			if rnpPrimaryButton(c, s.tr("btn.dump_packets")).Clicked() {
+				s.run("action.dump_packets", s.dumpPackets)
+			}
+			if rnpButton(c, s.tr("btn.query_features")).Clicked() {
+				s.run("action.query_features", s.queryFeatures)
+			}
 		})
+		ui.Text(c, s.tr("hint.packet_alg")).FontSize(12)
+		ui.Text(c, s.tr("label.packet_output")).Bold()
+		ui.TextArea(c, &s.packetOut).Height(220)
+		ui.Text(c, s.tr("label.features")).Bold().Padding(8, 0, 0, 0)
+		ui.TextArea(c, &s.features).Height(220)
 	})
-	ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
-		if ui.PrimaryButton(c, s.tr("btn.dump_packets")).Clicked() {
-			s.run("action.dump_packets", s.dumpPackets)
-		}
-		if ui.Button(c, s.tr("btn.query_features")).Clicked() {
-			s.run("action.query_features", s.queryFeatures)
-		}
-	})
-	ui.Text(c, s.tr("hint.packet_alg")).FontSize(12)
-	ui.Text(c, s.tr("label.packet_output")).Bold()
-	ui.TextArea(c, &s.packetOut).Height(220)
-	ui.Text(c, s.tr("label.features")).Bold().Padding(8, 0, 0, 0)
-	ui.TextArea(c, &s.features).Height(220)
 }
 
 func (s *uiState) viewPortable(c *ui.Context) {
 	t := c.Theme()
-	ui.Form(c, func() {
-		ui.Field(c, s.tr("label.workspace"), func() { s.workspaceChooser(c) })
-		ui.Field(c, s.tr("label.passphrase"), func() {
-			ui.TextInput(c, &s.passphrase).Password().Placeholder(s.tr("placeholder.unlock_pass"))
+	rnpCard(c).Padding(14).Gap(8).Children(func() {
+		ui.Form(c, func() {
+			ui.Field(c, s.tr("label.workspace"), func() { s.workspaceChooser(c) })
+			ui.Field(c, s.tr("label.passphrase"), func() {
+				ui.TextInput(c, &s.passphrase).Password().Placeholder(s.tr("placeholder.unlock_pass"))
+			})
 		})
+		ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
+			if rnpPrimaryButton(c, s.tr("btn.open_load")).Clicked() {
+				s.run("action.open_load", s.openAndLoad)
+			}
+			if rnpButton(c, s.tr("btn.save")).Clicked() {
+				s.run("action.save", s.saveKeyring)
+			}
+			if rnpButton(c, s.tr("btn.reload_keys")).Clicked() {
+				s.run("action.list_keys", s.reloadKeys)
+			}
+		})
+		ui.Text(c, s.tr("note.portable_files")).TextColor(t.TextMuted)
+		ui.Text(c, s.tr("note.portable_pass")).TextColor(t.TextMuted)
 	})
-	ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
-		if ui.PrimaryButton(c, s.tr("btn.open_load")).Clicked() {
-			s.run("action.open_load", s.openAndLoad)
-		}
-		if ui.Button(c, s.tr("btn.save")).Clicked() {
-			s.run("action.save", s.saveKeyring)
-		}
-		if ui.Button(c, s.tr("btn.reload_keys")).Clicked() {
-			s.run("action.list_keys", s.reloadKeys)
-		}
-	})
-	ui.Text(c, s.tr("note.portable_files")).TextColor(t.TextMuted)
-	ui.Text(c, s.tr("note.portable_pass")).TextColor(t.TextMuted)
 }
 
 func (s *uiState) viewAboutWindow(c *ui.Context) {
+	prepareSurface(c)
 	t := c.Theme()
 	absWS := s.workspace
 	if strings.TrimSpace(absWS) != "" {
@@ -674,28 +682,30 @@ func (s *uiState) viewAboutWindow(c *ui.Context) {
 	rnpStack := fmt.Sprintf("MyGo (https://github.com/egoist/mygo v0.10.0) | purego v0.11.1 | Botan 3.10.0")
 	rnpUpstream := fmt.Sprintf("https://github.com/rnpgp/rnp (librnp %s)", s.version)
 
-	ui.Column(c).Fill().Padding(20).Gap(12).Children(func() {
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, s.tr("title.about")).FontSize(22).Bold().Grow(1)
-			if ui.Button(c, s.tr("btn.close")).Clicked() {
-				s.closeAboutWindow()
-			}
-		})
-		ui.Text(c, s.tr("about.no_menu_hint")).FontSize(12).TextColor(t.TextMuted)
-		ui.Divider(c)
+	ui.Column(c).Fill().Padding(16).Children(func() {
+		rnpCard(c).Fill().Padding(16).Gap(12).Children(func() {
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, s.tr("title.about")).FontSize(22).Bold().Grow(1)
+				if rnpButton(c, s.tr("btn.close")).Clicked() {
+					s.closeAboutWindow()
+				}
+			})
+			ui.Text(c, s.tr("about.no_menu_hint")).FontSize(12).TextColor(t.TextMuted)
+			ui.Divider(c)
 
-		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).Gap(10).Children(func() {
-				s.aboutField(c, s.tr("about.app_version"), appVersion)
-				s.aboutField(c, s.tr("about.author"), "r404r (https://github.com/r404r)")
-				s.aboutField(c, s.tr("about.repo_url"), "https://github.com/r404r/RnpArmor")
-				s.aboutField(c, s.tr("about.rnp_upstream"), rnpUpstream)
-				s.aboutField(c, s.tr("about.local_lib_path"), s.libPath)
-				s.aboutField(c, s.tr("about.keyring_dir"), absWS)
-				s.aboutField(c, s.tr("about.pubring_exists"), s.yesNo(pubExists))
-				s.aboutField(c, s.tr("about.secring_exists"), s.yesNo(secExists))
-				s.aboutField(c, s.tr("about.runtime"), rnpStack)
-				ui.Text(c, s.tr("about.explicit_keyring_note")).FontSize(12).TextColor(t.TextMuted)
+			ui.Scroll(c).Fill().Children(func() {
+				ui.Column(c).Gap(10).Children(func() {
+					s.aboutField(c, s.tr("about.app_version"), appVersion)
+					s.aboutField(c, s.tr("about.author"), "r404r (https://github.com/r404r)")
+					s.aboutField(c, s.tr("about.repo_url"), "https://github.com/r404r/RnpArmor")
+					s.aboutField(c, s.tr("about.rnp_upstream"), rnpUpstream)
+					s.aboutField(c, s.tr("about.local_lib_path"), s.libPath)
+					s.aboutField(c, s.tr("about.keyring_dir"), absWS)
+					s.aboutField(c, s.tr("about.pubring_exists"), s.yesNo(pubExists))
+					s.aboutField(c, s.tr("about.secring_exists"), s.yesNo(secExists))
+					s.aboutField(c, s.tr("about.runtime"), rnpStack)
+					ui.Text(c, s.tr("about.explicit_keyring_note")).FontSize(12).TextColor(t.TextMuted)
+				})
 			})
 		})
 	})

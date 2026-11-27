@@ -33,16 +33,16 @@ func (s *uiState) viewKeys(c *ui.Context) {
 	s.ensureKeyTable()
 	ui.Column(c).Gap(8).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			if ui.PrimaryButton(c, s.tr("btn.new_key")).Clicked() {
+			if rnpPrimaryButton(c, s.tr("btn.new_key")).Clicked() {
 				s.openNewKeyWindow()
 			}
-			if ui.Button(c, s.tr("btn.import_file")).Clicked() {
+			if rnpButton(c, s.tr("btn.import_file")).Clicked() {
 				s.chooseImportFile()
 			}
-			if ui.Button(c, s.tr("btn.import_text")).Clicked() {
+			if rnpButton(c, s.tr("btn.import_text")).Clicked() {
 				s.openImportTextWindow()
 			}
-			if ui.Button(c, s.tr("btn.refresh")).Clicked() {
+			if rnpButton(c, s.tr("btn.refresh")).Clicked() {
 				s.run("action.list_keys", s.reloadKeys)
 			}
 			s.workspaceChooser(c)
@@ -75,58 +75,62 @@ func (s *uiState) viewKeys(c *ui.Context) {
 			{Title: s.tr("col.status"), ID: "status", Width: 78, MinWidth: 68, Sortable: true},
 		}
 		ui.SplitPercent(c, &s.keySplitPct, func() {
-			if len(rows) == 0 {
-				key := "empty.keys"
-				if strings.TrimSpace(s.keySearch) != "" || s.keyFilter != keyFilterAll {
-					key = "empty.search"
+			rnpCard(c).Fill().Padding(6).Children(func() {
+				if len(rows) == 0 {
+					key := "empty.keys"
+					if strings.TrimSpace(s.keySearch) != "" || s.keyFilter != keyFilterAll {
+						key = "empty.search"
+					}
+					ui.Text(c, s.tr(key)).TextColor(t.TextMuted).Padding(8, 0, 8, 0)
 				}
-				ui.Text(c, s.tr(key)).TextColor(t.TextMuted).Padding(8, 0, 8, 0)
-			}
-			ui.Table(c, &s.keyTable, cols, len(rows), func(row, col int) {
-				if row < 0 || row >= len(rows) {
-					return
-				}
-				item := rows[row]
-				k := item.Key
-				switch col {
-				case 0:
-					if item.Sub {
-						ui.Text(c, subkeyTypeText(s.lang()))
+				ui.Table(c, &s.keyTable, cols, len(rows), func(row, col int) {
+					if row < 0 || row >= len(rows) {
 						return
 					}
-					ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-						if len(k.Subkeys) > 0 {
-							mark := "▾"
-							if keyCollapsed(s.collapsedKeys, k.Fingerprint) {
-								mark = "▸"
-							}
-							fp := k.Fingerprint
-							if ui.Button(c, mark).Clicked() {
-								s.toggleCollapsed(fp)
-							}
+					item := rows[row]
+					k := item.Key
+					switch col {
+					case 0:
+						if item.Sub {
+							ui.Text(c, subkeyTypeText(s.lang()))
+							return
 						}
-						if k.HasSecret {
-							ui.Text(c, s.tr("badge.secret"))
-						} else {
-							ui.Text(c, s.tr("badge.public"))
+						ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+							if len(k.Subkeys) > 0 {
+								mark := "▾"
+								if keyCollapsed(s.collapsedKeys, k.Fingerprint) {
+									mark = "▸"
+								}
+								fp := k.Fingerprint
+								if rnpDisclosure(c, mark).Clicked() {
+									s.toggleCollapsed(fp)
+								}
+							}
+							if k.HasSecret {
+								ui.Text(c, s.tr("badge.secret"))
+							} else {
+								ui.Text(c, s.tr("badge.public"))
+							}
+						})
+					case 1:
+						if item.Sub {
+							ui.Text(c, subkeyUsageText(s.lang(), k))
+							return
 						}
-					})
-				case 1:
-					if item.Sub {
-						ui.Text(c, subkeyUsageText(s.lang(), k))
-						return
+						ui.Text(c, k.PrimaryUID)
+					case 2:
+						ui.Text(c, keyIDText(k.Fingerprint, k.KeyID, s.keyIDMode))
+					case 3:
+						ui.Text(c, k.Algorithm)
+					default:
+						ui.Text(c, s.tr("badge."+keyStatusCode(k, time.Now().UTC())))
 					}
-					ui.Text(c, k.PrimaryUID)
-				case 2:
-					ui.Text(c, keyIDText(k.Fingerprint, k.KeyID, s.keyIDMode))
-				case 3:
-					ui.Text(c, k.Algorithm)
-				default:
-					ui.Text(c, s.tr("badge."+keyStatusCode(k, time.Now().UTC())))
-				}
-			}).Height(520)
+				}).Height(500)
+			})
 		}, func() {
-			s.viewKeyDetail(c, primaries, detailIdx)
+			rnpCard(c).Fill().Children(func() {
+				s.viewKeyDetail(c, primaries, detailIdx)
+			})
 		}).Height(560)
 	})
 }
@@ -167,7 +171,7 @@ func (s *uiState) viewKeyDetail(c *ui.Context, rows []rnp.KeySummary, idx int) {
 			grouped := groupFingerprint(k.Fingerprint)
 			ui.Text(c, s.tr("label.fingerprint")).FontSize(12).TextColor(t.TextMuted)
 			ui.Text(c, grouped)
-			if ui.Button(c, s.tr("btn.copy_fingerprint")).Clicked() {
+			if rnpButton(c, s.tr("btn.copy_fingerprint")).Clicked() {
 				s.copyFingerprintText(grouped)
 			}
 			ui.Textf(c, "%s: %s", s.tr("label.key_id"), keyIDText(k.Fingerprint, k.KeyID, keyIDModeShort))
@@ -178,7 +182,7 @@ func (s *uiState) viewKeyDetail(c *ui.Context, rows []rnp.KeySummary, idx int) {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(8, 0, 0, 0).Children(func() {
 				ui.Text(c, s.tr("label.subkeys")).Bold()
 				if k.HasSecret {
-					if ui.Button(c, s.tr("btn.add_subkey")).Clicked() {
+					if rnpButton(c, s.tr("btn.add_subkey")).Clicked() {
 						s.openAddSubkeyWindow()
 					}
 				}
@@ -191,32 +195,32 @@ func (s *uiState) viewKeyDetail(c *ui.Context, rows []rnp.KeySummary, idx int) {
 			}
 
 			ui.Row(c).Gap(8).Padding(8, 0, 0, 0).Children(func() {
-				if ui.Button(c, s.tr("btn.copy_public")).Clicked() {
+				if rnpButton(c, s.tr("btn.copy_public")).Clicked() {
 					s.run("action.copy_public", s.copyPublicKey)
 				}
-				if ui.Button(c, s.tr("btn.export_public_asc")).Clicked() {
+				if rnpButton(c, s.tr("btn.export_public_asc")).Clicked() {
 					s.exportArmored("public")
 				}
 			})
 			if k.HasSecret {
 				ui.Row(c).Gap(8).Children(func() {
-					if ui.Button(c, s.tr("btn.export_secret_asc")).Clicked() {
+					if rnpButton(c, s.tr("btn.export_secret_asc")).Clicked() {
 						s.exportArmored("secret")
 					}
-					if ui.Button(c, s.tr("btn.copy_secret")).Clicked() {
+					if rnpButton(c, s.tr("btn.copy_secret")).Clicked() {
 						s.run("action.copy_secret", s.copySecretKey)
 					}
-					if ui.Button(c, s.tr("btn.revocation")).Clicked() {
+					if rnpButton(c, s.tr("btn.revocation")).Clicked() {
 						s.exportArmored("revocation")
 					}
 				})
 			}
-			if ui.Button(c, s.tr("btn.delete_key_ellipsis")).Clicked() {
+			if rnpDangerButton(c, s.tr("btn.delete_key_ellipsis")).Clicked() {
 				s.confirmDelete()
 			}
 
 			ui.Collapsible(c, s.tr("label.raw_json"), &s.keyJSONOpen, func() {
-				if ui.Button(c, s.tr("btn.load_json")).Clicked() {
+				if rnpButton(c, s.tr("btn.load_json")).Clicked() {
 					s.run("action.key_json", s.loadKeyJSON)
 				}
 				ui.TextArea(c, &s.keyJSON).Height(160).Placeholder(s.tr("placeholder.key_output"))
@@ -229,7 +233,7 @@ func (s *uiState) workspaceChooser(c *ui.Context) {
 	path := s.workspace
 	ui.Row(c).Gap(8).Grow(1).Children(func() {
 		ui.TextInput(c, &path).ReadOnly(true).Grow(1)
-		if ui.Button(c, s.tr("btn.choose_folder")).Clicked() {
+		if rnpButton(c, s.tr("btn.choose_folder")).Clicked() {
 			s.chooseWorkspace()
 		}
 	})
@@ -477,36 +481,39 @@ func (s *uiState) closeImportWindow() {
 }
 
 func (s *uiState) viewImportText(c *ui.Context) {
+	prepareSurface(c)
 	t := c.Theme()
-	ui.Column(c).Fill().Padding(16).Gap(8).Children(func() {
-		ui.Text(c, s.tr("title.import_text")).FontSize(18).Bold()
-		ui.TextArea(c, &s.importText).Height(220).Placeholder(s.tr("placeholder.import_text"))
-		if s.importErr != "" {
-			ui.Text(c, s.importErr).TextColor(t.Danger)
-		}
-		ui.Row(c).Gap(8).Children(func() {
-			if ui.Button(c, s.tr("btn.paste_clipboard")).Clicked() {
-				b, err := mygo.Clipboard.ReadFormat(transfer.Text)
-				if err != nil {
-					s.importErr = err.Error()
-					return
+	ui.Column(c).Fill().Padding(12).Children(func() {
+		rnpCard(c).Fill().Padding(16).Gap(8).Children(func() {
+			ui.Text(c, s.tr("title.import_text")).FontSize(18).Bold()
+			ui.TextArea(c, &s.importText).Height(220).Placeholder(s.tr("placeholder.import_text"))
+			if s.importErr != "" {
+				ui.Text(c, s.importErr).TextColor(t.Danger)
+			}
+			ui.Row(c).Gap(8).Children(func() {
+				if rnpButton(c, s.tr("btn.paste_clipboard")).Clicked() {
+					b, err := mygo.Clipboard.ReadFormat(transfer.Text)
+					if err != nil {
+						s.importErr = err.Error()
+						return
+					}
+					s.importText = string(b)
+					s.importErr = ""
 				}
-				s.importText = string(b)
-				s.importErr = ""
-			}
-			if ui.PrimaryButton(c, s.tr("btn.import")).Clicked() {
-				if strings.TrimSpace(s.importText) == "" {
-					s.importErr = s.tr("err.import_empty")
-					return
+				if rnpPrimaryButton(c, s.tr("btn.import")).Clicked() {
+					if strings.TrimSpace(s.importText) == "" {
+						s.importErr = s.tr("err.import_empty")
+						return
+					}
+					s.importErr = ""
+					s.importBytes = []byte(s.importText)
+					s.closeImportOnSuccess = true
+					s.run("action.import_keys", s.importKeyBytes)
 				}
-				s.importErr = ""
-				s.importBytes = []byte(s.importText)
-				s.closeImportOnSuccess = true
-				s.run("action.import_keys", s.importKeyBytes)
-			}
-			if ui.Button(c, s.tr("btn.close")).Clicked() {
-				s.closeImportWindow()
-			}
+				if rnpButton(c, s.tr("btn.close")).Clicked() {
+					s.closeImportWindow()
+				}
+			})
 		})
 	})
 }
