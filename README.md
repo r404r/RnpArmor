@@ -102,10 +102,10 @@ Linux runtime main-window screenshot (`1120×780`, integrated `File / Workspace 
 4. **Windows portable build + GUI subsystem + smoke flow hardening**
    - Windows `rnparmor.exe` is built with `-H=windowsgui` (Windows GUI subsystem) so launching it does not pop up a black console window.
    - `cmd/genwinres` generates a temporary AMD64 COFF `.syso` from `assets/icons/rnparmor.ico` during build so `rnparmor.exe` carries an embedded `.rsrc` icon resource, and `packaging/windows/rnparmor.iss` sets `SetupIconFile` for the installer.
-   - `scripts/build-windows.ps1` verifies both the `Windows GUI` PE subsystem and `.rsrc` section via `dumpbin /headers`, recording the subsystem in `windows-report.txt`.
+   - `scripts/build-windows.ps1` verifies both the `Windows GUI` PE subsystem and `.rsrc` section via `dumpbin /headers`, audits PE imports (`dumpbin /imports`) across `rnparmor.exe` and all bundled DLLs against a Windows system-DLL allowlist, and records the subsystem in `windows-report.txt`.
    - `rnparmor.exe --smoke-test` supports `--smoke-out <path>` to write smoke output (`status=ok`, `app_version=<value>`, `library=...`, `version=...`, `i18n=ok`) to a file for deterministic CI validation under `-H=windowsgui`.
-   - Windows script smoke path runs `--smoke-test --smoke-out` first, then a bounded GUI probe.
-   - CI dependency cache (`out/deps`) is configured for Linux and Windows jobs.
+   - Windows script smoke path runs `--smoke-test --smoke-out` first, then a bounded GUI probe (with `PATH` restricted to `System32` so no external DLLs can be picked up).
+   - Windows CI (`smoke.yml` / `release.yml`) caches and consumes the pinned prebuilt `r404r/rnp@v0.18.1-win.2` zip (`-Stage prebuilt-rnp`), while Linux/macOS CI (and the Windows source-build fallback stages) cache `out/deps`.
 
 5. **Automated multi-platform release workflow**
    - `.github/workflows/release.yml` runs on `push` tag `v*` and `workflow_dispatch`.
@@ -145,18 +145,18 @@ Linux runtime main-window screenshot (`1120×780`, integrated `File / Workspace 
   - `ops.go`: key management (`GenerateKeyWithSpec` switched to `librnp`'s `rnp_op_generate_*` API so `ExpirationSec` sets primary and encryption subkey expiration directly—`0` = never expires—instead of `rnp_generate_key_json` ignoring `"expiration"` on `librnp 0.18.1` and defaulting to 2 years; plus nested subkeys, `AddSubkey`, `SetKeyExpiration`, `RevokeKey`, `DeleteSubkey` with primary-key guard & `UsageAllowsAlg`, RFC 4880 unprotected secret key & subkey support, public-only `SaveTo`/`LoadFrom`, revocation export) + text/file crypto/sign/verify + packet/features.
   - `session_test.go`: compatibility tests + expanded integration scenarios (`TestSubkeyLifecycle`, `TestEmptyPassphraseKeyLifecycle`, `TestGenerateKeyExpiration` verifying `Never` / explicit durations on primary keys & subkeys, and public-only keyring loading/saving).
 - `scripts/build-windows.ps1`
-  - builds pinned deps, embeds temporary `.syso` icon via `cmd/genwinres`, builds `-H=windowsgui` portable output and Inno Setup 6 installer (`rnparmor-windows-amd64-setup.exe`), verifies PE subsystem, `.rsrc` section, and DLL imports, and runs tests + `--smoke-out` + GUI probe.
+  - defaults CI to `-Stage prebuilt-rnp` (downloading & SHA-256-verifying the pinned `r404r/rnp@v0.18.1-win.2` portable zip from `deps/pins.json` and staging `rnp.dll` plus required sibling runtime DLLs and licenses into `out/lib` / `out/prebuilt-rnp`) while keeping source-build stages (`fetch-deps`/`botan`/`small-deps`/`deps`/`rnp`/`all`) as an optional fallback; embeds temporary `.syso` icon via `cmd/genwinres`, builds `-H=windowsgui` portable output and Inno Setup 6 installer (`rnparmor-windows-amd64-setup.exe`), writes `SHA256SUMS` covering all packaged files, verifies PE subsystem, `.rsrc` section, and recursive DLL imports across `rnparmor.exe` and all sibling DLLs, and runs tests + `--smoke-out` + GUI probe.
 - `scripts/build-macos.sh`
   - builds pinned static deps (`Botan 3.10.0` + `json-c 0.19`), `librnp.dylib`, and `RnpArmor.app` (with `Contents/Resources/RnpArmor.icns` and `CFBundleIconFile` in `Info.plist`), runs ad-hoc `codesign --verify --deep --strict`, `go test`, and `--smoke-test`, and packages `rnparmor-macos-arm64.dmg`.
 - `scripts/capture-linux-screenshots.sh`
   - seeds the demo keyring via `--seeder`, launches `rnparmor` under headless X11 (`Xvfb` + `openbox`) across `--lang en|zh|ja` and `RNPARMOR_DEMO_SCENE`, captures all 11 focused PNGs via `scrot`, and verifies dimensions and non-blank pixel variance.
 - `packaging/windows/rnparmor.iss`
-  - Inno Setup 6 script for the Windows per-user installer (`rnparmor-windows-amd64-setup.exe`) with `SetupIconFile`.
+  - Inno Setup 6 script explicitly packaging `rnparmor.exe`, `*.dll`, `SHA256SUMS`, `LICENSE`, `PORTABLE.txt`, `DEPENDENCIES.txt`, and `licenses\*` for the Windows per-user installer (`rnparmor-windows-amd64-setup.exe`) with `SetupIconFile`.
 - `docs/`
   - `USER_GUIDE.md` / `USER_GUIDE.zh-CN.md`: bilingual end-user installation, workspace, and troubleshooting guides.
   - `screenshots/`: 11 Linux runtime demo-keyring screenshots (`rnparmor-linux-{en,zh,ja}.png`, plus `rnparmor-linux-{text,file,packet,about}-{en,zh}.png`).
 - `.github/workflows/smoke.yml`
-  - `linux`, `windows-portable`, and `macos-arm64` jobs with dependency caches + per-branch concurrency cancel.
+  - `linux`, `windows-portable` (prebuilt `rnp_windows_portable` zip + cache), and `macos-arm64` jobs with per-branch concurrency cancel.
 - `.github/workflows/release.yml`
   - tag-driven/manual multi-platform packaging and release publication.
 - `.github/workflows/linux-screenshot.yml`
@@ -302,15 +302,19 @@ bash scripts/build-macos.sh --stage package --version v0.0.1
 ### Windows (portable & installer)
 
 ```powershell
-# one-shot (compatible): runs deps -> rnp -> package (default -Stage all)
+# default CI fast path: stage pinned prebuilt rnp.dll & runtime DLLs, then package
+pwsh -File .\scripts\build-windows.ps1 -Stage prebuilt-rnp
+pwsh -File .\scripts\build-windows.ps1 -Stage package
+
+# optional source-build fallback: runs deps -> rnp -> package (default -Stage all)
 pwsh -File .\scripts\build-windows.ps1
 
-# coarse staged mode
+# coarse source fallback stages
 pwsh -File .\scripts\build-windows.ps1 -Stage deps
 pwsh -File .\scripts\build-windows.ps1 -Stage rnp
 pwsh -File .\scripts\build-windows.ps1 -Stage package
 
-# granular dependency stages (used by CI for timing observability and cache reuse)
+# granular source fallback stages (require Python 3 and Ninja)
 pwsh -File .\scripts\build-windows.ps1 -Stage fetch-deps
 pwsh -File .\scripts\build-windows.ps1 -Stage botan
 pwsh -File .\scripts\build-windows.ps1 -Stage small-deps
@@ -322,24 +326,27 @@ pwsh -File .\scripts\build-windows.ps1 -Version v0.0.1
 pwsh -File .\scripts\build-windows.ps1 -Stage package -Version v0.0.1
 ```
 
-Windows dependency builds pin and bundle:
+Windows dependency staging supports two modes:
 
-- `Botan 3.10.0`: built as a minimized static library from the 57-module list in `scripts/windows/botan3-modules.txt` (one module per line, comments allowed), matching `rnpgp/rnp v0.18.1` OpenPGP requirements while skipping unnecessary CLI/tests and non-OpenPGP modules in CI.
-- `json-c 0.19`, `zlib 1.4`, and `bzip2 1.0.8`: built as static libraries linked into `rnp.dll`.
-- `dirent 1.24` (`tronkko/dirent`, MIT): Windows header compatibility dependency (`dirent.h`) used during the `librnp` build.
-- All third-party license texts (`rnp-LICENSE.md`, `sexpp-LICENSE.md`, `botan-license.txt`, `dirent-LICENSE`, `json-c-COPYING`, `zlib-LICENSE`, `bzip2-LICENSE`, `mygo-MIT.txt`, and `purego-Apache-2.0.txt`) are bundled into `licenses/` inside the Windows portable package.
+- **Default CI prebuilt path (`-Stage prebuilt-rnp`, pinned in `deps/pins.json` as `rnp_windows_portable`)**:
+  - Downloads and SHA-256-verifies `r404r/rnp@v0.18.1-win.2` (`rnp-windows-x64-portable.zip`, commit `5ede42bfd49c4992550d3c642d5d1b2286c1da9a`, SHA-256 `5886bf2bcd17ca2f0ed1e959c9e08a21865fc9c4a8bbf42d4dc691a53414361b`, `4,328,958` bytes).
+  - Stages `rnp.dll` together with the 6 required sibling runtime DLLs (`botan-3.dll`, `bz2.dll`, `libz.dll`, `MSVCP140.dll`, `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll`) into `out/lib`—excluding `rnp.exe`, `rnpkeys.exe`, `README.txt`, and unused `getopt.dll` (included only if `rnp.dll`'s import table references it)—and bundles all corresponding third-party licenses (`RNP-LICENSE.md`, `RNP-LICENSE-OCB.md`, `sexpp-LICENSE.md`, `vcpkg-botan.txt`, `vcpkg-bzip2.txt`, `vcpkg-zlib.txt`, `vcpkg-dirent.txt`, `vcpkg-getopt-win32.txt`, `nlohmann-json-MIT.txt`, `msvc-runtime-license.txt`, `mygo-MIT.txt`, `purego-Apache-2.0.txt`) into `licenses/` inside both the portable zip and Inno Setup installer.
+  - Because the VC143 CRT DLLs sit directly alongside `rnp.dll` and recursive PE import auditing checks `rnparmor.exe` plus every shipped DLL, clean Windows machines do not need a separate MSVC Redistributable install, and `SHA256SUMS` covers `rnp.dll` and all sibling DLLs in the bundle.
+- **Optional source-build fallback (`-Stage fetch-deps` / `botan` / `small-deps` / `deps` / `rnp` / `all`)**:
+  - Preserved in `scripts/build-windows.ps1` (requires Python 3 and `ninja.exe`). Builds minimized static `Botan 3.10.0` (from the 57-module list in `scripts/windows/botan3-modules.txt`), static `json-c 0.19`, `zlib 1.4`, and `bzip2 1.0.8` plus `dirent 1.24` (`dirent.h`), compiles `rnp.dll` from source, clears any `out/prebuilt-rnp` marker so prebuilt and source DLL sets never mix, and bundles the static-build license texts into `licenses/`.
 
 `scripts/build-windows.ps1` supports the following `-Stage` values:
 
-1. `fetch-deps`: download, checksum-verify, and extract `Botan 3.10.0`, `json-c 0.19`, `zlib 1.4`, `bzip2 1.0.8`, and `dirent 1.24` into `out/src` (skipped when `out/deps` hot cache is complete)
-2. `botan`: build and install minimized static `Botan 3.10.0` into `out/deps/botan` (stamped with `.modules-sha256`)
-3. `small-deps`: build and install static `json-c`, `zlib`, and `bzip2` into `out/deps`, stage `dirent.h`, and cache dependency licenses under `out/deps/licenses`
-4. `deps`: execute `fetch-deps -> botan -> small-deps`
-5. `rnp`: build `librnp` (`rnp.dll`) using cached dependencies and cache `rnp.dll` at `out/win-build/rnp-dll/rnp.dll`
-6. `package`: generate temporary `cmd/rnparmor/rsrc_windows_amd64.syso` from `assets/icons/rnparmor.ico` via `cmd/genwinres`, build `rnparmor.exe` with `-H=windowsgui`, clean up the temporary `.syso`, copy `rnp.dll`, `LICENSE`, and `licenses/`, verify `Windows GUI` PE subsystem, `.rsrc` section (`dumpbin /headers`), and DLL imports (`DEPENDENCIES.txt`), generate `PORTABLE.txt` and `SHA256SUMS`, run `go test` against packaged `rnp.dll`, run `--smoke-test --smoke-out` and the bounded GUI probe, and produce the portable zip, Inno Setup 6 installer (`SetupIconFile=..\..\assets\icons\rnparmor.ico`), and report
-7. `all`: execute `deps -> rnp -> package` (default)
+1. `prebuilt-rnp`: download, SHA-256-verify, and extract pinned `r404r/rnp@v0.18.1-win.2` (`rnp_windows_portable`), validate `dumpbin /imports rnp.dll`, publish `rnp.dll` + required sibling runtime DLLs into `out/lib`, and stage prebuilt license texts into `out/prebuilt-rnp/licenses`
+2. `fetch-deps`: *(source fallback)* download, checksum-verify, and extract `Botan 3.10.0`, `json-c 0.19`, `zlib 1.4`, `bzip2 1.0.8`, and `dirent 1.24` into `out/src` (skipped when `out/deps` hot cache is complete)
+3. `botan`: *(source fallback)* build and install minimized static `Botan 3.10.0` into `out/deps/botan` (stamped with `.modules-sha256`)
+4. `small-deps`: *(source fallback)* build and install static `json-c`, `zlib`, and `bzip2` into `out/deps`, stage `dirent.h`, and cache dependency licenses under `out/deps/licenses`
+5. `deps`: *(source fallback)* execute `fetch-deps -> botan -> small-deps`
+6. `rnp`: *(source fallback)* clear `out/prebuilt-rnp`, build static-linked `rnp.dll` into `out/win-build/rnp-dll/rnp.dll`, and publish it to `out/lib`
+7. `package`: generate temporary `cmd/rnparmor/rsrc_windows_amd64.syso` from `assets/icons/rnparmor.ico` via `cmd/genwinres`, build `rnparmor.exe` with `-H=windowsgui`, clean up the temporary `.syso`, copy `*.dll` from `out/lib`, `LICENSE`, and `licenses/`, verify `Windows GUI` PE subsystem, `.rsrc` section (`dumpbin /headers`), and recursive PE imports across `rnparmor.exe` + all bundled DLLs (`DEPENDENCIES.txt`), generate `PORTABLE.txt` and `SHA256SUMS` (covering all packaged files including `rnp.dll` and sibling DLLs), run `go test` against packaged `rnp.dll` with `PATH` restricted to `System32`, run `--smoke-test --smoke-out` and the bounded GUI probe, and produce the portable zip, Inno Setup 6 installer (`SetupIconFile=..\..\assets\icons\rnparmor.ico`), and report
+8. `all`: *(source fallback default)* execute `deps -> rnp -> package`
 
-The `package` stage creates `out\dist\rnparmor-windows-amd64`, builds the installer via `packaging/windows/rnparmor.iss` + Inno Setup 6 (`ISCC.exe`), and executes:
+The `package` stage creates `out\dist\rnparmor-windows-amd64`, builds the installer via `packaging/windows/rnparmor.iss` (explicitly packaging `rnparmor.exe`, `*.dll`, `SHA256SUMS`, `LICENSE`, `PORTABLE.txt`, `DEPENDENCIES.txt`, and `licenses\*`) + Inno Setup 6 (`ISCC.exe`), and executes:
 
 1. `dumpbin /headers` check confirming `rnparmor.exe` targets the `Windows GUI` subsystem (recorded in `out\windows-report.txt`) and contains the `.rsrc` icon resource section
 2. `go test -count=1 -timeout 20m ./internal/loadlib/ ./internal/rnp/ ./cmd/rnparmor/` with `RNPARMOR_LIBRNP` pointing to the packaged `rnp.dll` and `PATH` restricted to `System32`
@@ -356,9 +363,8 @@ Workflow: `.github/workflows/smoke.yml`
   - dependency cache on `out/deps`
   - pinned `librnp` build + `go test -race` + `CGO_ENABLED=0` build
 - `windows-portable` job:
-  - dependency cache on `out/deps` with `actions/cache/restore@v4` before `fetch-deps` and `actions/cache/save@v4` after `small-deps`
-  - staged Windows flow (`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package`) for per-stage timing observability and dependency cache reuse
-  - cache key: `${{ runner.os }}-deps-v4-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
+  - caches `out/cache/rnp-windows-x64-portable.zip` via `actions/cache@v4` with key `${{ runner.os }}-rnp-windows-portable-v1-${{ hashFiles('deps/pins.json') }}`
+  - defaults CI to `-Stage prebuilt-rnp` (`r404r/rnp@v0.18.1-win.2`, SHA-256-verified) followed by `-Stage package` (keeping source-build stages in `scripts/build-windows.ps1` as optional fallback)
   - uploads `out/rnparmor-windows-amd64.zip`, `out/rnparmor-windows-amd64-setup.exe`, and `out/windows-report.txt`
 - `macos-arm64` job (`runs-on: macos-15`):
   - dependency cache on `out/deps` with key `${{ runner.os }}-arm64-deps-v1-${{ hashFiles('deps/pins.json', 'scripts/windows/botan3-modules.txt', 'scripts/build-macos.sh') }}`
@@ -372,7 +378,7 @@ Workflow: `.github/workflows/release.yml`
   - `workflow_dispatch` (optional `tag` input)
 - jobs:
   - `linux-portable`: build/test/package `rnparmor-linux-amd64.tar.gz` (including `rnparmor.png` from `assets/icons/rnparmor.png`)
-  - `windows-portable`: uses the same `deps-v4` cache key and staged sequence (`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package -Version "${{ steps.tag.outputs.value }}"`) to produce `rnparmor-windows-amd64.zip`, `rnparmor-windows-amd64-setup.exe`, and `windows-report.txt`
+  - `windows-portable`: caches `out/cache/rnp-windows-x64-portable.zip` (`${{ runner.os }}-rnp-windows-portable-v1-${{ hashFiles('deps/pins.json') }}`) and runs `-Stage prebuilt-rnp` followed by `-Stage package -Version "${{ steps.tag.outputs.value }}"` (source stages remain in `scripts/build-windows.ps1` as fallback) to produce `rnparmor-windows-amd64.zip`, `rnparmor-windows-amd64-setup.exe`, and `windows-report.txt`
   - `macos-arm64` (`runs-on: macos-15`): uses the same `arm64-deps-v1` cache key and staged sequence (`deps -> save cache -> rnp -> package --version "${{ steps.tag.outputs.value }}"`) to produce `rnparmor-macos-arm64.dmg`
   - `publish-release`: on all three platform jobs green, creates/updates GitHub Release and uploads `rnparmor-macos-arm64.dmg`, `rnparmor-linux-amd64.tar.gz`, `rnparmor-windows-amd64-setup.exe`, `rnparmor-windows-amd64.zip`, `windows-report.txt`, and `rnparmor-${TAG}-SHA256SUMS.txt`
 
@@ -395,7 +401,7 @@ Workflow: `.github/workflows/linux-screenshot.yml`
 ## Repository Status Notes
 
 - `v0.0.1`–`v0.0.8` have been released across macOS (`arm64`), Linux (`amd64`), and Windows (`amd64`): `v0.0.2` added Apache-2.0 licensing ([`LICENSE`](LICENSE)), Linux runtime screenshots, multi-platform application icons, and the bilingual user guides ([`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)); `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 (master-detail Key Manager, 16/40-char ID switch, masked New Key dialog, public-only empty-passphrase startup, native folder picker) and Phase 2 (`cmd/rnparmor/studio_ui.go` recipient/signer pickers, masked symmetric passphrase, native file `Browse...` / `Save As...` dialogs), plus release upload hardening; `v0.0.5` delivered PR #14 (`+ New Key` algorithm presets, curve/size linking, tri-lingual tips, `Primary Key / Subkey` terminology, `TestKeygenPresetsSyncAndTips`) and PR #15 (`cmd/rnparmor/subkey_ui.go`, left-pane hierarchical collapsible subkey tree, full subkey lifecycle `AddSubkey`/`SetKeyExpiration`/`RevokeKey`/`DeleteSubkey`, `TestSubkeyLifecycle`, `TestSubkeyTableExpiryUsageAndCatalog`, and expanded `TestUIStateActionsEndToEnd`); `v0.0.6` delivered PR #16 (RFC 4880 empty-passphrase unprotected key generation, `No Passphrase` badges, optional passphrases across subkey lifecycle and crypto flows, `TestEmptyPassphraseKeyLifecycle`, and `TestUIStateEmptyPassphraseLifecycle`); `v0.0.7` delivered PR #17 (`cmd/rnparmor/feedback_ui.go`, pinned bottom status bar, click-to-copy library path toast, Scheme A graded result notifications, `TestI18nComplete`, `TestStatusBarAndFeedback`) and PR #18 (`cmd/rnparmor/style_ui.go` light Fluent theme honoring system high-contrast/text-scale/accent preferences, `#edf1f7`/Windows 11 Mica canvas + white `rnpCard` panels, raised gradient/1-DIP-press buttons, Windows/Linux integrated menu bar vs macOS system menu bar, `mygo/plugins/glass` frosted popovers/menus/toasts, `TestFluentGlassChrome`); `v0.0.8` shipped PR #19 (`cmd/seeddemo`, 11 refreshed Linux runtime demo screenshots embedded across the bilingual docs) and PR #20 (`rnpPassEye` show/hide toggles in `+ New Key`, live/submit mismatch blocking, `GenerateKeyWithSpec` migration to `librnp` `rnp_op_generate_*` for real `Never` & duration expiration, `TestGenerateKeyExpiration`, and expanded `TestKeyManagerFilterSearchSortAndForms`).
-- Pending on branch `feat/passphrase-eye-everywhere` for a future release (`v0.0.9` has not been released): extends `passphraseRow` / `rnpPassEye` (with tri-lingual tooltips and accessibility labels) across all remaining 6 password inputs—Text Studio symmetric password (`showTextEncPass`), File Workbench symmetric password (`showFileEncPass`), Portable Keyring unlock passphrase (`showUnlockPass`), and the Add Subkey (`subShowPass`), Change Subkey Expiry (`expiryShowPass`), and Revoke Subkey (`revokeShowPass`) modals with automatic hidden reset on modal open/close/submit—completing all 8 password inputs app-wide alongside the `TestPassphraseEyeEverywhere` regression guard.
+- Merged/upcoming for `v0.0.9`: PR #21 extended `passphraseRow` / `rnpPassEye` (with tri-lingual tooltips and accessibility labels) across all remaining 6 password inputs—Text Studio symmetric password (`showTextEncPass`), File Workbench symmetric password (`showFileEncPass`), Portable Keyring unlock passphrase (`showUnlockPass`), and the Add Subkey (`subShowPass`), Change Subkey Expiry (`expiryShowPass`), and Revoke Subkey (`revokeShowPass`) modals with automatic hidden reset on modal open/close/submit—completing all 8 password inputs app-wide alongside the `TestPassphraseEyeEverywhere` regression guard; PR #22 (`feat/windows-prebuilt-rnp`) switches Windows CI (`smoke.yml` / `release.yml` `windows-portable`) by default to `-Stage prebuilt-rnp` reusing pinned `r404r/rnp@v0.18.1-win.2` (`rnp-windows-x64-portable.zip`, SHA-256-verified in `deps/pins.json`), packaging `rnp.dll` + 6 sibling runtime DLLs (`botan-3.dll`, `bz2.dll`, `libz.dll`, `MSVCP140.dll`, `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll`) and prebuilt third-party licenses into both the portable zip and Inno Setup installer (`packaging/windows/rnparmor.iss`) with full-bundle `SHA256SUMS` and recursive PE import auditing while preserving the source-build stages in `scripts/build-windows.ps1` as optional fallback.
 - Desktop manual UX validation—including Windows 10/11 Chinese IME, high-DPI, and Inno Setup installer flow, plus macOS Apple Silicon first-launch Gatekeeper handling—remains environment-dependent and must be confirmed in dedicated manual runs.
 
 ## License

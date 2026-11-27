@@ -18,7 +18,7 @@ RnpArmor 是基于 MyGo 原生界面与 `librnp v0.18.1` 构建的 OpenPGP 桌�
 
 ## 2. 下载、安装与首次启动
 
-发布产物由 `.github/workflows/release.yml` 构建与分发（`v0.0.1`–`v0.0.8` 均已发布：`v0.0.2` 合入 Apache-2.0 许可证、Linux 实机截图、三端应用图标与双语用户指南；`v0.0.3` 修复了 GUI 操作重入死锁与钥匙圈持久化边界问题；`v0.0.4` 合并发布 Phase 1 主从双栏 Keys 管理页与原生文件夹选择器，以及 Phase 2 收件人/签名者下拉选择器与原生文件浏览/另存为对话框；`v0.0.5` 合入 PR #14 的新建密钥 5 档算法预设/动态参数联动/三语提示与 PR #15 的左侧树形可折叠子密钥视图及子密钥全生命周期管理；`v0.0.6` 合入 PR #16 的空口令 RFC 4880 无口令保护私钥生成及配套全生命周期免口令支持；`v0.0.7` 合入 PR #17 主窗口底部固定状态栏/分级结果反馈与 PR #18 浅色 Fluent 及局部磨砂玻璃视觉升级；`v0.0.8` 合入 PR #19 的 11 张 Linux 演示截图刷新及图文同步与 PR #20 的 `+ 新建密钥` 口令显隐开关、口令不一致实时校验拦截与有效期真实生效修复；`feat/passphrase-eye-everywhere` 分支则将同一眼睛显隐开关进一步推广至全应用其余全部密码输入框，待随后续版本推出）。
+发布产物由 `.github/workflows/release.yml` 构建与分发（`v0.0.1`–`v0.0.8` 均已发布：`v0.0.2` 合入 Apache-2.0 许可证、Linux 实机截图、三端应用图标与双语用户指南；`v0.0.3` 修复了 GUI 操作重入死锁与钥匙圈持久化边界问题；`v0.0.4` 合并发布 Phase 1 主从双栏 Keys 管理页与原生文件夹选择器，以及 Phase 2 收件人/签名者下拉选择器与原生文件浏览/另存为对话框；`v0.0.5` 合入 PR #14 的新建密钥 5 档算法预设/动态参数联动/三语提示与 PR #15 的左侧树形可折叠子密钥视图及子密钥全生命周期管理；`v0.0.6` 合入 PR #16 的空口令 RFC 4880 无口令保护私钥生成及配套全生命周期免口令支持；`v0.0.7` 合入 PR #17 主窗口底部固定状态栏/分级结果反馈与 PR #18 浅色 Fluent 及局部磨砂玻璃视觉升级；`v0.0.8` 合入 PR #19 的 11 张 Linux 演示截图刷新及图文同步与 PR #20 的 `+ 新建密钥` 口令显隐开关、口令不一致实时校验拦截与有效期真实生效修复；PR #21 将同一眼睛显隐开关推广至全应用其余全部密码输入框，PR #22 将 Windows 构建默认切换为复用钉扎预编译 `r404r/rnp@v0.18.1-win.2` 动态库及随包运行时 DLL，随 `v0.0.9` 推出）。
 
 ### 校验发布包 SHA-256
 
@@ -37,19 +37,20 @@ Get-FileHash .\rnparmor-windows-amd64-setup.exe -Algorithm SHA256
 Get-FileHash .\rnparmor-windows-amd64.zip -Algorithm SHA256
 ```
 
-此外，每个平台分发包内部均带有 `SHA256SUMS` 文件。RnpArmor 每次启动都会先通过 `internal/loadlib` 校验动态库（`rnp.dll`、`librnp.so` 或 `librnp.dylib`）的完整性，校验通过后才会加载。
+此外，每个平台分发包内部均带有 `SHA256SUMS` 文件（Windows 版覆盖 `rnp.dll` 与全部随包同级运行时 DLL，Linux/macOS 覆盖 `librnp.so` / `librnp.dylib`）。RnpArmor 每次启动都会先通过 `internal/loadlib` 校验动态库（`rnp.dll`、`librnp.so` 或 `librnp.dylib`）的完整性，校验通过后才会加载。
 
 ### Windows 安装版（`rnparmor-windows-amd64-setup.exe`）
 
 1. 下载 `rnparmor-windows-amd64-setup.exe`。
 2. 双击运行 Inno Setup 安装向导：
    - 默认以**当前用户免管理员权限**安装（`PrivilegesRequired=lowest`，也可在向导对话框中按需切换）。
+   - 将 `rnparmor.exe`、`rnp.dll`、必需同级运行时 DLL（`botan-3.dll`、`bz2.dll`、`libz.dll`、`MSVCP140.dll`、`VCRUNTIME140.dll`、`VCRUNTIME140_1.dll`）、`SHA256SUMS`、`LICENSE` 与 `licenses\` 一并安装到位，目标 Windows 裸机无需额外安装 Visual C++ 运行库。
    - 自动创建**开始菜单**快捷方式（`RnpArmor`）、提供可选**桌面快捷方式**（默认不勾选），并支持 Windows 标准卸载。
 3. 安装完成后，从开始菜单或桌面快捷方式启动 **RnpArmor**。
 
 ### Windows 便携版（`rnparmor-windows-amd64.zip`）
 
-1. 将 `rnparmor-windows-amd64.zip` 解压到独立文件夹（请保持 `rnparmor.exe`、`rnp.dll`、`SHA256SUMS`、`LICENSE` 与 `licenses\` 在同一目录下）。
+1. 将 `rnparmor-windows-amd64.zip` 解压到独立文件夹（请保持 `rnparmor.exe`、`rnp.dll`、随包同级运行时 DLL `botan-3.dll` / `bz2.dll` / `libz.dll` / `MSVCP140.dll` / `VCRUNTIME140.dll` / `VCRUNTIME140_1.dll`、`SHA256SUMS`、`LICENSE` 与 `licenses\` 在同一目录下，无需额外安装 Visual C++ 运行库）。
 2. 双击运行 `rnparmor.exe`：
    - 构建时使用 `-H=windowsgui`（Windows GUI 子系统）并嵌入了 `.ico` 图标资源，启动时**不会弹出黑色控制台窗口**。
    - 程序通过 `LoadLibraryEx` 限制搜索范围，仅从自身所在目录绝对路径加载 `rnp.dll`，不搜索当前工作目录或 `PATH`。
@@ -317,7 +318,7 @@ i18n=ok
 
 | 现象 | 原因 | 解决方法 |
 | --- | --- | --- |
-| 启动报 `librnp bundle checksum failed` | 缺少 `SHA256SUMS`、动态库被修改或 `RNPARMOR_LIBRNP` 路径不匹配 | 保持原始解压目录完整（勿删改 `rnp.dll`/`librnp.so`/`librnp.dylib` 与 `SHA256SUMS`）；使用 `RNPARMOR_LIBRNP` 时须提供绝对路径且同目录存在有效 `SHA256SUMS` |
+| 启动报 `librnp bundle checksum failed` | 缺少 `SHA256SUMS`、动态库或同级 DLL 被修改，或 `RNPARMOR_LIBRNP` 路径不匹配 | 保持原始解压目录完整（勿删改 `rnp.dll` 及其随包同级 DLL、`librnp.so`/`librnp.dylib` 与 `SHA256SUMS`）；使用 `RNPARMOR_LIBRNP` 时须提供绝对路径且同目录存在有效 `SHA256SUMS` |
 | 提示 `path must be absolute` | **文件工作区**或 **Packet 输入文件**填入了相对路径 | 点击 **`浏览...`** / **`另存为...`**（或改为完整绝对路径，如 Windows `C:\Users\name\doc.txt` 或 Linux/macOS `/home/name/doc.txt`）；**工作目录**请使用**选择文件夹...** 选择 |
 | 提示 `refusing to overwrite an existing file` | **目标文件**或**签名文件路径**已存在同名文件 | 更换一个尚未存在的新输出文件名 |
 | 提示 `input exceeds the memory limit` | 输入文件超过 32 MiB（`MaxInput`） | 当前版本文件操作走内存缓冲，单文件上限为 32 MiB |
