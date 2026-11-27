@@ -884,6 +884,11 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangZH: "取消",
 		LangJA: "キャンセル",
 	},
+	"btn.quit": {
+		LangEN: "Quit",
+		LangZH: "退出",
+		LangJA: "終了",
+	},
 	"btn.delete": {
 		LangEN: "Delete",
 		LangZH: "删除",
@@ -1188,6 +1193,21 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangEN: "This deletes the public key and the secret key.",
 		LangZH: "这将同时删除公钥和私钥。",
 		LangJA: "公開鍵と秘密鍵を削除します。",
+	},
+	"dlg.quit_title": {
+		LangEN: "Quit RnpArmor?",
+		LangZH: "退出 RnpArmor？",
+		LangJA: "RnpArmor を終了しますか？",
+	},
+	"dlg.quit_msg": {
+		LangEN: "Are you sure you want to quit RnpArmor?",
+		LangZH: "确定要退出 RnpArmor 吗？",
+		LangJA: "RnpArmor を終了してもよろしいですか？",
+	},
+	"dlg.quit_busy_msg": {
+		LangEN: "An operation is currently running. Are you sure you want to quit RnpArmor?",
+		LangZH: "当前有操作正在执行中，确定要退出 RnpArmor 吗？",
+		LangJA: "処理が実行中です。RnpArmor を終了してもよろしいですか？",
 	},
 	"title.new_key": {
 		LangEN: "New Key",

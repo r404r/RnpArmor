@@ -323,7 +323,7 @@ func (s *uiState) menuFile(m *ui.Menu) {
 	}
 	m.Separator()
 	if m.Item(s.tr("menu.file.quit")).Chosen() {
-		mygo.App.Quit()
+		s.requestQuit()
 	}
 }
 
