@@ -174,10 +174,10 @@ func (s *uiState) recipientPicker(c *ui.Context) {
 			}
 			ui.Row(c).Gap(8).Grow(1).Children(func() {
 				ui.Select(c, &s.recipientPick, labels).Grow(1)
-				if ui.Button(c, s.tr("btn.add_recipient")).Clicked() {
+				if rnpButton(c, s.tr("btn.add_recipient")).Clicked() {
 					s.encRecipients = appendRecipientFingerprint(s.encRecipients, fingerprintForLabel(s.recipientPick, labels, fps))
 				}
-				if ui.Button(c, s.tr("btn.clear_recipients")).Clicked() {
+				if rnpButton(c, s.tr("btn.clear_recipients")).Clicked() {
 					s.encRecipients = clearRecipientList(s.encRecipients)
 				}
 			})
@@ -214,10 +214,10 @@ func (s *uiState) signerPicker(c *ui.Context) {
 func (s *uiState) filePathEditors(c *ui.Context, value *string, openTitle, saveTitle, saveSibling string) {
 	ui.Row(c).Gap(8).Grow(1).Children(func() {
 		ui.TextInput(c, value).Grow(1)
-		if openTitle != "" && ui.Button(c, s.tr("btn.browse")).Clicked() {
+		if openTitle != "" && rnpButton(c, s.tr("btn.browse")).Clicked() {
 			s.pickOpenPath(openTitle, dialogDefaultPath(*value, "", s.workspace), value)
 		}
-		if saveTitle != "" && ui.Button(c, s.tr("btn.save_as")).Clicked() {
+		if saveTitle != "" && rnpButton(c, s.tr("btn.save_as")).Clicked() {
 			s.pickSavePath(saveTitle, dialogDefaultPath(*value, saveSibling, s.workspace), value)
 		}
 	})

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/r404r/RnpArmor/internal/rnp"
@@ -1891,3 +1892,72 @@ func TestStatusBarAndFeedback(t *testing.T) {
 		t.Fatalf("silent load notified alert=%v %q toasts=%d", s.alertOpen, s.alertMsg, len(s.pendingToasts))
 	}
 }
+
+func TestFluentGlassChrome(t *testing.T) {
+	if !useIntegratedMenuBar("windows") || !useIntegratedMenuBar("linux") || useIntegratedMenuBar("darwin") {
+		t.Fatal("integrated menu bar")
+	}
+	win := mainWindowOptions("windows")
+	if win.TitleBarStyle != mygo.TitleBarHidden || win.TitleBarHeight != 40 || win.Vibrancy != mygo.VibrancyMica {
+		t.Fatalf("windows %+v", win.TitleBarStyle)
+	}
+	lin := mainWindowOptions("linux")
+	if lin.TitleBarStyle != mygo.TitleBarDefault || lin.Vibrancy != "" || lin.TitleBarHeight != 0 {
+		t.Fatal("linux title bar")
+	}
+	mac := mainWindowOptions("darwin")
+	if mac.TitleBarStyle != mygo.TitleBarDefault || mac.Vibrancy != "" {
+		t.Fatal("darwin title bar")
+	}
+
+	base := rnpLightTheme(ui.Preferences{})
+	if base.Dark || base.Background != ui.Hex("#edf1f7") {
+		t.Fatal("light canvas")
+	}
+	hi := rnpLightTheme(ui.Preferences{HighContrast: true})
+	if hi.Dark || hi.Border == base.Border {
+		t.Fatal("high contrast")
+	}
+	scaled := rnpLightTheme(ui.Preferences{TextScale: 1.5})
+	if scaled.FontSize <= base.FontSize {
+		t.Fatalf("text scale %v", scaled.FontSize)
+	}
+
+	rest := rnpButtonFace(rnpBtnSecondary, false, false)
+	hover := rnpButtonFace(rnpBtnSecondary, true, false)
+	press := rnpButtonFace(rnpBtnSecondary, true, true)
+	if colorSum(rest.From) <= colorSum(rest.To) || colorSum(press.From) >= colorSum(rest.From) {
+		t.Fatal("secondary face")
+	}
+	if hover.ShadowBlur <= rest.ShadowBlur || colorSum(hover.To) < colorSum(rest.To) {
+		t.Fatal("secondary hover")
+	}
+	pri := rnpButtonFace(rnpBtnPrimary, false, false)
+	priPress := rnpButtonFace(rnpBtnPrimary, false, true)
+	if colorSum(pri.From) <= colorSum(pri.To) || pri.Text != ui.Hex("#ffffff") || colorSum(priPress.To) >= colorSum(pri.To) {
+		t.Fatal("primary face")
+	}
+	if pri.Shadow != ui.RGBA(37, 99, 235, 0.28) || rest.Shadow != ui.RGBA(15, 23, 42, 0.10) {
+		t.Fatal("shadow")
+	}
+	danger := rnpButtonFace(rnpBtnDanger, false, false)
+	if danger.Text == ui.Hex("#ffffff") || danger.Border.A == 0 || colorSum(danger.From) <= colorSum(danger.To) {
+		t.Fatal("danger face")
+	}
+	if got := rnpButtonFace("other", false, false); got.From != rest.From {
+		t.Fatal("face fallback")
+	}
+
+	g := menuGlass()
+	if g.Style != glass.Regular || g.Clarity != 0.25 || g.Tint != ui.RGBA(255, 255, 255, 0.72) {
+		t.Fatal("menu glass")
+	}
+	for _, kind := range []string{"success", "error", "info"} {
+		pane, fg, border := toastGlass(kind)
+		if pane.Tint.A == 0 || pane.Clarity == 0 || fg == ui.Hex("#ffffff") || border.A == 0 {
+			t.Fatalf("toast %s", kind)
+		}
+	}
+}
+
+func colorSum(c ui.Color) int { return int(c.R) + int(c.G) + int(c.B) }

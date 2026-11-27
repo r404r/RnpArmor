@@ -220,6 +220,7 @@ func (s *uiState) takeNewKeyPassphrase() {
 }
 
 func (s *uiState) viewNewKey(c *ui.Context) {
+	prepareSurface(c)
 	t := c.Theme()
 	if strings.TrimSpace(s.newKeyPreset) == "" {
 		s.newKeyPreset = presetForRequest(s.keyReq)
@@ -251,72 +252,74 @@ func (s *uiState) viewNewKey(c *ui.Context) {
 		passDesc = "desc.pass_unprotected"
 	}
 
-	ui.Column(c).Fill().Children(func() {
-		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).Padding(16).Gap(8).Children(func() {
-				ui.Text(c, s.tr("title.new_key")).FontSize(18).Bold()
-				ui.Form(c, func() {
-					ui.Field(c, s.tr("label.name"), func() {
-						ui.TextInput(c, &s.newKeyName).Placeholder(s.tr("placeholder.name"))
-					})
-					ui.Field(c, s.tr("label.email"), func() {
-						ui.TextInput(c, &s.newKeyEmail).Placeholder(s.tr("placeholder.email"))
-					})
-					ui.Field(c, s.tr("label.passphrase"), func() {
-						ui.TextInput(c, &s.newKeyPass).Password().Placeholder(s.tr("placeholder.new_pass"))
-					})
-					ui.Field(c, s.tr("label.confirm_pass"), func() {
-						ui.TextInput(c, &s.newKeyPass2).Password().Placeholder(s.tr("placeholder.confirm_pass"))
-					}).Description(s.tr(passDesc))
-					ui.Field(c, s.tr("label.expiration"), func() {
-						ui.Select(c, &curExp, choices)
-					})
-					ui.Field(c, s.tr("label.alg_preset"), func() {
-						ui.Select(c, &curPreset, labels).Tooltip(s.tr("tip.preset.roles"))
-						if id := presetIDForLabel(curPreset, labels, ids); id != "" && id != s.newKeyPreset {
-							s.newKeyPreset = id
-							if id == presetCustom {
-								s.newKeyAdvanced = true
-							} else {
-								s.keyReq = applyKeyPreset(id, s.keyReq)
+	ui.Column(c).Fill().Padding(12).Children(func() {
+		rnpCard(c).Fill().Children(func() {
+			ui.Scroll(c).Fill().Children(func() {
+				ui.Column(c).Padding(16).Gap(8).Children(func() {
+					ui.Text(c, s.tr("title.new_key")).FontSize(18).Bold()
+					ui.Form(c, func() {
+						ui.Field(c, s.tr("label.name"), func() {
+							ui.TextInput(c, &s.newKeyName).Placeholder(s.tr("placeholder.name"))
+						})
+						ui.Field(c, s.tr("label.email"), func() {
+							ui.TextInput(c, &s.newKeyEmail).Placeholder(s.tr("placeholder.email"))
+						})
+						ui.Field(c, s.tr("label.passphrase"), func() {
+							ui.TextInput(c, &s.newKeyPass).Password().Placeholder(s.tr("placeholder.new_pass"))
+						})
+						ui.Field(c, s.tr("label.confirm_pass"), func() {
+							ui.TextInput(c, &s.newKeyPass2).Password().Placeholder(s.tr("placeholder.confirm_pass"))
+						}).Description(s.tr(passDesc))
+						ui.Field(c, s.tr("label.expiration"), func() {
+							ui.Select(c, &curExp, choices)
+						})
+						ui.Field(c, s.tr("label.alg_preset"), func() {
+							ui.Select(c, &curPreset, labels).Tooltip(s.tr("tip.preset.roles"))
+							if id := presetIDForLabel(curPreset, labels, ids); id != "" && id != s.newKeyPreset {
+								s.newKeyPreset = id
+								if id == presetCustom {
+									s.newKeyAdvanced = true
+								} else {
+									s.keyReq = applyKeyPreset(id, s.keyReq)
+								}
 							}
+						}).Description(s.tr(presetDescKey(s.newKeyPreset)))
+					})
+					for i, label := range choices {
+						if curExp == label {
+							s.newKeyExpiry = i
 						}
-					}).Description(s.tr(presetDescKey(s.newKeyPreset)))
-				})
-				for i, label := range choices {
-					if curExp == label {
-						s.newKeyExpiry = i
 					}
-				}
-				ui.Collapsible(c, s.tr("label.advanced"), &s.newKeyAdvanced, func() {
-					ui.Field(c, s.tr("label.primary"), func() {
-						s.primaryAlgControls(c)
-					}).Description(s.tr(primaryAlgTipKey(s.keyReq.PrimaryAlg)))
-					ui.Field(c, s.tr("label.enc_subkey"), func() {
-						s.subkeyAlgControls(c)
-					}).Description(s.tr(subkeyAlgTipKey(s.keyReq.SubkeyAlg)))
-					ui.Field(c, s.tr("label.crypto"), func() {
-						s.cryptoControls(c)
-					}).Description(s.tr("tip.crypto.desc"))
-				})
-				if s.newKeyErr != "" {
-					ui.Text(c, s.newKeyErr).TextColor(t.Danger)
-				}
-				ui.Row(c).Gap(8).Children(func() {
-					if ui.PrimaryButton(c, s.tr("btn.generate")).Clicked() {
-						req, errKey := validateNewKey(s.newKeyName, s.newKeyEmail, s.newKeyPass, s.newKeyPass2, s.newKeyExpiry, s.keyReq)
-						if errKey != "" {
-							s.newKeyErr = s.tr(errKey)
-							return
+					ui.Collapsible(c, s.tr("label.advanced"), &s.newKeyAdvanced, func() {
+						ui.Field(c, s.tr("label.primary"), func() {
+							s.primaryAlgControls(c)
+						}).Description(s.tr(primaryAlgTipKey(s.keyReq.PrimaryAlg)))
+						ui.Field(c, s.tr("label.enc_subkey"), func() {
+							s.subkeyAlgControls(c)
+						}).Description(s.tr(subkeyAlgTipKey(s.keyReq.SubkeyAlg)))
+						ui.Field(c, s.tr("label.crypto"), func() {
+							s.cryptoControls(c)
+						}).Description(s.tr("tip.crypto.desc"))
+					})
+					if s.newKeyErr != "" {
+						ui.Text(c, s.newKeyErr).TextColor(t.Danger)
+					}
+					ui.Row(c).Gap(8).Children(func() {
+						if rnpPrimaryButton(c, s.tr("btn.generate")).Clicked() {
+							req, errKey := validateNewKey(s.newKeyName, s.newKeyEmail, s.newKeyPass, s.newKeyPass2, s.newKeyExpiry, s.keyReq)
+							if errKey != "" {
+								s.newKeyErr = s.tr(errKey)
+								return
+							}
+							s.newKeyErr = ""
+							s.takeNewKeyPassphrase()
+							s.keyReq = req
+							s.run("action.generate_key", s.generateKey)
 						}
-						s.newKeyErr = ""
-						s.takeNewKeyPassphrase()
-						s.keyReq = req
-						s.run("action.generate_key", s.generateKey)
-					}
-					if ui.Button(c, s.tr("btn.close")).Clicked() {
-						s.closeNewKeyWindow()
-					}
+						if rnpButton(c, s.tr("btn.close")).Clicked() {
+							s.closeNewKeyWindow()
+						}
+					})
 				})
 			})
 		})

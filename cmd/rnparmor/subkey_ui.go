@@ -343,6 +343,7 @@ func (s *uiState) closeRevokeWindow() {
 }
 
 func (s *uiState) viewAddSubkey(c *ui.Context) {
+	prepareSurface(c)
 	t := c.Theme()
 	ids := subkeyUsageIDs()
 	labels := make([]string, len(ids))
@@ -362,56 +363,58 @@ func (s *uiState) viewAddSubkey(c *ui.Context) {
 	primaryProtected := s.primaryProtected()
 	passPh := subkeyPassPlaceholder(s, primaryProtected)
 
-	ui.Column(c).Fill().Children(func() {
-		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).Padding(16).Gap(8).Children(func() {
-				ui.Text(c, s.tr("title.add_subkey")).FontSize(18).Bold()
-				ui.Form(c, func() {
-					ui.Field(c, s.tr("label.subkey_usage"), func() {
-						ui.Select(c, &curUsage, labels).Tooltip(s.tr(subkeyUsageDescKey(s.subUsage)))
-						if id := presetIDForLabel(curUsage, labels, ids); id != "" && id != s.subUsage {
-							s.subUsage = id
-							s.subAlg, s.subCurve, s.subBits = syncAddedSubkey(s.subUsage, "", "", 0)
-						}
-					}).Description(s.tr(subkeyUsageDescKey(s.subUsage)))
-					ui.Field(c, s.tr("label.subkey_alg"), func() {
-						s.addSubkeyAlgControls(c)
-					}).Description(s.tr(addSubkeyAlgTipKey(s.subAlg)))
-					ui.Field(c, s.tr("label.expiration"), func() {
-						ui.Select(c, &curExp, choices).Tooltip(s.tr("tip.addsub.expiry"))
-					}).Description(s.tr("tip.addsub.expiry"))
-					ui.Field(c, s.tr("label.session_pass"), func() {
-						ui.TextInput(c, &s.subPass).Password().Placeholder(passPh)
+	ui.Column(c).Fill().Padding(12).Children(func() {
+		rnpCard(c).Fill().Children(func() {
+			ui.Scroll(c).Fill().Children(func() {
+				ui.Column(c).Padding(16).Gap(8).Children(func() {
+					ui.Text(c, s.tr("title.add_subkey")).FontSize(18).Bold()
+					ui.Form(c, func() {
+						ui.Field(c, s.tr("label.subkey_usage"), func() {
+							ui.Select(c, &curUsage, labels).Tooltip(s.tr(subkeyUsageDescKey(s.subUsage)))
+							if id := presetIDForLabel(curUsage, labels, ids); id != "" && id != s.subUsage {
+								s.subUsage = id
+								s.subAlg, s.subCurve, s.subBits = syncAddedSubkey(s.subUsage, "", "", 0)
+							}
+						}).Description(s.tr(subkeyUsageDescKey(s.subUsage)))
+						ui.Field(c, s.tr("label.subkey_alg"), func() {
+							s.addSubkeyAlgControls(c)
+						}).Description(s.tr(addSubkeyAlgTipKey(s.subAlg)))
+						ui.Field(c, s.tr("label.expiration"), func() {
+							ui.Select(c, &curExp, choices).Tooltip(s.tr("tip.addsub.expiry"))
+						}).Description(s.tr("tip.addsub.expiry"))
+						ui.Field(c, s.tr("label.session_pass"), func() {
+							ui.TextInput(c, &s.subPass).Password().Placeholder(passPh)
+						})
 					})
-				})
-				for i, label := range choices {
-					if curExp == label {
-						s.subExpiry = i
-					}
-				}
-				ui.Collapsible(c, s.tr("label.advanced"), &s.subAdvanced, func() {
-					s.addSubkeyCryptoControls(c)
-				})
-				if s.subErr != "" {
-					ui.Text(c, s.subErr).TextColor(t.Danger)
-				}
-				ui.Row(c).Gap(8).Children(func() {
-					if ui.PrimaryButton(c, s.tr("btn.add_subkey_do")).Clicked() {
-						req, errKey := validateAddSubkey(s.subUsage, s.subAlg, s.subCurve, s.subHash, s.subCipher, s.subBits, s.subExpiry, s.subPass, s.passphrase, primaryProtected)
-						if errKey != "" {
-							s.subErr = s.tr(errKey)
-							return
+					for i, label := range choices {
+						if curExp == label {
+							s.subExpiry = i
 						}
-						if s.subPass != "" {
-							s.adoptPassphrase(s.subPass)
+					}
+					ui.Collapsible(c, s.tr("label.advanced"), &s.subAdvanced, func() {
+						s.addSubkeyCryptoControls(c)
+					})
+					if s.subErr != "" {
+						ui.Text(c, s.subErr).TextColor(t.Danger)
+					}
+					ui.Row(c).Gap(8).Children(func() {
+						if rnpPrimaryButton(c, s.tr("btn.add_subkey_do")).Clicked() {
+							req, errKey := validateAddSubkey(s.subUsage, s.subAlg, s.subCurve, s.subHash, s.subCipher, s.subBits, s.subExpiry, s.subPass, s.passphrase, primaryProtected)
+							if errKey != "" {
+								s.subErr = s.tr(errKey)
+								return
+							}
+							if s.subPass != "" {
+								s.adoptPassphrase(s.subPass)
+							}
+							s.subErr = ""
+							s.subReq = req
+							s.run("action.add_subkey", s.addSubkey)
 						}
-						s.subErr = ""
-						s.subReq = req
-						s.run("action.add_subkey", s.addSubkey)
-					}
-					if ui.Button(c, s.tr("btn.close")).Clicked() {
-						s.closeAddSubWindow()
-					}
+						if rnpButton(c, s.tr("btn.close")).Clicked() {
+							s.closeAddSubWindow()
+						}
+					})
 				})
 			})
 		})
@@ -461,6 +464,7 @@ func subkeyExpiryChoices(s *uiState) []string {
 }
 
 func (s *uiState) viewSubkeyExpiry(c *ui.Context) {
+	prepareSurface(c)
 	t := c.Theme()
 	choices := subkeyExpiryChoices(s)
 	if s.expiryChoice < 0 || s.expiryChoice >= len(choices) {
@@ -469,53 +473,55 @@ func (s *uiState) viewSubkeyExpiry(c *ui.Context) {
 	cur := choices[s.expiryChoice]
 	primaryProtected := s.primaryProtected()
 	passPh := subkeyPassPlaceholder(s, primaryProtected)
-	ui.Column(c).Fill().Padding(16).Gap(8).Children(func() {
-		ui.Text(c, s.tr("title.subkey_expiry")).FontSize(18).Bold()
-		ui.Text(c, s.tr("hint.expiry_subkey")).TextColor(t.TextMuted)
-		ui.Field(c, s.tr("label.expiration"), func() {
-			ui.Select(c, &cur, choices).Tooltip(s.tr("tip.addsub.expiry"))
-		}).Description(s.tr("tip.addsub.expiry"))
-		for i, label := range choices {
-			if cur == label {
-				s.expiryChoice = i
+	ui.Column(c).Fill().Padding(12).Children(func() {
+		rnpCard(c).Fill().Padding(16).Gap(8).Children(func() {
+			ui.Text(c, s.tr("title.subkey_expiry")).FontSize(18).Bold()
+			ui.Text(c, s.tr("hint.expiry_subkey")).TextColor(t.TextMuted)
+			ui.Field(c, s.tr("label.expiration"), func() {
+				ui.Select(c, &cur, choices).Tooltip(s.tr("tip.addsub.expiry"))
+			}).Description(s.tr("tip.addsub.expiry"))
+			for i, label := range choices {
+				if cur == label {
+					s.expiryChoice = i
+				}
 			}
-		}
-		ui.Field(c, s.tr("label.session_pass"), func() {
-			ui.TextInput(c, &s.expiryPass).Password().Placeholder(passPh)
-		})
-		if s.expiryErr != "" {
-			ui.Text(c, s.expiryErr).TextColor(t.Danger)
-		}
-		ui.Row(c).Gap(8).Children(func() {
-			if ui.PrimaryButton(c, s.tr("btn.apply_expiry")).Clicked() {
-				if primaryProtected && s.expiryPass == "" && s.passphrase == "" {
-					s.expiryErr = s.tr("err.pass_empty")
-					return
-				}
-				if strings.TrimSpace(s.expiryTarget) == "" {
-					s.expiryErr = s.tr("err.no_key_selected")
-					return
-				}
-				if s.expiryPass != "" {
-					s.adoptPassphrase(s.expiryPass)
-				}
-				years := 0
-				switch s.expiryChoice {
-				case 1:
-					years = 1
-				case 2:
-					years = 2
-				case 3:
-					years = 5
-				}
-				s.expiryErr = ""
-				s.targetFP = s.expiryTarget
-				s.expirySeconds = expirationFromNow(s.expiryCreated, time.Now().UTC(), years)
-				s.run("action.set_key_expiry", s.setKeyExpiry)
+			ui.Field(c, s.tr("label.session_pass"), func() {
+				ui.TextInput(c, &s.expiryPass).Password().Placeholder(passPh)
+			})
+			if s.expiryErr != "" {
+				ui.Text(c, s.expiryErr).TextColor(t.Danger)
 			}
-			if ui.Button(c, s.tr("btn.close")).Clicked() {
-				s.closeExpiryWindow()
-			}
+			ui.Row(c).Gap(8).Children(func() {
+				if rnpPrimaryButton(c, s.tr("btn.apply_expiry")).Clicked() {
+					if primaryProtected && s.expiryPass == "" && s.passphrase == "" {
+						s.expiryErr = s.tr("err.pass_empty")
+						return
+					}
+					if strings.TrimSpace(s.expiryTarget) == "" {
+						s.expiryErr = s.tr("err.no_key_selected")
+						return
+					}
+					if s.expiryPass != "" {
+						s.adoptPassphrase(s.expiryPass)
+					}
+					years := 0
+					switch s.expiryChoice {
+					case 1:
+						years = 1
+					case 2:
+						years = 2
+					case 3:
+						years = 5
+					}
+					s.expiryErr = ""
+					s.targetFP = s.expiryTarget
+					s.expirySeconds = expirationFromNow(s.expiryCreated, time.Now().UTC(), years)
+					s.run("action.set_key_expiry", s.setKeyExpiry)
+				}
+				if rnpButton(c, s.tr("btn.close")).Clicked() {
+					s.closeExpiryWindow()
+				}
+			})
 		})
 	})
 }
@@ -538,6 +544,7 @@ func revokeCodeLabelKey(id string) string {
 }
 
 func (s *uiState) viewRevokeSubkey(c *ui.Context) {
+	prepareSurface(c)
 	t := c.Theme()
 	ids := revokeCodeIDs()
 	labels := make([]string, len(ids))
@@ -549,31 +556,33 @@ func (s *uiState) viewRevokeSubkey(c *ui.Context) {
 	}
 	cur := s.tr(revokeCodeLabelKey(s.revokeCode))
 	passPh := subkeyPassPlaceholder(s, s.primaryProtected())
-	ui.Column(c).Fill().Padding(16).Gap(8).Children(func() {
-		ui.Text(c, s.tr("title.subkey_revoke")).FontSize(18).Bold()
-		ui.Text(c, s.tr("hint.revoke_subkey")).TextColor(t.Danger)
-		ui.Field(c, s.tr("label.revoke_code"), func() {
-			ui.Select(c, &cur, labels)
-			if id := presetIDForLabel(cur, labels, ids); id != "" {
-				s.revokeCode = id
+	ui.Column(c).Fill().Padding(12).Children(func() {
+		rnpCard(c).Fill().Padding(16).Gap(8).Children(func() {
+			ui.Text(c, s.tr("title.subkey_revoke")).FontSize(18).Bold()
+			ui.Text(c, s.tr("hint.revoke_subkey")).TextColor(t.Danger)
+			ui.Field(c, s.tr("label.revoke_code"), func() {
+				ui.Select(c, &cur, labels)
+				if id := presetIDForLabel(cur, labels, ids); id != "" {
+					s.revokeCode = id
+				}
+			})
+			ui.Field(c, s.tr("label.revoke_reason"), func() {
+				ui.TextInput(c, &s.revokeReason).Placeholder(s.tr("label.revoke_reason"))
+			})
+			ui.Field(c, s.tr("label.session_pass"), func() {
+				ui.TextInput(c, &s.revokePass).Password().Placeholder(passPh)
+			})
+			if s.revokeErr != "" {
+				ui.Text(c, s.revokeErr).TextColor(t.Danger)
 			}
-		})
-		ui.Field(c, s.tr("label.revoke_reason"), func() {
-			ui.TextInput(c, &s.revokeReason).Placeholder(s.tr("label.revoke_reason"))
-		})
-		ui.Field(c, s.tr("label.session_pass"), func() {
-			ui.TextInput(c, &s.revokePass).Password().Placeholder(passPh)
-		})
-		if s.revokeErr != "" {
-			ui.Text(c, s.revokeErr).TextColor(t.Danger)
-		}
-		ui.Row(c).Gap(8).Children(func() {
-			if ui.Button(c, s.tr("btn.subkey_revoke_do")).Clicked() {
-				s.confirmRevokeSubkey()
-			}
-			if ui.Button(c, s.tr("btn.close")).Clicked() {
-				s.closeRevokeWindow()
-			}
+			ui.Row(c).Gap(8).Children(func() {
+				if rnpDangerButton(c, s.tr("btn.subkey_revoke_do")).Clicked() {
+					s.confirmRevokeSubkey()
+				}
+				if rnpButton(c, s.tr("btn.close")).Clicked() {
+					s.closeRevokeWindow()
+				}
+			})
 		})
 	})
 }
@@ -702,7 +711,7 @@ func (s *uiState) viewSubkeyCard(c *ui.Context, parentHasSecret bool, sub rnp.Ke
 		if selected {
 			grouped := groupFingerprint(sub.Fingerprint)
 			ui.Text(c, grouped).FontSize(12)
-			if ui.Button(c, s.tr("btn.copy_fingerprint")).Clicked() {
+			if rnpButton(c, s.tr("btn.copy_fingerprint")).Clicked() {
 				s.copyFingerprintText(grouped)
 			}
 		}
@@ -711,13 +720,13 @@ func (s *uiState) viewSubkeyCard(c *ui.Context, parentHasSecret bool, sub rnp.Ke
 			created := sub.CreatedUnix
 			revoked := sub.IsRevoked
 			ui.Row(c).Gap(6).Children(func() {
-				if ui.Button(c, s.tr("btn.subkey_expiry")).Clicked() {
+				if rnpButton(c, s.tr("btn.subkey_expiry")).Clicked() {
 					s.openExpiryWindow(fp, created)
 				}
-				if !revoked && ui.Button(c, s.tr("btn.subkey_revoke")).Clicked() {
+				if !revoked && rnpDangerButton(c, s.tr("btn.subkey_revoke")).Clicked() {
 					s.openRevokeWindow(fp)
 				}
-				if ui.Button(c, s.tr("btn.subkey_delete")).Clicked() {
+				if rnpDangerButton(c, s.tr("btn.subkey_delete")).Clicked() {
 					s.confirmDeleteSubkey(fp)
 				}
 			})
