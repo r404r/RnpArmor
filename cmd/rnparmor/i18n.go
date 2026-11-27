@@ -1724,6 +1724,16 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangZH: "指纹已复制",
 		LangJA: "フィンガープリントをコピーしました",
 	},
+	"toast.text_signed": {
+		LangEN: "Text signed",
+		LangZH: "文本已签名",
+		LangJA: "テキストを署名しました",
+	},
+	"toast.text_encrypted": {
+		LangEN: "Text encrypted",
+		LangZH: "文本已加密",
+		LangJA: "テキストを暗号化しました",
+	},
 	"btn.ok": {
 		LangEN: "OK",
 		LangZH: "确定",
