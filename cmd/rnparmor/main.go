@@ -154,6 +154,12 @@ type uiState struct {
 	alertTitle    string
 	alertMsg      string
 
+	// Quit confirmation. These flags are touched on the UI thread, the
+	// same way alertOpen is: menu clicks, OnBeforeQuit, and view.
+	quitConfirmOpen bool
+	quitConfirmed   bool
+	mainClosed      bool
+
 	demoSceneApplied bool
 	demoOpenAbout    bool
 }
@@ -227,6 +233,8 @@ func main() {
 	}
 
 	mygo.App.WhenReady(func() {
+		mygo.App.OnBeforeQuit(st.handleBeforeQuit)
+		mygo.App.OnQuitCanceled(st.handleQuitCanceled)
 		if runtime.GOOS == "darwin" {
 			if err := mygo.App.Dock.SetIcon(icons.AppIconPNG); err != nil {
 				log.Printf("dock icon: %v", err)
@@ -239,6 +247,7 @@ func main() {
 			log.Printf("window icon: %v", err)
 		}
 		w.OnClosed(func() {
+			st.mainClosed = true
 			st.closeAboutWindow()
 			st.closeNewKeyWindow()
 			st.closeImportWindow()
@@ -443,7 +452,7 @@ func (s *uiState) menuTemplate() []*mygo.MenuItem {
 				{Label: s.tr("btn.load_keyring"), Click: func(*mygo.MenuItem, *mygo.Window) { s.run("action.load_keyring", s.loadKeyring) }},
 				{Label: s.tr("btn.save_keyring"), Click: func(*mygo.MenuItem, *mygo.Window) { s.run("action.save_keyring", s.saveKeyring) }},
 				mygo.Separator(),
-				{Label: s.tr("menu.file.quit"), Click: func(*mygo.MenuItem, *mygo.Window) { mygo.App.Quit() }},
+				{Label: s.tr("menu.file.quit"), Click: func(*mygo.MenuItem, *mygo.Window) { s.requestQuit() }},
 			},
 		},
 		{
@@ -470,7 +479,106 @@ func (s *uiState) applyMainMenu() {
 	if s.mainWin == nil || s.mainWin.IsDestroyed() {
 		return
 	}
-	mygo.App.SetMenu(mygo.NewMenu(s.menuTemplate()))
+	mygo.App.SetMenu(mygo.NewMenu(s.menuTemplateForOS(runtime.GOOS)))
+}
+
+// menuTemplateForOS returns the menu bar for goos. macOS gets the standard
+// application menu first so Cmd+Q reaches AppKit terminate:. Other systems
+// keep the four menus menuTemplate returns; their File → Quit item does
+// not bind Cmd+Q.
+func (s *uiState) menuTemplateForOS(goos string) []*mygo.MenuItem {
+	menus := s.menuTemplate()
+	if goos != "darwin" {
+		return menus
+	}
+	app := []*mygo.MenuItem{s.darwinApplicationMenu()}
+	return append(app, menus...)
+}
+
+// darwinApplicationMenu is the first macOS menu bar menu. About opens this
+// app's window rather than RoleAbout, whose native selector is AppKit's
+// standard about panel. The Quit item sets RoleQuit and Cmd+Q and leaves
+// Click nil: menuItemClicked runs the role before Click, and on darwin the
+// role is the terminate: selector, so a Click would quit twice.
+func (s *uiState) darwinApplicationMenu() *mygo.MenuItem {
+	return &mygo.MenuItem{
+		Label: s.tr("title.app"),
+		Submenu: []*mygo.MenuItem{
+			{Label: s.tr("menu.help.about"), Click: func(*mygo.MenuItem, *mygo.Window) { s.openAboutWindow() }},
+			mygo.Separator(),
+			// roleSubmenu has no Services case, so the role alone has a nil
+			// submenu and darwin never calls setServicesMenu. An empty
+			// submenu is what makes AppKit fill Services.
+			{Role: mygo.RoleServices, Submenu: []*mygo.MenuItem{}},
+			mygo.Separator(),
+			{Role: mygo.RoleHide},
+			{Role: mygo.RoleHideOthers},
+			{Role: mygo.RoleUnhide},
+			mygo.Separator(),
+			{Label: s.tr("menu.file.quit"), Role: mygo.RoleQuit, Accelerator: "Cmd+Q"},
+		},
+	}
+}
+
+// shouldInterceptQuit reports whether a quit on goos must stop for a
+// confirmation dialog. Linux SIGTERM is an OnBeforeQuit that screenshot
+// scripts cancel with kill, so only a live macOS main window is asked.
+func (s *uiState) shouldInterceptQuit(goos string, sessionEnding bool) bool {
+	if sessionEnding || s.quitConfirmed || s.mainClosed || goos != "darwin" {
+		return false
+	}
+	if s.mainWin == nil || s.mainWin.IsDestroyed() {
+		return false
+	}
+	return true
+}
+
+func (s *uiState) handleBeforeQuit(e *mygo.QuitEvent) {
+	if e == nil || !s.shouldInterceptQuit(runtime.GOOS, e.SessionEnding) {
+		return
+	}
+	e.PreventDefault()
+	s.openQuitConfirm()
+}
+
+func (s *uiState) handleQuitCanceled() {
+	s.quitConfirmed = false
+}
+
+func (s *uiState) openQuitConfirm() {
+	s.quitConfirmOpen = true
+	if s.mainWin != nil && !s.mainWin.IsDestroyed() {
+		s.mainWin.Show()
+		s.mainWin.Focus()
+		s.mainWin.Invalidate()
+	}
+}
+
+// requestQuit is File → Quit on every platform. The macOS application menu
+// uses RoleQuit instead, which comes back through handleBeforeQuit.
+func (s *uiState) requestQuit() {
+	if s.mainWin != nil && !s.mainWin.IsDestroyed() && !s.mainClosed {
+		s.openQuitConfirm()
+		return
+	}
+	s.quitConfirmed = true
+	mygo.App.Quit()
+}
+
+func (s *uiState) confirmQuit() {
+	s.quitConfirmOpen = false
+	s.quitConfirmed = true
+	mygo.App.Quit()
+}
+
+func (s *uiState) quitConfirmMessage() string {
+	s.mu.Lock()
+	busy := s.busy
+	s.mu.Unlock()
+	if busy {
+		return s.tr("dlg.quit_busy_msg")
+	}
+	return s.tr("dlg.quit_msg")
 }
 
 func (s *uiState) view(c *ui.Context) {
@@ -511,6 +619,13 @@ func (s *uiState) view(c *ui.Context) {
 		s.viewStatusBar(c)
 	})
 	s.viewToastViewport(c)
+	if s.quitConfirmOpen {
+		switch ui.AlertDialog(c, &s.quitConfirmOpen, s.tr("dlg.quit_title"), s.quitConfirmMessage(), s.tr("btn.cancel"), s.tr("btn.quit")) {
+		case 1:
+			s.confirmQuit()
+		}
+		return
+	}
 	ui.AlertDialog(c, &s.alertOpen, s.alertTitle, s.alertMsg, s.tr("btn.ok"))
 }
 

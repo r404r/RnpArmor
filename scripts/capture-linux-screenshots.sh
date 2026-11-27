@@ -83,6 +83,7 @@ export RNPARMOR_LIBRNP="$LIB"
 CURRENT_CMD="init"
 LAST_LOG=""
 FAIL_DETAIL=""
+ERROR_EMITTED=0
 XVFB_PID=""
 OPENBOX_PID=""
 APP_PID=""
@@ -94,6 +95,7 @@ sanitize_gha() {
 emit_error() {
   local title="$1"
   local msg="$2"
+  ERROR_EMITTED=1
   if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
     echo "::error title=$(sanitize_gha "$title")::$(sanitize_gha "$msg")"
   fi
@@ -163,6 +165,11 @@ cleanup() {
   local ec=$?
   trap - ERR
   set +e
+  if [[ "$ec" -ne 0 && "${ERROR_EMITTED:-0}" -eq 0 ]]; then
+    local tail_text
+    tail_text=$(log_tail)
+    emit_error "linux-screenshot" "command '${CURRENT_CMD:-unknown}' failed exit=${ec} detail='${FAIL_DETAIL:-none}' log_tail=${tail_text}"
+  fi
   stop_app
   stop_pid "${OPENBOX_PID:-}"
   OPENBOX_PID=""
@@ -491,7 +498,7 @@ capture_shot() {
   APP_PID=$!
 
   CURRENT_CMD="find-window-$png_name"
-  for _ in $(seq 1 20); do
+  for _ in $(seq 1 40); do
     if ! kill -0 "$APP_PID" 2>/dev/null; then
       FAIL_DETAIL="rnparmor exited before the window appeared ($png_name)"
       echo "$FAIL_DETAIL" >&2

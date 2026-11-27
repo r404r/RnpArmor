@@ -120,6 +120,147 @@ func TestMenuTemplateLayoutAndRadioLanguage(t *testing.T) {
 	}
 }
 
+func TestMenuTemplateForOS(t *testing.T) {
+	s := &uiState{langIdx: LangIndex(LangEN)}
+
+	for _, goos := range []string{"linux", "windows"} {
+		items := s.menuTemplateForOS(goos)
+		if got := len(items); got != 4 {
+			t.Fatalf("%s top menu count = %d, want 4", goos, got)
+		}
+		if items[0].Label != Tr(LangEN, "menu.file") {
+			t.Fatalf("%s menu[0] = %q, want File", goos, items[0].Label)
+		}
+		quit := items[0].Submenu[5]
+		if quit.Accelerator != "" || quit.Role != "" || quit.Click == nil {
+			t.Fatalf("%s file quit accel=%q role=%q click-nil=%v", goos, quit.Accelerator, quit.Role, quit.Click == nil)
+		}
+	}
+
+	items := s.menuTemplateForOS("darwin")
+	if got := len(items); got != 5 {
+		t.Fatalf("darwin top menu count = %d, want 5", got)
+	}
+	wantLabels := []string{
+		Tr(LangEN, "title.app"),
+		Tr(LangEN, "menu.file"),
+		Tr(LangEN, "menu.workspace"),
+		Tr(LangEN, "menu.language"),
+		Tr(LangEN, "menu.help"),
+	}
+	for i, want := range wantLabels {
+		if items[i].Label != want {
+			t.Fatalf("darwin menu[%d] = %q, want %q", i, items[i].Label, want)
+		}
+	}
+
+	app := items[0].Submenu
+	if got := len(app); got != 9 {
+		t.Fatalf("darwin app menu count = %d, want 9", got)
+	}
+	if app[0].Label != Tr(LangEN, "menu.help.about") || app[0].Role != "" || app[0].Click == nil {
+		t.Fatalf("about = label %q role %q click-nil %v", app[0].Label, app[0].Role, app[0].Click == nil)
+	}
+	if app[1].Type != mygo.MenuItemSeparator || app[3].Type != mygo.MenuItemSeparator || app[7].Type != mygo.MenuItemSeparator {
+		t.Fatalf("app separators = %q %q %q", app[1].Type, app[3].Type, app[7].Type)
+	}
+	if app[2].Role != mygo.RoleServices || app[2].Submenu == nil {
+		t.Fatalf("services role=%q submenu-nil=%v", app[2].Role, app[2].Submenu == nil)
+	}
+	if len(app[2].Submenu) != 0 {
+		t.Fatalf("services submenu len = %d, want 0", len(app[2].Submenu))
+	}
+	if app[4].Role != mygo.RoleHide || app[5].Role != mygo.RoleHideOthers || app[6].Role != mygo.RoleUnhide {
+		t.Fatalf("hide roles = %q %q %q", app[4].Role, app[5].Role, app[6].Role)
+	}
+	quit := app[8]
+	if quit.Label != Tr(LangEN, "menu.file.quit") || quit.Role != mygo.RoleQuit || quit.Accelerator != "Cmd+Q" || quit.Click != nil {
+		t.Fatalf("app quit label=%q role=%q accel=%q click-nil=%v", quit.Label, quit.Role, quit.Accelerator, quit.Click == nil)
+	}
+
+	fileQuit := items[1].Submenu[5]
+	if fileQuit.Label != Tr(LangEN, "menu.file.quit") || fileQuit.Accelerator == "Cmd+Q" || fileQuit.Role == mygo.RoleQuit || fileQuit.Click == nil {
+		t.Fatalf("darwin file quit label=%q role=%q accel=%q click-nil=%v", fileQuit.Label, fileQuit.Role, fileQuit.Accelerator, fileQuit.Click == nil)
+	}
+	cmdQ := 0
+	var walk func([]*mygo.MenuItem)
+	walk = func(menu []*mygo.MenuItem) {
+		for _, it := range menu {
+			if it.Accelerator == "Cmd+Q" {
+				cmdQ++
+			}
+			walk(it.Submenu)
+		}
+	}
+	walk(items)
+	if cmdQ != 1 {
+		t.Fatalf("Cmd+Q bindings = %d, want 1", cmdQ)
+	}
+}
+
+func TestQuitConfirmState(t *testing.T) {
+	live := &mygo.Window{}
+	s := &uiState{langIdx: LangIndex(LangEN), mainWin: live}
+	if !s.shouldInterceptQuit("darwin", false) {
+		t.Fatal("darwin with a live main window should intercept")
+	}
+	if s.shouldInterceptQuit("darwin", true) {
+		t.Fatal("session ending must quit")
+	}
+	s.quitConfirmed = true
+	if s.shouldInterceptQuit("darwin", false) {
+		t.Fatal("confirmed quit must pass")
+	}
+	s.quitConfirmed = false
+	s.mainClosed = true
+	if s.shouldInterceptQuit("darwin", false) {
+		t.Fatal("closed main window must pass")
+	}
+	s.mainClosed = false
+	if s.shouldInterceptQuit("linux", false) || s.shouldInterceptQuit("windows", false) {
+		t.Fatal("non-darwin OnBeforeQuit must not block SIGTERM")
+	}
+	s.mainWin = nil
+	if s.shouldInterceptQuit("darwin", false) {
+		t.Fatal("nil main window must pass")
+	}
+
+	// handleBeforeQuit follows the host OS. On darwin it would show the
+	// dialog; on Linux it must not, or SIGTERM from the screenshot script hangs.
+	if runtime.GOOS != "darwin" {
+		s.mainWin = live
+		e := &mygo.QuitEvent{}
+		s.handleBeforeQuit(e)
+		if e.DefaultPrevented() || s.quitConfirmOpen {
+			t.Fatal("non-darwin OnBeforeQuit blocked quit")
+		}
+	}
+
+	s.handleQuitCanceled()
+	s.quitConfirmed = true
+	s.handleQuitCanceled()
+	if s.quitConfirmed {
+		t.Fatal("handleQuitCanceled left quitConfirmed set")
+	}
+
+	for _, lang := range []Lang{LangEN, LangZH, LangJA} {
+		s.langIdx = LangIndex(lang)
+		s.busy = false
+		if got, want := s.quitConfirmMessage(), Tr(lang, "dlg.quit_msg"); got != want {
+			t.Fatalf("%s idle message = %q, want %q", lang, got, want)
+		}
+		s.mu.Lock()
+		s.busy = true
+		s.mu.Unlock()
+		if got, want := s.quitConfirmMessage(), Tr(lang, "dlg.quit_busy_msg"); got != want {
+			t.Fatalf("%s busy message = %q, want %q", lang, got, want)
+		}
+		s.mu.Lock()
+		s.busy = false
+		s.mu.Unlock()
+	}
+}
+
 func TestBuildSmokeOutputAndWriteSmokeOutput(t *testing.T) {
 	got := buildSmokeOutput("v1.2.3", `C:\\RnpArmor\\rnp.dll`, "0.18.1")
 	for _, wantLine := range []string{
@@ -1843,7 +1984,8 @@ func TestI18nComplete(t *testing.T) {
 		"status.key_count_one", "status.key_count_many", "tip.copy_lib_path",
 		"toast.done", "toast.path_copied", "toast.fingerprint_copied",
 		"toast.text_signed", "toast.text_encrypted",
-		"btn.ok", "alert.error", "alert.redacted",
+		"btn.ok", "btn.quit", "alert.error", "alert.redacted",
+		"dlg.quit_title", "dlg.quit_msg", "dlg.quit_busy_msg",
 		"state.idle", "state.busy", "status.ready",
 	}
 	for _, k := range keys {
