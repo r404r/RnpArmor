@@ -1190,6 +1190,130 @@ func TestEmptyPassphraseKeyLifecycle(t *testing.T) {
 	}
 }
 
+func TestGenerateKeyExpiration(t *testing.T) {
+	if os.Getenv("RNPARMOR_LIBRNP") == "" {
+		t.Skip("RNPARMOR_LIBRNP is not set")
+	}
+	ctx := context.Background()
+	const year = 365 * 24 * 60 * 60
+	pass := newPass(t)
+	prot := openSession(t, pass)
+
+	never, err := prot.GenerateKeyWithSpec(ctx, KeyGenRequest{
+		UserID:        "Never <never@example.com>",
+		PrimaryAlg:    "EDDSA",
+		PrimaryCurve:  "Ed25519",
+		SubkeyAlg:     "ECDH",
+		SubkeyCurve:   "Curve25519",
+		HashAlg:       "SHA256",
+		SymmCipher:    "AES256",
+		ExpirationSec: 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertKeyExpiration(t, never, 0)
+	if !never.HasSecret || !never.IsProtected {
+		t.Fatalf("protected never %+v", never)
+	}
+
+	oneYear, err := prot.GenerateKeyWithSpec(ctx, KeyGenRequest{
+		UserID:        "Year <year@example.com>",
+		PrimaryAlg:    "EDDSA",
+		PrimaryCurve:  "Ed25519",
+		SubkeyAlg:     "ECDH",
+		SubkeyCurve:   "Curve25519",
+		HashAlg:       "SHA256",
+		SymmCipher:    "AES256",
+		ExpirationSec: year,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertKeyExpiration(t, oneYear, year)
+
+	open, err := OpenOptionalPass(libPath(t), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = open.Close() })
+	five, err := open.GenerateKeyWithSpec(ctx, KeyGenRequest{
+		UserID:        "Five <five@example.com>",
+		PrimaryAlg:    "EDDSA",
+		PrimaryCurve:  "Ed25519",
+		SubkeyAlg:     "ECDH",
+		SubkeyCurve:   "Curve25519",
+		HashAlg:       "SHA256",
+		SymmCipher:    "AES256",
+		ExpirationSec: 5 * year,
+		Unprotected:   true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertKeyExpiration(t, five, 5*year)
+	assertUnprotectedSecret(t, five)
+	for _, sk := range five.Subkeys {
+		assertUnprotectedSecret(t, sk)
+	}
+
+	rsaNever, err := prot.GenerateKeyWithSpec(ctx, KeyGenRequest{
+		UserID:        "RSA Never <rsa-never@example.com>",
+		PrimaryAlg:    "RSA",
+		PrimaryBits:   2048,
+		SubkeyAlg:     "RSA",
+		SubkeyBits:    2048,
+		HashAlg:       "SHA256",
+		SymmCipher:    "AES256",
+		ExpirationSec: 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertKeyExpiration(t, rsaNever, 0)
+
+	rsaYear, err := open.GenerateKeyWithSpec(ctx, KeyGenRequest{
+		UserID:        "RSA Year <rsa-year@example.com>",
+		PrimaryAlg:    "RSA",
+		PrimaryBits:   2048,
+		SubkeyAlg:     "RSA",
+		SubkeyBits:    2048,
+		HashAlg:       "SHA256",
+		SymmCipher:    "AES256",
+		ExpirationSec: year,
+		Unprotected:   true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertKeyExpiration(t, rsaYear, year)
+	assertUnprotectedSecret(t, rsaYear)
+}
+
+// keyExpirationSeconds is the librnp expiration duration. KeySummary stores
+// the absolute expiry; zero means the key does not expire.
+func keyExpirationSeconds(k KeySummary) uint32 {
+	if k.ExpiresUnix == 0 {
+		return 0
+	}
+	return k.ExpiresUnix - k.CreatedUnix
+}
+
+func assertKeyExpiration(t *testing.T, k KeySummary, want uint32) {
+	t.Helper()
+	if len(k.Subkeys) == 0 {
+		t.Fatalf("no subkey %+v", k)
+	}
+	if got := keyExpirationSeconds(k); got != want {
+		t.Fatalf("primary expiration %d want %d expires %d created %d", got, want, k.ExpiresUnix, k.CreatedUnix)
+	}
+	for _, sk := range k.Subkeys {
+		if got := keyExpirationSeconds(sk); got != want {
+			t.Fatalf("subkey expiration %d want %d %+v", got, want, sk)
+		}
+	}
+}
+
 func assertUnprotectedSecret(t *testing.T, k KeySummary) {
 	t.Helper()
 	if !k.HasSecret || k.IsProtected || k.IsLocked {

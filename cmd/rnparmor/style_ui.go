@@ -14,6 +14,13 @@ const (
 	rnpBtnDanger    = "danger"
 )
 
+// passEyeIcon and passEyeOffIcon are 24px strokes in currentColor so they
+// stay sharp on a high-DPI display and follow the button text color.
+var (
+	passEyeIcon    = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`))
+	passEyeOffIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.58 10.58A3 3 0 0 0 13.42 13.42"/><path d="M9.88 5.09A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a18.4 18.4 0 0 1-3.17 4.15"/><path d="M6.11 6.11C3.6 7.86 2 12 2 12s3.5 7 10 7a11 11 0 0 0 4.13-.78"/></svg>`))
+)
+
 // rnpFace is the painted look of one restrained raised button.
 type rnpFace struct {
 	From, To        ui.Color
@@ -88,6 +95,42 @@ func rnpCard(c *ui.Context) ui.Element {
 
 func rnpButton(c *ui.Context, label string) ui.Element {
 	return paintRnpButton(c, label, rnpBtnSecondary)
+}
+
+// rnpPassEye is the show/hide control beside a passphrase field.
+// shown false draws the open eye (Show). shown true draws the slashed eye (Hide).
+func rnpPassEye(c *ui.Context, shown *bool, showLabel, hideLabel string) ui.Element {
+	label := showLabel
+	icon := passEyeIcon
+	if shown != nil && *shown {
+		label = hideLabel
+		icon = passEyeOffIcon
+	}
+	b := ui.ButtonBase(c)
+	face := secondaryFace(b.Hovered(), b.Pressed())
+	b.Padding(4, 6).Radius(7).Cursor(ui.CursorPointer).
+		Gradient(face.From, face.To, 180).
+		Border(1, face.Border).
+		TextColor(face.Text).
+		Tooltip(label).
+		Label(label)
+	if b.Pressed() {
+		b.Translate(0, 1)
+	}
+	b.Children(func() {
+		ui.Icon(c, icon).FontSize(16)
+	})
+	if b.Clicked() {
+		flipPassVisible(shown)
+	}
+	return b
+}
+
+func flipPassVisible(shown *bool) {
+	if shown == nil {
+		return
+	}
+	*shown = !*shown
 }
 
 func rnpPrimaryButton(c *ui.Context, label string) ui.Element {

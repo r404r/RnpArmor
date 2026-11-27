@@ -86,15 +86,18 @@ type uiState struct {
 	shownSig      string
 	keyJSONOpen   bool
 
-	newKeyWin      *mygo.Window
-	newKeyName     string
-	newKeyEmail    string
-	newKeyPass     string
-	newKeyPass2    string
-	newKeyExpiry   int
-	newKeyPreset   string
-	newKeyAdvanced bool
-	newKeyErr      string
+	newKeyWin       *mygo.Window
+	newKeyName      string
+	newKeyEmail     string
+	newKeyPass      string
+	newKeyPass2     string
+	newKeyShowPass  bool
+	newKeyShowPass2 bool
+	newKeyChecked   bool
+	newKeyExpiry    int
+	newKeyPreset    string
+	newKeyAdvanced  bool
+	newKeyErr       string
 
 	importWin            *mygo.Window
 	importText           string

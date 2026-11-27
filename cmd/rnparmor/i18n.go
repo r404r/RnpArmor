@@ -1589,6 +1589,16 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangZH: "将使用该口令加密保护私钥。",
 		LangJA: "このパスフレーズで秘密鍵を暗号化して保護します。",
 	},
+	"tip.show_passphrase": {
+		LangEN: "Show passphrase",
+		LangZH: "显示口令",
+		LangJA: "パスフレーズを表示",
+	},
+	"tip.hide_passphrase": {
+		LangEN: "Hide passphrase",
+		LangZH: "隐藏口令",
+		LangJA: "パスフレーズを隠す",
+	},
 	"badge.unprotected": {
 		LangEN: "No Passphrase",
 		LangZH: "无口令保护",

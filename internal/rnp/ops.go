@@ -401,41 +401,80 @@ func (s *Session) GenerateKeyWithSpec(ctx context.Context, req KeyGenRequest) (K
 			uid = "rnp-armor-ephemeral"
 		}
 
-		// Omitting protection leaves the secret as RFC 4880 plaintext.
-		// The default still encrypts the secret with the password callback.
-		var protect map[string]any
-		if !req.Unprotected {
-			symm := defaultAlg(req.SymmCipher, "AES256")
-			protect = map[string]any{
-				"cipher": symm,
-				"hash":   hashAlg,
-				"mode":   "CFB",
+		// rnp_generate_key_json ignores "expiration" on librnp 0.18.1
+		// (parse_keygen_common_fields assigns the field backwards), so every
+		// key fell back to a 2-year default. The op API sets the seconds
+		// directly. Zero is never. EDDSA does not take a curve, matching
+		// Session.generate. Unprotected omits the password request:
+		// genReqPass(false) returns RNP_ERROR_NULL_POINTER.
+		cipher := defaultAlg(req.SymmCipher, "AES256")
+		protect := func(op uintptr) error {
+			if req.Unprotected {
+				return nil
 			}
-			if req.S2KIterations > 0 {
-				protect["iterations"] = req.S2KIterations
+			if err := bound.check("generate", bound.genReqPass(op, true)); err != nil {
+				return err
 			}
+			if err := bound.check("generate", bound.genCipher(op, cipher)); err != nil {
+				return err
+			}
+			if err := bound.check("generate", bound.genProtHash(op, hashAlg)); err != nil {
+				return err
+			}
+			if err := bound.check("generate", bound.genMode(op, "cfb")); err != nil {
+				return err
+			}
+			iter := req.S2KIterations
+			if iter == 0 {
+				iter = 1024
+			}
+			return bound.check("generate", bound.genIter(op, iter))
 		}
 
-		primary := map[string]any{
-			"type":   primaryAlg,
-			"userid": uid,
-			"usage":  []string{"sign", "certify"},
-			"hash":   hashAlg,
-		}
-		if protect != nil {
-			primary["protection"] = protect
-		}
-		if req.PrimaryBits > 0 && (primaryAlg == "RSA" || primaryAlg == "DSA" || primaryAlg == "ELGAMAL") {
-			primary["length"] = req.PrimaryBits
-		}
-		if primaryAlg == "ECDSA" || primaryAlg == "ECDH" || primaryAlg == "SM2" {
-			if c := normalizeCurve(req.PrimaryCurve); c != "" {
-				primary["curve"] = c
+		var op uintptr
+		failOp := func(err error) error {
+			if op != 0 {
+				bound.genDestroy(op)
+				op = 0
 			}
+			return err
 		}
-		if req.ExpirationSec > 0 {
-			primary["expiration"] = req.ExpirationSec
+		if err := bound.check("generate", bound.genCreate(&op, s.ffi, primaryAlg)); err != nil {
+			return failOp(err)
 		}
+		if err := bound.check("generate", bound.genUser(op, uid)); err != nil {
+			return failOp(err)
+		}
+		if err := bound.check("generate", bound.genUsage(op, "sign")); err != nil {
+			return failOp(err)
+		}
+		if err := bound.check("generate", bound.genUsage(op, "certify")); err != nil {
+			return failOp(err)
+		}
+		if err := bound.check("generate", bound.genHash(op, hashAlg)); err != nil {
+			return failOp(err)
+		}
+		if err := setGenMaterial(op, primaryAlg, req.PrimaryBits, req.PrimaryCurve, ""); err != nil {
+			return failOp(err)
+		}
+		if err := bound.check("generate", bound.genExpire(op, req.ExpirationSec)); err != nil {
+			return failOp(err)
+		}
+		if err := protect(op); err != nil {
+			return failOp(err)
+		}
+		if err := bound.check("generate", bound.genExec(op)); err != nil {
+			return failOp(err)
+		}
+		var primaryKey uintptr
+		if err := bound.check("generate", bound.genKey(op, &primaryKey)); err != nil {
+			if primaryKey != 0 {
+				bound.keyDestroy(primaryKey)
+			}
+			return failOp(err)
+		}
+		bound.genDestroy(op)
+		op = 0
 
 		subAlg := defaultAlg(req.SubkeyAlg, "")
 		if subAlg == "" {
@@ -450,66 +489,54 @@ func (s *Session) GenerateKeyWithSpec(ctx context.Context, req KeyGenRequest) (K
 				subAlg = "ECDH"
 			}
 		}
-		sub := map[string]any{
-			"type":  subAlg,
-			"usage": []string{"encrypt"},
+		subDefaultCurve := ""
+		if subAlg == "ECDH" {
+			subDefaultCurve = "Curve25519"
 		}
-		if protect != nil {
-			sub["protection"] = protect
+		if err := bound.check("generate", bound.subCreate(&op, s.ffi, primaryKey, subAlg)); err != nil {
+			s.dropGeneratedKey(primaryKey)
+			return failOp(err)
 		}
-		if req.SubkeyBits > 0 && (subAlg == "RSA" || subAlg == "DSA" || subAlg == "ELGAMAL") {
-			sub["length"] = req.SubkeyBits
+		// A fresh subkey op can carry a default usage. Clear it so the
+		// encrypt subkey matches the old JSON spec and AddSubkey.
+		if err := bound.check("generate", bound.genClearUse(op)); err != nil {
+			s.dropGeneratedKey(primaryKey)
+			return failOp(err)
 		}
-		if subAlg == "ECDH" || subAlg == "ECDSA" || subAlg == "SM2" {
-			if c := normalizeCurve(req.SubkeyCurve); c != "" {
-				sub["curve"] = c
-			} else if subAlg == "ECDH" {
-				sub["curve"] = "Curve25519"
+		if err := bound.check("generate", bound.genUsage(op, "encrypt")); err != nil {
+			s.dropGeneratedKey(primaryKey)
+			return failOp(err)
+		}
+		if err := bound.check("generate", bound.genHash(op, hashAlg)); err != nil {
+			s.dropGeneratedKey(primaryKey)
+			return failOp(err)
+		}
+		if err := setGenMaterial(op, subAlg, req.SubkeyBits, req.SubkeyCurve, subDefaultCurve); err != nil {
+			s.dropGeneratedKey(primaryKey)
+			return failOp(err)
+		}
+		if err := bound.check("generate", bound.genExpire(op, req.ExpirationSec)); err != nil {
+			s.dropGeneratedKey(primaryKey)
+			return failOp(err)
+		}
+		if err := protect(op); err != nil {
+			s.dropGeneratedKey(primaryKey)
+			return failOp(err)
+		}
+		if err := bound.check("generate", bound.genExec(op)); err != nil {
+			s.dropGeneratedKey(primaryKey)
+			return failOp(err)
+		}
+		var encKey uintptr
+		if err := bound.check("generate", bound.genKey(op, &encKey)); err != nil {
+			if encKey != 0 {
+				bound.keyDestroy(encKey)
 			}
+			s.dropGeneratedKey(primaryKey)
+			return failOp(err)
 		}
-		if req.ExpirationSec > 0 {
-			sub["expiration"] = req.ExpirationSec
-		}
-
-		desc := map[string]any{"primary": primary, "sub": sub}
-		raw, jerr := json.Marshal(desc)
-		if jerr != nil {
-			return jerr
-		}
-
-		var resPtr uintptr
-		if err := bound.check("generate_key_json", bound.genJSON(s.ffi, string(raw), &resPtr)); err != nil {
-			return err
-		}
-		resJSON := takeAllocatedCString(resPtr)
-
-		var gen struct {
-			Primary struct {
-				Grip string `json:"grip"`
-			} `json:"primary"`
-			Sub struct {
-				Grip string `json:"grip"`
-			} `json:"sub"`
-		}
-		if err := json.Unmarshal([]byte(resJSON), &gen); err != nil {
-			return err
-		}
-		if gen.Primary.Grip == "" {
-			return errorsNew("generate_key_json returned no primary grip")
-		}
-
-		primaryKey, err := s.locateKeyHandle("grip", gen.Primary.Grip)
-		if err != nil {
-			return err
-		}
-		encKey := uintptr(0)
-		if strings.TrimSpace(gen.Sub.Grip) != "" {
-			encKey, err = s.locateKeyHandle("grip", gen.Sub.Grip)
-			if err != nil {
-				bound.keyDestroy(primaryKey)
-				return err
-			}
-		}
+		bound.genDestroy(op)
+		op = 0
 
 		summary, err := s.keySummaryFromHandle(primaryKey, true)
 		if err != nil {
@@ -534,6 +561,39 @@ func (s *Session) GenerateKeyWithSpec(ctx context.Context, req KeyGenRequest) (K
 		return nil
 	})
 	return out, err
+}
+
+// setGenMaterial sets bits or a curve. EDDSA is left alone: librnp picks
+// Ed25519, and rnp_op_generate_set_curve is not valid for it.
+func setGenMaterial(op uintptr, alg string, bits int, curve, emptyDefault string) error {
+	switch alg {
+	case "RSA", "DSA", "ELGAMAL":
+		if bits <= 0 {
+			return nil
+		}
+		return bound.check("generate", bound.genBits(op, uint32(bits)))
+	case "ECDSA", "ECDH", "SM2":
+		c := normalizeCurve(curve)
+		if c == "" {
+			c = emptyDefault
+		}
+		if c == "" {
+			return nil
+		}
+		return bound.check("generate", bound.genCurve(op, c))
+	default:
+		return nil
+	}
+}
+
+// dropGeneratedKey removes a primary that was created before its subkey
+// failed, so the session does not keep a half-built key.
+func (s *Session) dropGeneratedKey(key uintptr) {
+	if key == 0 {
+		return
+	}
+	_ = bound.keyRemove(key, keyRemovePublic|keyRemoveSecret|keyRemoveSubkeys)
+	bound.keyDestroy(key)
 }
 
 func (s *Session) ImportKeys(ctx context.Context, data []byte) (string, error) {

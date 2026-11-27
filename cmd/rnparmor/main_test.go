@@ -833,6 +833,7 @@ func TestKeyManagerFilterSearchSortAndForms(t *testing.T) {
 		"col.type", "col.name", "col.key_id", "col.fingerprint", "col.algorithm", "col.status",
 		"badge.secret", "badge.public", "badge.secret_public", "badge.unprotected", "badge.valid", "badge.expired", "badge.revoked",
 		"placeholder.new_pass", "placeholder.confirm_pass", "desc.pass_unprotected", "desc.pass_protected",
+		"tip.show_passphrase", "tip.hide_passphrase",
 		"placeholder.search", "placeholder.unlock_pass", "placeholder.import_text",
 		"err.name_or_email", "err.pass_empty", "err.pass_mismatch", "err.import_empty",
 		"empty.keys", "empty.search", "empty.select", "empty.subkeys",
@@ -996,6 +997,65 @@ func TestKeyManagerFilterSearchSortAndForms(t *testing.T) {
 	held.takeNewKeyPassphrase()
 	if held.passphrase != "fresh" || held.newKeyPass != "" || held.newKeyPass2 != "" {
 		t.Fatalf("typed generate passphrase %q fields %q %q", held.passphrase, held.newKeyPass, held.newKeyPass2)
+	}
+
+	mismatch := &uiState{
+		langIdx:     LangIndex(LangEN),
+		passphrase:  "kept",
+		newKeyName:  "Ada",
+		newKeyEmail: "ada@example.com",
+		newKeyPass:  "one",
+		newKeyPass2: "two",
+	}
+	if !mismatch.passMismatchVisible() {
+		t.Fatal("live mismatch hidden")
+	}
+	if mismatch.submitNewKey() {
+		t.Fatal("mismatch started generate")
+	}
+	if mismatch.busy || mismatch.statusKey == "action.generate_key" || mismatch.passphrase != "kept" || mismatch.newKeyPass != "one" {
+		t.Fatalf("generate ran pass=%q busy=%v status=%s", mismatch.passphrase, mismatch.busy, mismatch.statusKey)
+	}
+	if mismatch.newKeyErr != Tr(LangEN, "err.pass_mismatch") || !mismatch.newKeyChecked {
+		t.Fatalf("banner %q checked %v", mismatch.newKeyErr, mismatch.newKeyChecked)
+	}
+
+	oneSide := &uiState{langIdx: LangIndex(LangEN), passphrase: "kept", newKeyName: "Ada", newKeyEmail: "ada@example.com", newKeyPass: "only"}
+	if oneSide.passMismatchVisible() {
+		t.Fatal("blank confirm flagged early")
+	}
+	if oneSide.submitNewKey() || oneSide.passphrase != "kept" || !oneSide.passMismatchVisible() {
+		t.Fatal("one-sided generate")
+	}
+	oneSide.newKeyPass2 = "only"
+	oneSide.syncNewKeyPassError()
+	if oneSide.newKeyErr != "" || oneSide.passMismatchVisible() {
+		t.Fatalf("cleared err=%q visible=%v", oneSide.newKeyErr, oneSide.passMismatchVisible())
+	}
+
+	oneSide.newKeyShowPass = true
+	oneSide.newKeyShowPass2 = true
+	flipPassVisible(&oneSide.newKeyShowPass)
+	if oneSide.newKeyShowPass {
+		t.Fatal("eye did not hide")
+	}
+	flipPassVisible(&oneSide.newKeyShowPass)
+	if !oneSide.newKeyShowPass {
+		t.Fatal("eye did not show")
+	}
+	oneSide.newKeyErr = "x"
+	oneSide.newKeyChecked = true
+	oneSide.closeNewKeyWindow()
+	if oneSide.newKeyShowPass || oneSide.newKeyShowPass2 || oneSide.newKeyErr != "" || oneSide.newKeyChecked {
+		t.Fatal("close did not reset")
+	}
+	oneSide.newKeyShowPass = true
+	oneSide.newKeyShowPass2 = true
+	oneSide.newKeyErr = "y"
+	oneSide.newKeyChecked = true
+	oneSide.resetNewKeyPassUI()
+	if oneSide.newKeyShowPass || oneSide.newKeyShowPass2 || oneSide.newKeyErr != "" || oneSide.newKeyChecked {
+		t.Fatal("reset helper")
 	}
 	const day = 24 * 60 * 60
 	req, errKey := validateNewKey(" Ada ", " ada@ex ", "secret", "secret", 2, base)
