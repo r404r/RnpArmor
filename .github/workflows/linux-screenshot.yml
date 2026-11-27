@@ -14,6 +14,7 @@ on:
       - "assets/icons/**"
       - "cmd/rnparmor/**"
       - "cmd/seeddemo/**"
+      - "docs/screenshots/**"
 
 concurrency:
   group: linux-screenshot-${{ github.ref }}
