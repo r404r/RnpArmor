@@ -100,10 +100,10 @@ Linux 运行时主窗口实机截图（`1120×780`，融合式 `文件 / 工作�
 4. **Windows portable 构建、GUI 子系统与 smoke 流程加固**
    - Windows 构建使用 `-H=windowsgui`（Windows GUI 子系统），双击启动不弹出黑色控制台窗口。
    - `cmd/genwinres` 在构建期基于 `assets/icons/rnparmor.ico` 生成临时 AMD64 COFF `.syso` 资源文件，使 `rnparmor.exe` 内嵌 `.rsrc` 图标资源；`packaging/windows/rnparmor.iss` 配置 `SetupIconFile` 为安装程序设置图标。
-   - `scripts/build-windows.ps1` 通过 `dumpbin /headers` 同时校验 `Windows GUI` PE 子系统与 `.rsrc` 资源节，并将子系统信息记录于 `windows-report.txt`。
+   - `scripts/build-windows.ps1` 通过 `dumpbin /headers` 同时校验 `Windows GUI` PE 子系统与 `.rsrc` 资源节，通过 `dumpbin /imports` 审计 `rnparmor.exe` 与随包全部 DLL 的 PE 导入表（仅允许系统 DLL 白名单与同目录随包 DLL），并将子系统信息记录于 `windows-report.txt`。
    - `rnparmor.exe --smoke-test` 支持 `--smoke-out <path>` 将冒烟结果写入文件，便于 `-H=windowsgui` 产物在 CI 中进行确定性校验。
-   - Windows 脚本先执行 `--smoke-test --smoke-out`，再做有超时保护的 GUI 进程探针。
-   - Linux/Windows CI 作业均配置 `out/deps` 缓存。
+   - Windows 脚本将 `PATH` 收窄至 `System32` 后先执行 `--smoke-test --smoke-out`，再做有超时保护的 GUI 进程探针。
+   - Windows CI（`smoke.yml` / `release.yml`）默认缓存并下载复用钉扎的 `r404r/rnp@v0.18.1-win.2` 预编译 zip（`-Stage prebuilt-rnp`）；Linux/macOS CI 及 Windows 源码回退阶段继续使用 `out/deps` 依赖缓存。
 
 5. **自动多平台打包发布工作流**
    - `.github/workflows/release.yml` 在 `v*` Tag 推送或手动触发时执行。
@@ -142,14 +142,14 @@ Linux 运行时主窗口实机截图（`1120×780`，融合式 `文件 / 工作�
   - `session.go`：会话生命周期（`Open`、`OpenOptionalPass`）、口令回调控制、数据模型（含 `KeySummary.Subkeys`、`IsSub`、`IsProtected`、`CanAuth`、`KeyGenRequest.Unprotected`、`SubkeyGenRequest.Unprotected`）。
   - `ops.go`：密钥管理（`GenerateKeyWithSpec` 改用 `librnp` `rnp_op_generate_*` 操作接口直接写入 `ExpirationSec`，避免 `librnp 0.18.1` 中 `rnp_generate_key_json` 忽略 `"expiration"` 并默认回落 2 年，从而让 `0` 永不过期与 `1`/`2`/`5` 年同时作用于主密钥与加密子密钥；并包含主密钥内嵌子密钥摘要、`UsageAllowsAlg`、`AddSubkey`、`SetKeyExpiration`、`RevokeKey`、带防误删主密钥保护的 `DeleteSubkey`、RFC 4880 无口令保护私钥与子密钥生成、仅公钥 `SaveTo`/`LoadFrom`、吊销证书导出）、文本/文件加解密签名验签、Packet/特性接口。
   - `session_test.go`：兼容测试 + 扩展测试（含 `TestSubkeyLifecycle`、`TestEmptyPassphraseKeyLifecycle`、`TestGenerateKeyExpiration` 实测 `Never`/指定年限对主密钥与子密钥的生效校验及仅公钥钥匙圈测试）。
-- `scripts/build-windows.ps1`：Windows 构建脚本，调用 `cmd/genwinres` 嵌入临时 `.syso` 图标、编译 `-H=windowsgui` 便携包与 Inno Setup 6 安装包（`rnparmor-windows-amd64-setup.exe`）、校验 PE 子系统、`.rsrc` 资源节与 DLL 导入表，并运行测试、`--smoke-out` 冒烟与打包。
+- `scripts/build-windows.ps1`：Windows 构建脚本，CI 默认运行 `-Stage prebuilt-rnp`（读取 `deps/pins.json` 复用并 SHA-256 校验 `r404r/rnp@v0.18.1-win.2` 预编译包，将 `rnp.dll` 与必需同级运行时 DLL 及许可证写入 `out/lib` 与 `out/prebuilt-rnp`），同时保留原有 `fetch-deps`/`botan`/`small-deps`/`deps`/`rnp`/`all` 源码自编译阶段作为可选回退能力；打包阶段调用 `cmd/genwinres` 嵌入临时 `.syso` 图标、编译 `-H=windowsgui` 便携包与 Inno Setup 6 安装包（`rnparmor-windows-amd64-setup.exe`）、生成覆盖全包文件的 `SHA256SUMS`、校验 PE 子系统/`.rsrc` 节及 `rnparmor.exe` 与全部同级 DLL 的递归 PE 导入表，并运行测试、`--smoke-out` 冒烟与 GUI 探针。
 - `scripts/build-macos.sh`：macOS Apple Silicon（`arm64`）构建脚本，编译静态依赖（`Botan 3.10.0` + `json-c 0.19`）与 `librnp.dylib`，组装 `RnpArmor.app`（写入 `Contents/Resources/RnpArmor.icns` 与 `Info.plist` 的 `CFBundleIconFile`），执行 ad-hoc `codesign --verify --deep --strict`、`go test`、`--smoke-test`，最终打包 `rnparmor-macos-arm64.dmg`。
 - `scripts/capture-linux-screenshots.sh`：通过 `--seeder` 初始化演示钥匙圈后，在无头 X11（`Xvfb` + `openbox`）下结合 `--lang en|zh|ja` 与 `RNPARMOR_DEMO_SCENE` 依次截取并校验全部 11 张聚焦窗口 PNG（分辨率与非空白像素方差）。
-- `packaging/windows/rnparmor.iss`：Windows 安装程序（`rnparmor-windows-amd64-setup.exe`）的 Inno Setup 6 脚本（含 `SetupIconFile`）。
+- `packaging/windows/rnparmor.iss`：Windows 安装程序（`rnparmor-windows-amd64-setup.exe`）的 Inno Setup 6 脚本（含 `SetupIconFile`，并显式打包 `rnparmor.exe`、`*.dll`、`SHA256SUMS`、`LICENSE`、`PORTABLE.txt`、`DEPENDENCIES.txt` 与 `licenses\*`）。
 - `docs/`
   - `USER_GUIDE.md` / `USER_GUIDE.zh-CN.md`：中英文双语终端用户安装、工作区操作与排查指南。
   - `screenshots/`：Linux 演示钥匙圈 11 张实机截图（主窗口 `rnparmor-linux-{en,zh,ja}.png` 及文本/文件/Packet/About `rnparmor-linux-{text,file,packet,about}-{en,zh}.png`）。
-- `.github/workflows/smoke.yml`：`linux`、`windows-portable` 与 `macos-arm64` 三平台 CI（含缓存与同分支并发自动取消）。
+- `.github/workflows/smoke.yml`：`linux`、`windows-portable`（预编译 `rnp_windows_portable` 缓存与快速打包）与 `macos-arm64` 三平台 CI（含缓存与同分支并发自动取消）。
 - `.github/workflows/release.yml`：Tag/手动触发的多平台自动打包发布。
 - `.github/workflows/linux-screenshot.yml`：编译 `librnp.so`、`rnparmor` 与 `seeddemo` 并调用 `scripts/capture-linux-screenshots.sh` 采集 11 张 Linux 实机截图（含 `cmd/rnparmor/**`、`cmd/seeddemo/**`、`scripts/capture-linux-screenshots.sh`、`.github/workflows/linux-screenshot.yml` 或 `assets/icons/**` PR 变更触发），上传 `rnparmor-linux-screenshots` artifact，并可在非 `main` 分支将更新后的 11 张 PNG 提交至 `docs/screenshots/`。
 
@@ -293,15 +293,19 @@ bash scripts/build-macos.sh --stage package --version v0.0.1
 ### Windows（portable 与安装版）
 
 ```powershell
-# 一键（兼容旧习惯）：按序执行 deps -> rnp -> package（默认 -Stage all）
+# CI 默认快速路径：下载校验钉扎预编译 rnp.dll 及同级运行时 DLL，再打包
+pwsh -File .\scripts\build-windows.ps1 -Stage prebuilt-rnp
+pwsh -File .\scripts\build-windows.ps1 -Stage package
+
+# 可选源码回退一键构建：按序执行 deps -> rnp -> package（默认 -Stage all）
 pwsh -File .\scripts\build-windows.ps1
 
-# 粗粒度分阶段模式
+# 可选源码回退粗粒度分阶段模式
 pwsh -File .\scripts\build-windows.ps1 -Stage deps
 pwsh -File .\scripts\build-windows.ps1 -Stage rnp
 pwsh -File .\scripts\build-windows.ps1 -Stage package
 
-# 细粒度依赖阶段（CI 用于分段观测耗时与缓存复用）
+# 可选源码回退细粒度依赖阶段（需要 Python 3 与 Ninja）
 pwsh -File .\scripts\build-windows.ps1 -Stage fetch-deps
 pwsh -File .\scripts\build-windows.ps1 -Stage botan
 pwsh -File .\scripts\build-windows.ps1 -Stage small-deps
@@ -313,24 +317,27 @@ pwsh -File .\scripts\build-windows.ps1 -Version v0.0.1
 pwsh -File .\scripts\build-windows.ps1 -Stage package -Version v0.0.1
 ```
 
-Windows 依赖构建钉扎并打包以下组件：
+Windows 依赖准备支持两条路径：
 
-- `Botan 3.10.0`：按 `scripts/windows/botan3-modules.txt` 中的精简静态模块清单（共 57 个模块，每行一个模块，支持注释）编译静态库，对齐 `rnpgp/rnp v0.18.1` 的 OpenPGP 能力需求，避免在 CI 中编译不必要的 CLI/测试与非 OpenPGP 模块。
-- `json-c 0.19`、`zlib 1.4`、`bzip2 1.0.8`：编译为静态库并链接进 `rnp.dll`。
-- `dirent 1.24`（`tronkko/dirent`，MIT 许可）：Windows 构建 `librnp` 所需的头文件兼容依赖（`dirent.h`）。
-- 上述及 Go/RNP 第三方许可证文本（`rnp-LICENSE.md`、`sexpp-LICENSE.md`、`botan-license.txt`、`dirent-LICENSE`、`json-c-COPYING`、`zlib-LICENSE`、`bzip2-LICENSE`、`mygo-MIT.txt`、`purego-Apache-2.0.txt`）均随 Windows portable 包打入 `licenses/` 目录。
+- **默认 CI 预编译路径（`-Stage prebuilt-rnp`，钉扎于 `deps/pins.json` 的 `rnp_windows_portable`）**：
+  - 下载并按 SHA-256 严格校验 `r404r/rnp@v0.18.1-win.2`（`rnp-windows-x64-portable.zip`，提交 `5ede42bfd49c4992550d3c642d5d1b2286c1da9a`，SHA-256 `5886bf2bcd17ca2f0ed1e959c9e08a21865fc9c4a8bbf42d4dc691a53414361b`，`4,328,958` 字节）。
+  - 将 `rnp.dll` 与 6 个必需同级运行时 DLL（`botan-3.dll`、`bz2.dll`、`libz.dll`、`MSVCP140.dll`、`VCRUNTIME140.dll`、`VCRUNTIME140_1.dll`）发布至 `out/lib`；不打入 `rnp.exe`、`rnpkeys.exe`、`README.txt` 及当前未被导入的 `getopt.dll`（仅当 `rnp.dll` 导入表引用 `getopt.dll` 时才会带入），并将全部对应第三方许可证（`RNP-LICENSE.md`、`RNP-LICENSE-OCB.md`、`sexpp-LICENSE.md`、`vcpkg-botan.txt`、`vcpkg-bzip2.txt`、`vcpkg-zlib.txt`、`vcpkg-dirent.txt`、`vcpkg-getopt-win32.txt`、`nlohmann-json-MIT.txt`、`msvc-runtime-license.txt`、`mygo-MIT.txt`、`purego-Apache-2.0.txt`）一并打入便携版与安装版的 `licenses/`。
+  - 由于三个 MSVC VC143 运行时 DLL 随包紧邻 `rnp.dll` 存放，且打包阶段会对 `rnparmor.exe` 与全包 DLL 做递归 PE 导入表审计，目标 Windows 裸机无需预先安装 VC++ 运行库即可运行；同时 `SHA256SUMS` 覆盖 `rnp.dll` 与全部随包同级 DLL。
+- **可选源码自编译回退（`-Stage fetch-deps` / `botan` / `small-deps` / `deps` / `rnp` / `all`）**：
+  - 保留在 `scripts/build-windows.ps1` 中（需具备 Python 3 与 `ninja.exe`）。按 `scripts/windows/botan3-modules.txt` 的 57 模块清单编译精简静态 `Botan 3.10.0`，编译静态 `json-c 0.19`、`zlib 1.4`、`bzip2 1.0.8` 与 `dirent 1.24`（`dirent.h`），从源码构建静态链接版 `rnp.dll`；执行 `-Stage rnp` 会自动清理 `out/prebuilt-rnp` 印记以避免与预编译 DLL 混放，并将静态构建许可文本写入 `licenses/`。
 
 `scripts/build-windows.ps1` 支持以下 `-Stage` 阶段参数：
 
-1. `fetch-deps`：下载、校验并解压 `Botan 3.10.0`、`json-c 0.19`、`zlib 1.4`、`bzip2 1.0.8` 与 `dirent 1.24` 源码到 `out/src`（若 `out/deps` 热缓存已完整则自动跳过）
-2. `botan`：编译并安装精简静态 `Botan 3.10.0` 到 `out/deps/botan`（写入 `.modules-sha256` 校验印记）
-3. `small-deps`：编译并安装静态 `json-c`、`zlib`、`bzip2` 到 `out/deps`，准备 `dirent.h` 并将依赖许可证缓存至 `out/deps/licenses`
-4. `deps`：依次执行 `fetch-deps -> botan -> small-deps`
-5. `rnp`：基于缓存依赖编译 `librnp`（`rnp.dll`），并缓存至 `out/win-build/rnp-dll/rnp.dll`
-6. `package`：调用 `cmd/genwinres` 基于 `assets/icons/rnparmor.ico` 生成临时 `cmd/rnparmor/rsrc_windows_amd64.syso`，使用 `-H=windowsgui` 构建 `rnparmor.exe` 并清理临时 `.syso`，复制 `rnp.dll`、`LICENSE` 与 `licenses/`，校验 `Windows GUI` PE 子系统、`.rsrc` 资源节（`dumpbin /headers`）与 DLL 导入表（`DEPENDENCIES.txt`），生成 `PORTABLE.txt` 与 `SHA256SUMS`，对打包后的 `rnp.dll` 执行 `go test`，运行 `--smoke-test --smoke-out` 与 GUI 探针，并产出便携 zip、Inno Setup 6 安装包（`SetupIconFile=..\..\assets\icons\rnparmor.ico`）与报告
-7. `all`：依次执行 `deps -> rnp -> package`（默认）
+1. `prebuilt-rnp`：下载并按 SHA-256 校验钉扎的 `r404r/rnp@v0.18.1-win.2`（`rnp_windows_portable`），检查 `dumpbin /imports rnp.dll`，将 `rnp.dll` 与必需同级运行时 DLL 发布至 `out/lib` 并把预编译包许可文本暂存至 `out/prebuilt-rnp/licenses`
+2. `fetch-deps`：（源码回退）下载、校验并解压 `Botan 3.10.0`、`json-c 0.19`、`zlib 1.4`、`bzip2 1.0.8` 与 `dirent 1.24` 源码到 `out/src`（若 `out/deps` 热缓存已完整则自动跳过）
+3. `botan`：（源码回退）编译并安装精简静态 `Botan 3.10.0` 到 `out/deps/botan`（写入 `.modules-sha256` 校验印记）
+4. `small-deps`：（源码回退）编译并安装静态 `json-c`、`zlib`、`bzip2` 到 `out/deps`，准备 `dirent.h` 并将依赖许可证缓存至 `out/deps/licenses`
+5. `deps`：（源码回退）依次执行 `fetch-deps -> botan -> small-deps`
+6. `rnp`：（源码回退）清理 `out/prebuilt-rnp` 标记，基于缓存依赖从源码编译静态链接 `rnp.dll` 至 `out/win-build/rnp-dll/rnp.dll` 并发布到 `out/lib`
+7. `package`：调用 `cmd/genwinres` 基于 `assets/icons/rnparmor.ico` 生成临时 `cmd/rnparmor/rsrc_windows_amd64.syso`，使用 `-H=windowsgui` 构建 `rnparmor.exe` 并清理临时 `.syso`，从 `out/lib` 复制全部 `*.dll` 连同 `LICENSE` 与 `licenses/`，校验 `Windows GUI` PE 子系统、`.rsrc` 资源节（`dumpbin /headers`）及 `rnparmor.exe` 与全包同级 DLL 的递归导入表（`DEPENDENCIES.txt`），生成 `PORTABLE.txt` 与覆盖全部打包文件的 `SHA256SUMS`，在将 `PATH` 收窄至 `System32` 后对打包 `rnp.dll` 执行 `go test`，运行 `--smoke-test --smoke-out` 与 GUI 探针，并产出便携 zip、Inno Setup 6 安装包（`SetupIconFile=..\..\assets\icons\rnparmor.ico`）与报告
+8. `all`：（源码回退默认）依次执行 `deps -> rnp -> package`
 
-`package` 阶段会生成 `out\dist\rnparmor-windows-amd64`，使用 `packaging/windows/rnparmor.iss` 与 Inno Setup 6（`ISCC.exe`）打包安装程序，并执行：
+`package` 阶段会生成 `out\dist\rnparmor-windows-amd64`，使用 `packaging/windows/rnparmor.iss`（显式包含 `rnparmor.exe`、`*.dll`、`SHA256SUMS`、`LICENSE`、`PORTABLE.txt`、`DEPENDENCIES.txt` 与 `licenses\*`）与 Inno Setup 6（`ISCC.exe`）打包安装程序，并执行：
 
 1. `dumpbin /headers` 校验，确认 `rnparmor.exe` 为 `Windows GUI` 子系统（记录至 `out\windows-report.txt`）且包含 `.rsrc` 图标资源节
 2. 将 `RNPARMOR_LIBRNP` 指向打包目录内的 `rnp.dll`、并将 `PATH` 收窄到 `System32` 后运行 `go test -count=1 -timeout 20m ./internal/loadlib/ ./internal/rnp/ ./cmd/rnparmor/`
@@ -347,9 +354,8 @@ Windows 依赖构建钉扎并打包以下组件：
   - `out/deps` 缓存
   - pinned `librnp` 构建 + `go test -race` + `CGO_ENABLED=0` 构建
 - `windows-portable` 作业：
-  - 使用 `actions/cache/restore@v4` 恢复 `out/deps`，并在 `small-deps` 之后执行 `actions/cache/save@v4` 保存缓存
-  - CI 拆分为 `fetch-deps -> botan -> small-deps -> save cache -> rnp -> package`，以提升各阶段耗时观测性与依赖缓存复用率
-  - 缓存键：`${{ runner.os }}-deps-v4-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}`
+  - 使用 `actions/cache@v4` 缓存 `out/cache/rnp-windows-x64-portable.zip`，缓存键为 `${{ runner.os }}-rnp-windows-portable-v1-${{ hashFiles('deps/pins.json') }}`
+  - CI 默认执行 `-Stage prebuilt-rnp`（SHA-256 校验复用 `r404r/rnp@v0.18.1-win.2`）后衔接 `-Stage package`（原有源码阶段仍保留于 `scripts/build-windows.ps1` 作为可选回退）
   - 上传 `out/rnparmor-windows-amd64.zip`、`out/rnparmor-windows-amd64-setup.exe` 与 `out/windows-report.txt`
 - `macos-arm64` 作业（`runs-on: macos-15`）：
   - 使用 `out/deps` 缓存，缓存键 `${{ runner.os }}-arm64-deps-v1-${{ hashFiles('deps/pins.json', 'scripts/windows/botan3-modules.txt', 'scripts/build-macos.sh') }}`
@@ -363,7 +369,7 @@ Windows 依赖构建钉扎并打包以下组件：
   - 手动触发（可选 `tag` 输入）
 - 作业：
   - `linux-portable`：构建/测试/打包 `rnparmor-linux-amd64.tar.gz`（随包附带 `assets/icons/rnparmor.png` 即 `rnparmor.png`）
-  - `windows-portable`：沿用相同的 `deps-v4` 缓存键与分段流水线（`fetch-deps -> botan -> small-deps -> save cache -> rnp -> package -Version "${{ steps.tag.outputs.value }}"`），产出 `rnparmor-windows-amd64.zip`、`rnparmor-windows-amd64-setup.exe` 与 `windows-report.txt`
+  - `windows-portable`：通过 `actions/cache@v4` 缓存 `out/cache/rnp-windows-x64-portable.zip`（键为 `${{ runner.os }}-rnp-windows-portable-v1-${{ hashFiles('deps/pins.json') }}`），默认运行 `-Stage prebuilt-rnp` 后衔接 `-Stage package -Version "${{ steps.tag.outputs.value }}"`（`scripts/build-windows.ps1` 仍保留源码回退阶段），产出 `rnparmor-windows-amd64.zip`、`rnparmor-windows-amd64-setup.exe` 与 `windows-report.txt`
   - `macos-arm64`（`runs-on: macos-15`）：沿用相同的 `arm64-deps-v1` 缓存键与分段流水线（`deps -> save cache -> rnp -> package --version "${{ steps.tag.outputs.value }}"`），产出 `rnparmor-macos-arm64.dmg`
   - `publish-release`：三平台均通过后创建/更新 GitHub Release，上传 `rnparmor-macos-arm64.dmg`、`rnparmor-linux-amd64.tar.gz`、`rnparmor-windows-amd64-setup.exe`、`rnparmor-windows-amd64.zip`、`windows-report.txt` 与统一校验文件 `rnparmor-${TAG}-SHA256SUMS.txt`
 
@@ -385,8 +391,8 @@ Windows 依赖构建钉扎并打包以下组件：
 
 ## 仓库状态说明
 
-- `v0.0.1`–`v0.0.7` 多平台版本均已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）：`v0.0.2` 合入 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、三端应用图标与双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)），`v0.0.3` 修复了 GUI 操作重入死锁与钥匙圈持久化边界问题，`v0.0.4` 合并发布 Phase 1（主从双栏 Keys 管理页、16/40 位 ID 切换、掩码双口令新建密钥弹窗、空口令公钥只读打开与原生文件夹选择器）、Phase 2（`cmd/rnparmor/studio_ui.go` 共享收件人/签名者下拉、掩码对称口令与文件/Packet 原生文件对话窗）及 Release 发布重试与取消草稿加固，`v0.0.5` 合入 PR #14（`+ 新建密钥` 5 档算法预设、动态参数联动、统一`主密钥 / 子密钥`术语、三语动态说明与悬停提示及 `TestKeygenPresetsSyncAndTips`）和 PR #15（`cmd/rnparmor/subkey_ui.go`、左侧树形可折叠子密钥列表、完整子密钥生命周期接口 `AddSubkey`/`SetKeyExpiration`/`RevokeKey`/`DeleteSubkey`、`TestSubkeyLifecycle`、`TestSubkeyTableExpiryUsageAndCatalog` 及扩展 `TestUIStateActionsEndToEnd`），`v0.0.6` 合入 PR #16（双空口令 RFC 4880 无口令保护私钥生成、`无口令保护`徽章、无口令主密钥下子密钥与加解密免口令支持、`TestEmptyPassphraseKeyLifecycle` 及 `TestUIStateEmptyPassphraseLifecycle`），`v0.0.7` 发布 PR #17（`cmd/rnparmor/feedback_ui.go`、底部固定状态栏、点击库路径复制轻提示、方案 A 分级通知反馈、`TestI18nComplete`、`TestStatusBarAndFeedback`）与 PR #18（`cmd/rnparmor/style_ui.go` 浅色 Fluent 主题、#edf1f7 / Windows 11 Mica 与纯白 `rnpCard` 双层景深、渐变高光 1 DIP 按压立体按钮、Windows/Linux 融合式菜单栏与 macOS 系统菜单栏、`mygo/plugins/glass` 磨砂下拉/右键/Toast 浮层及 `TestFluentGlassChrome`）。
-- 已合入 / 面向 `v0.0.8` 的变更：PR #19 新增仅用于截图 CI 的演示钥匙圈初始化工具 `cmd/seeddemo`，刷新了 `docs/screenshots/` 中全部 11 张 Linux 运行时演示截图并图文同步到双语 README 与用户指南；PR #20（`fix/keygen-passphrase-and-expiry`）新增 `rnpPassEye` 口令显隐开关及打开/关闭/提交自动复位（`resetNewKeyPassUI`）、口令不一致实时红色字段提示与提交拦截（`passMismatchVisible` / `syncNewKeyPassError` / `submitNewKey`）、`GenerateKeyWithSpec` 从 `rnp_generate_key_json` 迁移至 `librnp` `rnp_op_generate_*` 操作接口以在 `librnp 0.18.1` 上真正落实 `永不`（`0`）与 `1`/`2`/`5` 年有效期，以及 `TestGenerateKeyExpiration` 和扩展后的 `TestKeyManagerFilterSearchSortAndForms`。
+- `v0.0.1`–`v0.0.8` 多平台版本均已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）：`v0.0.2` 合入 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、三端应用图标与双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)），`v0.0.3` 修复了 GUI 操作重入死锁与钥匙圈持久化边界问题，`v0.0.4` 合并发布 Phase 1（主从双栏 Keys 管理页、16/40 位 ID 切换、掩码双口令新建密钥弹窗、空口令公钥只读打开与原生文件夹选择器）、Phase 2（`cmd/rnparmor/studio_ui.go` 共享收件人/签名者下拉、掩码对称口令与文件/Packet 原生文件对话窗）及 Release 发布重试与取消草稿加固，`v0.0.5` 合入 PR #14（`+ 新建密钥` 5 档算法预设、动态参数联动、统一`主密钥 / 子密钥`术语、三语动态说明与悬停提示及 `TestKeygenPresetsSyncAndTips`）和 PR #15（`cmd/rnparmor/subkey_ui.go`、左侧树形可折叠子密钥列表、完整子密钥生命周期接口 `AddSubkey`/`SetKeyExpiration`/`RevokeKey`/`DeleteSubkey`、`TestSubkeyLifecycle`、`TestSubkeyTableExpiryUsageAndCatalog` 及扩展 `TestUIStateActionsEndToEnd`），`v0.0.6` 合入 PR #16（双空口令 RFC 4880 无口令保护私钥生成、`无口令保护`徽章、无口令主密钥下子密钥与加解密免口令支持、`TestEmptyPassphraseKeyLifecycle` 及 `TestUIStateEmptyPassphraseLifecycle`），`v0.0.7` 发布 PR #17（`cmd/rnparmor/feedback_ui.go`、底部固定状态栏、点击库路径复制轻提示、方案 A 分级通知反馈、`TestI18nComplete`、`TestStatusBarAndFeedback`）与 PR #18（`cmd/rnparmor/style_ui.go` 浅色 Fluent 主题、#edf1f7 / Windows 11 Mica 与纯白 `rnpCard` 双层景深、渐变高光 1 DIP 按压立体按钮、Windows/Linux 融合式菜单栏与 macOS 系统菜单栏、`mygo/plugins/glass` 磨砂下拉/右键/Toast 浮层及 `TestFluentGlassChrome`），`v0.0.8` 发布 PR #19（`cmd/seeddemo` 与 `docs/screenshots/` 11 张 Linux 演示截图刷新并图文同步至双语文档）与 PR #20（`+ 新建密钥` `rnpPassEye` 显隐开关、口令不一致实时高亮与强阻断、`GenerateKeyWithSpec` 改用 `rnp_op_generate_*` 修复永不过期与年限生效、`TestGenerateKeyExpiration` 及扩展 `TestKeyManagerFilterSearchSortAndForms`）。
+- 待随后续版本合入的分支 `feat/windows-prebuilt-rnp` 改造（`v0.0.9` 尚未发布）：Windows CI（`smoke.yml` / `release.yml` `windows-portable`）默认改为通过 `-Stage prebuilt-rnp` 复用钉扎在 `deps/pins.json`（`rnp_windows_portable`）的 `r404r/rnp@v0.18.1-win.2` 预编译包（严格 SHA-256 校验），将 `rnp.dll` 及 6 个必需同级运行时 DLL（`botan-3.dll`、`bz2.dll`、`libz.dll`、`MSVCP140.dll`、`VCRUNTIME140.dll`、`VCRUNTIME140_1.dll`，剔除未引用的 `getopt.dll` 与命令行可执行程序）及全套第三方许可随便携版与 `packaging/windows/rnparmor.iss` 安装包分发，生成覆盖全包的 `SHA256SUMS` 并由递归 PE 导入表审计保证目标裸机免装额外运行库，同时保留 `scripts/build-windows.ps1` 原有源码自编译阶段作为可选回退能力。
 - 桌面端人工交互体验（Windows 10/11 中文输入法、高 DPI 与安装程序流程，以及 macOS Apple Silicon 首次启动未公证 Gatekeeper 提示）仍依赖真实桌面环境，需在专门手工测试中确认。
 
 ## 许可证

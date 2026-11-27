@@ -18,7 +18,7 @@ Supported release targets:
 
 ## 2. Download, Installation & First Launch
 
-Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.7` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; `v0.0.5` added PR #14 `+ New Key` algorithm presets/parameter linking/tri-lingual tips and PR #15 hierarchical collapsible subkey tree & full subkey lifecycle management; `v0.0.6` delivered PR #16 empty-passphrase RFC 4880 unprotected key generation and `No Passphrase` lifecycle support; `v0.0.7` shipped PR #17 pinned bottom status bar & graded notification feedback plus PR #18 light Fluent & frosted-glass UI refresh; PR #19 refreshed all 11 Linux demo screenshots across the docs, and PR #20 adds `+ New Key` passphrase visibility toggles, live mismatch blocking, and real `librnp` op-API key expiration for `v0.0.8`).
+Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.8` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; `v0.0.5` added PR #14 `+ New Key` algorithm presets/parameter linking/tri-lingual tips and PR #15 hierarchical collapsible subkey tree & full subkey lifecycle management; `v0.0.6` delivered PR #16 empty-passphrase RFC 4880 unprotected key generation and `No Passphrase` lifecycle support; `v0.0.7` shipped PR #17 pinned bottom status bar & graded notification feedback plus PR #18 light Fluent & frosted-glass UI refresh; `v0.0.8` shipped PR #19 refreshing all 11 Linux demo screenshots across the docs and PR #20 adding `+ New Key` passphrase visibility toggles, live mismatch blocking, and real `librnp` op-API key expiration; the `feat/windows-prebuilt-rnp` branch updates Windows CI builds to package pinned prebuilt `r404r/rnp@v0.18.1-win.2` DLLs ahead of a future release).
 
 ### Verifying Release Checksums
 
@@ -37,19 +37,20 @@ Get-FileHash .\rnparmor-windows-amd64-setup.exe -Algorithm SHA256
 Get-FileHash .\rnparmor-windows-amd64.zip -Algorithm SHA256
 ```
 
-In addition, every bundle includes an internal `SHA256SUMS` file. Every time RnpArmor starts, `internal/loadlib` verifies the shared library (`rnp.dll`, `librnp.so`, or `librnp.dylib`) against `SHA256SUMS` before loading it.
+In addition, every bundle includes an internal `SHA256SUMS` file (covering `rnp.dll` and all bundled sibling runtime DLLs on Windows, or `librnp.so` / `librnp.dylib` on Linux/macOS). Every time RnpArmor starts, `internal/loadlib` verifies the shared library (`rnp.dll`, `librnp.so`, or `librnp.dylib`) against `SHA256SUMS` before loading it.
 
 ### Windows Installer (`rnparmor-windows-amd64-setup.exe`)
 
 1. Download `rnparmor-windows-amd64-setup.exe`.
 2. Double-click to run the Inno Setup installer:
    - Defaults to **per-user installation without administrator privileges** (`PrivilegesRequired=lowest`, overridable in the dialog).
+   - Installs `rnparmor.exe`, `rnp.dll`, all required sibling runtime DLLs (`botan-3.dll`, `bz2.dll`, `libz.dll`, `MSVCP140.dll`, `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll`), `SHA256SUMS`, `LICENSE`, and `licenses\` together so clean Windows systems do not need a separate Visual C++ Redistributable install.
    - Creates a **Start Menu** entry (`RnpArmor`), an optional **Desktop shortcut** (unchecked by default), and registers standard Windows uninstallation (`RnpArmor`).
 3. Launch **RnpArmor** from the Start Menu or Desktop shortcut.
 
 ### Windows Portable (`rnparmor-windows-amd64.zip`)
 
-1. Extract `rnparmor-windows-amd64.zip` into a dedicated folder (keep `rnparmor.exe`, `rnp.dll`, `SHA256SUMS`, `LICENSE`, and `licenses\` together).
+1. Extract `rnparmor-windows-amd64.zip` into a dedicated folder (keep `rnparmor.exe`, `rnp.dll`, the bundled sibling runtime DLLs `botan-3.dll` / `bz2.dll` / `libz.dll` / `MSVCP140.dll` / `VCRUNTIME140.dll` / `VCRUNTIME140_1.dll`, `SHA256SUMS`, `LICENSE`, and `licenses\` together; no separate Visual C++ Redistributable install is needed).
 2. Double-click `rnparmor.exe`:
    - Built with `-H=windowsgui` (Windows GUI subsystem) and an embedded `.ico` resource, so **no black console window pops up**.
    - Loads `rnp.dll` strictly from the same folder using `LoadLibraryEx` restricted search flags (never searches the current working directory or `PATH`).
@@ -317,7 +318,7 @@ Use this workspace to load, save, and migrate explicit portable keyrings, or to 
 
 | Symptom | Cause | Resolution |
 | --- | --- | --- |
-| `librnp bundle checksum failed` on startup | Missing `SHA256SUMS`, modified library, or mismatched `RNPARMOR_LIBRNP` | Re-extract the original release archive without modifying `rnp.dll`/`librnp.so`/`librnp.dylib` or `SHA256SUMS`; if using `RNPARMOR_LIBRNP`, use an absolute path alongside its valid `SHA256SUMS` |
+| `librnp bundle checksum failed` on startup | Missing `SHA256SUMS`, modified library/sibling DLL, or mismatched `RNPARMOR_LIBRNP` | Re-extract the original release archive without modifying or removing `rnp.dll` (and its sibling DLLs on Windows), `librnp.so`/`librnp.dylib`, or `SHA256SUMS`; if using `RNPARMOR_LIBRNP`, use an absolute path alongside its valid `SHA256SUMS` |
 | `path must be absolute` | Relative path entered in **File Workbench** or **Packet input file** | Use **`Browse...`** / **`Save As...`** (or enter a full absolute path, e.g., `C:\Users\name\docs\file.txt` on Windows or `/home/name/file.txt` on Linux/macOS), and **`Choose Folder...`** for **Workspace** |
 | `refusing to overwrite an existing file` | Output path in **Destination** or **Signature path** already exists | Choose a new output filename that does not already exist |
 | `input exceeds the memory limit` | Input file exceeds 32 MiB (`MaxInput`) | RnpArmor currently buffers files up to 32 MiB in memory |
