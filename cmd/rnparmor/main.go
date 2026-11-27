@@ -26,14 +26,15 @@ var appVersion = "dev"
 type uiState struct {
 	mu sync.Mutex
 
-	libPath    string
-	version    string
-	lastErr    string
-	busy       bool
-	statusKey  string
-	statusDone bool
-	workspace  string
-	passphrase string
+	libPath        string
+	version        string
+	lastErr        string
+	busy           bool
+	statusKey      string
+	statusDone     bool
+	workspace      string
+	passphrase     string
+	showUnlockPass bool
 
 	keys           []rnp.KeySummary
 	selected       string
@@ -53,12 +54,14 @@ type uiState struct {
 	textVerifyDetached string
 	textMode           string
 
-	encRecipients string
-	recipientPick string
-	encPassword   string
-	encCipher     string
-	encCompress   string
-	encSign       bool
+	encRecipients   string
+	recipientPick   string
+	encPassword     string
+	showTextEncPass bool
+	showFileEncPass bool
+	encCipher       string
+	encCompress     string
+	encSign         bool
 
 	fileSrc      string
 	fileDst      string
@@ -111,32 +114,35 @@ type uiState struct {
 	pendingCloseNew    bool
 	pendingCloseImport bool
 
-	addSubWin     *mygo.Window
-	subUsage      string
-	subAlg        string
-	subCurve      string
-	subBits       int
-	subHash       string
-	subCipher     string
-	subExpiry     int
-	subPass       string
-	subErr        string
-	subAdvanced   bool
-	subReq        rnp.SubkeyGenRequest
-	expiryWin     *mygo.Window
-	expiryTarget  string
-	expiryCreated uint32
-	expiryChoice  int
-	expiryPass    string
-	expiryErr     string
-	revokeWin     *mygo.Window
-	revokeTarget  string
-	revokeCode    string
-	revokeReason  string
-	revokePass    string
-	revokeErr     string
-	targetFP      string
-	expirySeconds uint32
+	addSubWin      *mygo.Window
+	subUsage       string
+	subAlg         string
+	subCurve       string
+	subBits        int
+	subHash        string
+	subCipher      string
+	subExpiry      int
+	subPass        string
+	subShowPass    bool
+	subErr         string
+	subAdvanced    bool
+	subReq         rnp.SubkeyGenRequest
+	expiryWin      *mygo.Window
+	expiryTarget   string
+	expiryCreated  uint32
+	expiryChoice   int
+	expiryPass     string
+	expiryShowPass bool
+	expiryErr      string
+	revokeWin      *mygo.Window
+	revokeTarget   string
+	revokeCode     string
+	revokeReason   string
+	revokePass     string
+	revokeShowPass bool
+	revokeErr      string
+	targetFP       string
+	expirySeconds  uint32
 
 	pendingCloseAddSub bool
 	pendingCloseExpiry bool
@@ -538,7 +544,7 @@ func (s *uiState) viewTextStudio(c *ui.Context) {
 				s.recipientPicker(c)
 			})
 			ui.Field(c, s.tr("label.password"), func() {
-				ui.TextInput(c, &s.encPassword).Password().Placeholder(s.tr("placeholder.symm_pass"))
+				s.passphraseRow(c, &s.encPassword, &s.showTextEncPass, s.tr("placeholder.symm_pass"))
 			})
 			ui.Field(c, s.tr("label.cipher_compression"), func() {
 				ui.Row(c).Gap(8).Children(func() {
@@ -593,7 +599,7 @@ func (s *uiState) viewFileWorkbench(c *ui.Context) {
 			ui.Field(c, s.tr("label.detached_verify"), func() { ui.Switch(c, &s.fileDetached).Label(s.tr("toggle.detached")) })
 			ui.Field(c, s.tr("label.recipients"), func() { s.recipientPicker(c) })
 			ui.Field(c, s.tr("label.password"), func() {
-				ui.TextInput(c, &s.encPassword).Password().Placeholder(s.tr("placeholder.symm_pass"))
+				s.passphraseRow(c, &s.encPassword, &s.showFileEncPass, s.tr("placeholder.symm_pass"))
 			})
 			ui.Field(c, s.tr("label.signer_fingerprint"), func() { s.signerPicker(c) })
 			ui.Field(c, s.tr("toggle.encrypt_sign"), func() {
@@ -652,7 +658,7 @@ func (s *uiState) viewPortable(c *ui.Context) {
 		ui.Form(c, func() {
 			ui.Field(c, s.tr("label.workspace"), func() { s.workspaceChooser(c) })
 			ui.Field(c, s.tr("label.passphrase"), func() {
-				ui.TextInput(c, &s.passphrase).Password().Placeholder(s.tr("placeholder.unlock_pass"))
+				s.passphraseRow(c, &s.passphrase, &s.showUnlockPass, s.tr("placeholder.unlock_pass"))
 			})
 		})
 		ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
@@ -1087,15 +1093,15 @@ func (s *uiState) applyResult(title string, out actionOutcome) {
 	}
 	if title == "action.add_subkey" {
 		s.pendingCloseAddSub = true
-		s.subErr = ""
+		s.resetAddSubPassUI()
 	}
 	if title == "action.set_key_expiry" {
 		s.pendingCloseExpiry = true
-		s.expiryErr = ""
+		s.resetExpiryPassUI()
 	}
 	if title == "action.revoke_key" {
 		s.pendingCloseRevoke = true
-		s.revokeErr = ""
+		s.resetRevokePassUI()
 	}
 }
 
