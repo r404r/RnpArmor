@@ -18,7 +18,7 @@ Supported release targets:
 
 ## 2. Download, Installation & First Launch
 
-Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.5` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; `v0.0.5` added PR #14 `+ New Key` algorithm presets/parameter linking/tri-lingual tips and PR #15 hierarchical collapsible subkey tree & full subkey lifecycle management; upcoming empty-passphrase unprotected key generation from `feat/empty-passphrase-keygen` will ship in the next release).
+Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.6` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; `v0.0.5` added PR #14 `+ New Key` algorithm presets/parameter linking/tri-lingual tips and PR #15 hierarchical collapsible subkey tree & full subkey lifecycle management; `v0.0.6` delivered PR #16 empty-passphrase RFC 4880 unprotected key generation and `No Passphrase` lifecycle support; the pinned bottom status bar and graded notification feedback from `feat/statusbar-notifications` will ship in the next release).
 
 ### Verifying Release Checksums
 
@@ -99,7 +99,18 @@ i18n=ok
 
 ![RnpArmor main window (English, Linux runtime)](screenshots/rnparmor-linux-en.png)
 
-The main window (`1120×780`) displays the title, loaded `librnp` version, absolute library path, live status bar (`idle` / `busy` + last action or error), the 5 workspace tabs, and a native 4-group menu bar:
+The main window (`1120×780`) displays the compact app title above the 5 workspace tabs, a **pinned bottom status bar**, graded notification feedback (**Toasts** & in-app **AlertDialogs**), and a native 4-group menu bar:
+
+**Pinned Bottom Status Bar & Notifications:**
+
+- **Bottom Status Bar**: fixed at the very bottom of the main window (replacing the former stacked header lines to maximize workspace height). Shows the loaded `librnp` version, the single-line `librnp` / `rnp.dll` library path (hover to inspect the full path; click to copy it to the clipboard with a **`Library path copied`** toast), the loaded **primary-key count** (e.g., `2 keys` or `1 key`), and live state (**`Ready`** or **`busy · <action>`**).
+- **Graded Notification Feedback**:
+  - **Routine success (`Toast`)**: key generation, import/export, copying public/secret keys, fingerprints, or the library path, key deletion, encrypt/decrypt/sign actions, packet dumps, feature queries, keyring load/save, and subkey operations show a 4-second auto-dismissing toast centered just above the bottom status bar (hover pauses the timer; click **`×`** to dismiss early; never covers the status bar).
+  - **Verification results & main-window errors (`AlertDialog`)**: **`Verify text`** and **`Verify file`** results, as well as failures occurring in the main window, open a rounded in-app alert dialog with details and an **`OK`** button.
+  - **Child-window inline errors**: form validation or action failures triggered inside an open child window (**New Key**, **Import Key Text**, **Add Subkey**, **Change Subkey Expiry**, **Revoke Subkey**) remain as inline red error text inside that child window so your focus stays on the active field (falling back to a main-window alert if that window has already closed).
+  - **Silent startup & redaction**: automatic keyring loading at launch stays silent without popup notices; alert/error messages automatically mask in-memory passphrases (`••••`) and redact secret/private key blocks.
+
+**Native 4-Group Menu Bar:**
 
 1. **`File`**
    - **Choose Folder...**: opens the native system folder picker, sets **Workspace**, and automatically loads keys from that folder.
@@ -117,7 +128,7 @@ The main window (`1120×780`) displays the title, loaded `librnp` version, absol
 
 ## 4. Step-by-Step Guide for All 5 Workspaces
 
-> All workspace operations run asynchronously in the background (with a 2-minute timeout). While an operation is running, the status line shows `busy` and ignores duplicate clicks until the call returns.
+> All workspace operations run asynchronously in the background (with a 2-minute timeout). While an operation is running, the pinned bottom status bar shows **`busy · <action>`** and ignores duplicate clicks until the call returns, then reports the outcome via a **Toast**, an in-app **AlertDialog**, or a child-window inline error.
 
 ### Workspace 1: `① Keys`
 
@@ -275,6 +286,7 @@ Use this workspace to load, save, and migrate explicit portable keyrings, or to 
 
 ### Security Reminders
 
+- **Notification redaction & safe secret handling**: status toasts never embed passphrase or key contents, and **`AlertDialog`** error/result messages pass through `safeNotice` to mask in-memory passphrases (`••••`) and hide any `BEGIN PGP PRIVATE` / `BEGIN PGP SECRET` blocks (*"The details were hidden because they may contain key material."*).
 - **Masked passphrases & concealed secret copies**: RnpArmor never pre-fills a default passphrase (`""` at startup). Passphrases in **New Key** and **Portable Keyring** are masked; **Copy Secret** marks clipboard content as concealed; exported secret key files and `.rev.asc` revocation certificates are written with `0600` permissions on Unix. If you intentionally leave both passphrase fields blank to create a **`No Passphrase`** secret key, its private key packets are stored unencrypted (`secring.gpg` and exports still keep `0600` file mode on Unix, but anyone obtaining the file can use the key without a passphrase); use a strong passphrase for everyday primary keys and reserve unprotected keys for isolated local testing or controlled automation.
 - **No implicit system keyring**: RnpArmor never reads or modifies `~/.gnupg` or any default OS keyring.
 - **Math validity vs. identity trust**: `[Math: VALID]` confirms the cryptographic signature matches the key and data; `[Identity: UNVERIFIED]` reminds you that RnpArmor does not evaluate Web-of-Trust or policy trust. Always verify key fingerprints out-of-band.
