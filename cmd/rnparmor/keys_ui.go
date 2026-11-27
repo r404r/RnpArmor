@@ -53,14 +53,22 @@ func (s *uiState) viewKeys(c *ui.Context) {
 			ui.SearchField(c, &s.keySearch).Placeholder(s.tr("placeholder.search")).Grow(1)
 		})
 
-		rows := filterPrimaryKeys(s.keys, s.keyFilter, s.keySearch)
+		primaries := filterPrimaryKeys(s.keys, s.keyFilter, s.keySearch)
 		if s.keyTable.Sort != nil {
-			sortKeyRows(rows, *s.keyTable.Sort, s.keyIDMode)
+			sortKeyRows(primaries, *s.keyTable.Sort, s.keyIDMode)
 		}
-		idx := s.bindKeyTable(rows)
+		rows := buildKeyTableRows(primaries, s.collapsedKeys)
+		s.bindKeyTable(rows)
+		detailIdx := -1
+		for i := range primaries {
+			if s.selected != "" && primaries[i].Fingerprint == s.selected {
+				detailIdx = i
+				break
+			}
+		}
 		titleKey, idWidth := idColumnSpec(s.keyIDMode)
 		cols := []ui.TableColumn{
-			{Title: s.tr("col.type"), ID: "type", Width: 90, MinWidth: 72, Sortable: true},
+			{Title: s.tr("col.type"), ID: "type", Width: 150, MinWidth: 110, Sortable: true},
 			{Title: s.tr("col.name"), ID: "name", Width: 220, MinWidth: 120, Sortable: true},
 			{Title: s.tr(titleKey), ID: "id", Width: idWidth, MinWidth: 120, Sortable: true},
 			{Title: s.tr("col.algorithm"), ID: "alg", Width: 110, MinWidth: 80, Sortable: true},
@@ -78,15 +86,36 @@ func (s *uiState) viewKeys(c *ui.Context) {
 				if row < 0 || row >= len(rows) {
 					return
 				}
-				k := rows[row]
+				item := rows[row]
+				k := item.Key
 				switch col {
 				case 0:
-					if k.HasSecret {
-						ui.Text(c, s.tr("badge.secret"))
-					} else {
-						ui.Text(c, s.tr("badge.public"))
+					if item.Sub {
+						ui.Text(c, subkeyTypeText(s.lang()))
+						return
 					}
+					ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+						if len(k.Subkeys) > 0 {
+							mark := "▾"
+							if keyCollapsed(s.collapsedKeys, k.Fingerprint) {
+								mark = "▸"
+							}
+							fp := k.Fingerprint
+							if ui.Button(c, mark).Clicked() {
+								s.toggleCollapsed(fp)
+							}
+						}
+						if k.HasSecret {
+							ui.Text(c, s.tr("badge.secret"))
+						} else {
+							ui.Text(c, s.tr("badge.public"))
+						}
+					})
 				case 1:
+					if item.Sub {
+						ui.Text(c, subkeyUsageText(s.lang(), k))
+						return
+					}
 					ui.Text(c, k.PrimaryUID)
 				case 2:
 					ui.Text(c, keyIDText(k.Fingerprint, k.KeyID, s.keyIDMode))
@@ -97,7 +126,7 @@ func (s *uiState) viewKeys(c *ui.Context) {
 				}
 			}).Height(520)
 		}, func() {
-			s.viewKeyDetail(c, rows, idx)
+			s.viewKeyDetail(c, primaries, detailIdx)
 		}).Height(560)
 	})
 }
@@ -128,6 +157,9 @@ func (s *uiState) viewKeyDetail(c *ui.Context, rows []rnp.KeySummary, idx int) {
 				if k.CanEncrypt {
 					ui.Badge(c, s.tr("badge.encrypt"))
 				}
+				if k.CanAuth {
+					ui.Badge(c, s.tr("badge.auth"))
+				}
 			})
 			grouped := groupFingerprint(k.Fingerprint)
 			ui.Text(c, s.tr("label.fingerprint")).FontSize(12).TextColor(t.TextMuted)
@@ -143,18 +175,19 @@ func (s *uiState) viewKeyDetail(c *ui.Context, rows []rnp.KeySummary, idx int) {
 			ui.Textf(c, "%s: %s", s.tr("label.created"), formatKeyDate(k.CreatedUnix, s.tr("label.never")))
 			ui.Textf(c, "%s: %s", s.tr("label.expires"), formatKeyDate(k.ExpiresUnix, s.tr("label.never")))
 
-			ui.Text(c, s.tr("label.subkeys")).Bold().Padding(8, 0, 0, 0)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(8, 0, 0, 0).Children(func() {
+				ui.Text(c, s.tr("label.subkeys")).Bold()
+				if k.HasSecret {
+					if ui.Button(c, s.tr("btn.add_subkey")).Clicked() {
+						s.openAddSubkeyWindow()
+					}
+				}
+			})
 			if len(k.Subkeys) == 0 {
 				ui.Text(c, s.tr("empty.subkeys")).FontSize(12).TextColor(t.TextMuted)
 			}
 			for _, sub := range k.Subkeys {
-				line := fmt.Sprintf("%s   %s   %s   %s",
-					sub.Algorithm,
-					keyIDText(sub.Fingerprint, sub.KeyID, keyIDModeShort),
-					usageLabel(s, sub),
-					formatKeyDate(sub.ExpiresUnix, s.tr("label.never")),
-				)
-				ui.Text(c, line).FontSize(12)
+				s.viewSubkeyCard(c, k.HasSecret, sub)
 			}
 
 			ui.Row(c).Gap(8).Padding(8, 0, 0, 0).Children(func() {
@@ -484,6 +517,9 @@ func (s *uiState) adoptPassphrase(pass string) {
 	}
 	s.newKeyPass = ""
 	s.newKeyPass2 = ""
+	s.subPass = ""
+	s.expiryPass = ""
+	s.revokePass = ""
 }
 
 func (s *uiState) ensureKeyTable() {
@@ -498,23 +534,34 @@ func (s *uiState) ensureKeyTable() {
 	}
 }
 
-func (s *uiState) bindKeyTable(rows []rnp.KeySummary) int {
+func (s *uiState) bindKeyTable(rows []keyTableRow) {
 	s.ensureKeyTable()
 	sort := ui.SortOrder{}
 	if s.keyTable.Sort != nil {
 		sort = *s.keyTable.Sort
 	}
-	sig := fmt.Sprintf("%d\x00%s\x00%s\x00%t", s.keyFilter, s.keySearch, sort.Column, sort.Descending)
+	sig := fmt.Sprintf("%d\x00%s\x00%s\x00%t\x00%s", s.keyFilter, s.keySearch, sort.Column, sort.Descending, collapseSig(s.collapsedKeys))
 	picked := -1
 	if s.keyTable.Selected != nil {
 		picked = *s.keyTable.Selected
 	}
-	if s.selected == s.shownSelected && sig == s.shownSig && picked >= 0 && picked < len(rows) && rows[picked].Fingerprint != s.shownSelected {
-		s.selected = rows[picked].Fingerprint
+	if s.selected == s.shownSelected && s.selectedSubkey == s.shownSubkey && sig == s.shownSig && picked >= 0 && picked < len(rows) {
+		primary, sub := selectionForTableRow(rows[picked])
+		if primary != s.selected || sub != s.selectedSubkey {
+			s.selected = primary
+			s.selectedSubkey = sub
+		}
 	}
 	idx := -1
 	for i := range rows {
-		if s.selected != "" && rows[i].Fingerprint == s.selected {
+		if s.selectedSubkey != "" {
+			if rows[i].Sub && rows[i].Key.Fingerprint == s.selectedSubkey && rows[i].PrimaryFP == s.selected {
+				idx = i
+				break
+			}
+			continue
+		}
+		if !rows[i].Sub && rows[i].Key.Fingerprint == s.selected {
 			idx = i
 			break
 		}
@@ -522,19 +569,18 @@ func (s *uiState) bindKeyTable(rows []rnp.KeySummary) int {
 	if s.keyTable.Selected != nil {
 		*s.keyTable.Selected = idx
 	}
-	if idx >= 0 {
-		s.shownSelected = rows[idx].Fingerprint
-	} else {
-		s.shownSelected = s.selected
-	}
+	s.shownSelected = s.selected
+	s.shownSubkey = s.selectedSubkey
 	s.shownSig = sig
 	s.keyTable.Key = func(i int) any {
 		if i < 0 || i >= len(rows) {
 			return i
 		}
-		return rows[i].Fingerprint
+		if rows[i].Sub {
+			return "s:" + rows[i].Key.Fingerprint
+		}
+		return "p:" + rows[i].Key.Fingerprint
 	}
-	return idx
 }
 
 func (s *uiState) importKeyBytes(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
@@ -744,7 +790,19 @@ func filterPrimaryKeys(keys []rnp.KeySummary, filter int, query string) []rnp.Ke
 }
 
 func keyMatchesQuery(k rnp.KeySummary, q string) bool {
-	blob := strings.ToLower(strings.Join([]string{k.PrimaryUID, k.KeyID, k.Fingerprint, k.Algorithm}, " "))
+	if keyBlobMatch(k, q) {
+		return true
+	}
+	for i := range k.Subkeys {
+		if keyBlobMatch(k.Subkeys[i], q) {
+			return true
+		}
+	}
+	return false
+}
+
+func keyBlobMatch(k rnp.KeySummary, q string) bool {
+	blob := strings.ToLower(k.PrimaryUID + " " + k.KeyID + " " + k.Fingerprint + " " + k.Algorithm)
 	return strings.Contains(blob, q)
 }
 
@@ -848,21 +906,4 @@ func formatKeyDate(sec uint32, never string) string {
 		return never
 	}
 	return time.Unix(int64(sec), 0).UTC().Format("2006-01-02")
-}
-
-func usageLabel(s *uiState, k rnp.KeySummary) string {
-	parts := make([]string, 0, 3)
-	if k.CanCertify {
-		parts = append(parts, s.tr("badge.certify"))
-	}
-	if k.CanSign {
-		parts = append(parts, s.tr("badge.sign"))
-	}
-	if k.CanEncrypt {
-		parts = append(parts, s.tr("badge.encrypt"))
-	}
-	if len(parts) == 0 {
-		return s.tr("label.none")
-	}
-	return strings.Join(parts, ", ")
 }

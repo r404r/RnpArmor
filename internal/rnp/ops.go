@@ -610,6 +610,197 @@ func (s *Session) ExportRevocation(ctx context.Context, fprint, code, reason str
 	return out, err
 }
 
+// UsageAllowsAlg reports whether alg may be used for a subkey of that usage.
+// Encryption is ECDH, RSA, or ELGAMAL. Signing and authentication are EDDSA, RSA, or ECDSA.
+func UsageAllowsAlg(usage, alg string) bool {
+	alg = strings.ToUpper(strings.TrimSpace(alg))
+	switch strings.ToLower(strings.TrimSpace(usage)) {
+	case "encrypt":
+		return alg == "ECDH" || alg == "RSA" || alg == "ELGAMAL"
+	case "sign", "authenticate":
+		return alg == "EDDSA" || alg == "RSA" || alg == "ECDSA"
+	default:
+		return false
+	}
+}
+
+func normalizeSubkeyUsage(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "encrypt":
+		return "encrypt"
+	case "sign":
+		return "sign"
+	case "authenticate":
+		return "authenticate"
+	default:
+		return ""
+	}
+}
+
+// AddSubkey appends one subkey to the primary secret key identified by
+// primaryFprint. The new secret is protected through the password callback.
+func (s *Session) AddSubkey(ctx context.Context, primaryFprint string, req SubkeyGenRequest) (KeySummary, error) {
+	var out KeySummary
+	err := s.Do(ctx, func(context.Context) error {
+		usage := normalizeSubkeyUsage(req.Usage)
+		alg := defaultAlg(req.Algorithm, "")
+		if usage == "" || !UsageAllowsAlg(usage, alg) {
+			return errorsNew("subkey usage does not allow this algorithm")
+		}
+		key, err := s.locateKeyHandle("fingerprint", strings.TrimSpace(primaryFprint))
+		if err != nil {
+			return err
+		}
+		defer bound.keyDestroy(key)
+
+		var primary, secret bool
+		if err := bound.check("key_is_primary", bound.keyIsPrimary(key, &primary)); err != nil {
+			return err
+		}
+		if err := bound.check("key_have_secret", bound.keySecret(key, &secret)); err != nil {
+			return err
+		}
+		if !primary || !secret {
+			return errorsNew("primary secret key required")
+		}
+
+		var op uintptr
+		if err := bound.check("generate_subkey", bound.subCreate(&op, s.ffi, key, alg)); err != nil {
+			if op != 0 {
+				bound.genDestroy(op)
+			}
+			return err
+		}
+		defer func() {
+			if op != 0 {
+				bound.genDestroy(op)
+			}
+		}()
+		if err := bound.check("generate_subkey", bound.genClearUse(op)); err != nil {
+			return err
+		}
+		if err := bound.check("generate_subkey", bound.genUsage(op, usage)); err != nil {
+			return err
+		}
+		switch alg {
+		case "RSA", "DSA", "ELGAMAL":
+			bits := req.Bits
+			if bits <= 0 {
+				if alg == "ELGAMAL" || alg == "DSA" {
+					bits = 3072
+				} else {
+					bits = 4096
+				}
+			}
+			if err := bound.check("generate_subkey", bound.genBits(op, uint32(bits))); err != nil {
+				return err
+			}
+		case "ECDH", "ECDSA":
+			curve := normalizeCurve(req.Curve)
+			if curve == "" {
+				if alg == "ECDH" {
+					curve = "Curve25519"
+				} else {
+					curve = "NIST P-256"
+				}
+			}
+			if err := bound.check("generate_subkey", bound.genCurve(op, curve)); err != nil {
+				return err
+			}
+		}
+		if err := bound.check("generate_subkey", bound.genExpire(op, req.ExpirationSec)); err != nil {
+			return err
+		}
+		hash := defaultAlg(req.HashAlg, "SHA256")
+		cipher := defaultAlg(req.Cipher, "AES256")
+		if err := bound.check("generate_subkey", bound.genHash(op, hash)); err != nil {
+			return err
+		}
+		if err := bound.check("generate_subkey", bound.genCipher(op, cipher)); err != nil {
+			return err
+		}
+		if err := bound.check("generate_subkey", bound.genProtHash(op, hash)); err != nil {
+			return err
+		}
+		if err := bound.check("generate_subkey", bound.genReqPass(op, true)); err != nil {
+			return err
+		}
+		// Same secret-key protection as Generate, still via the password callback.
+		if err := bound.check("generate_subkey", bound.genMode(op, "cfb")); err != nil {
+			return err
+		}
+		if err := bound.check("generate_subkey", bound.genIter(op, 1024)); err != nil {
+			return err
+		}
+		if err := bound.check("generate_subkey", bound.genExec(op)); err != nil {
+			return err
+		}
+		var sub uintptr
+		if err := bound.check("generate_subkey", bound.genKey(op, &sub)); err != nil {
+			if sub != 0 {
+				bound.keyDestroy(sub)
+			}
+			return err
+		}
+		defer bound.keyDestroy(sub)
+		out, err = s.keySummaryFromHandle(sub, false)
+		return err
+	})
+	return out, err
+}
+
+// SetKeyExpiration sets the expiry of a primary key or a subkey.
+// expiryFromCreation is seconds after the key's creation time. Zero means never.
+func (s *Session) SetKeyExpiration(ctx context.Context, fprint string, expiryFromCreation uint32) error {
+	return s.Do(ctx, func(context.Context) error {
+		key, err := s.locateKeyHandle("fingerprint", strings.TrimSpace(fprint))
+		if err != nil {
+			return err
+		}
+		defer bound.keyDestroy(key)
+		return bound.check("key_set_expiration", bound.keySetExpiry(key, expiryFromCreation))
+	})
+}
+
+// RevokeKey revokes one primary key or subkey. code defaults to retired.
+// An empty or unknown code becomes retired. flags stay 0 and the hash is SHA256.
+func (s *Session) RevokeKey(ctx context.Context, fprint, code, reason string) error {
+	return s.Do(ctx, func(context.Context) error {
+		key, err := s.locateKeyHandle("fingerprint", strings.TrimSpace(fprint))
+		if err != nil {
+			return err
+		}
+		defer bound.keyDestroy(key)
+		switch strings.ToLower(strings.TrimSpace(code)) {
+		case "superseded", "compromised", "retired", "no":
+			code = strings.ToLower(strings.TrimSpace(code))
+		default:
+			code = "retired"
+		}
+		return bound.check("key_revoke", bound.keyRevoke(key, 0, "SHA256", code, reason))
+	})
+}
+
+// DeleteSubkey removes one subkey's public and secret material.
+// A primary key is refused. Subkeys of the target are not removed.
+func (s *Session) DeleteSubkey(ctx context.Context, subFprint string) error {
+	return s.Do(ctx, func(context.Context) error {
+		key, err := s.locateKeyHandle("fingerprint", strings.TrimSpace(subFprint))
+		if err != nil {
+			return err
+		}
+		defer bound.keyDestroy(key)
+		var sub bool
+		if err := bound.check("key_is_sub", bound.keyIsSub(key, &sub)); err != nil {
+			return err
+		}
+		if !sub {
+			return errorsNew("refusing to delete a primary key")
+		}
+		return bound.check("key_remove", bound.keyRemove(key, keyRemovePublic|keyRemoveSecret))
+	})
+}
+
 func (s *Session) DeleteKey(ctx context.Context, fprint string) error {
 	return s.Do(ctx, func(context.Context) error {
 		key, err := s.locateKeyHandle("fingerprint", strings.TrimSpace(fprint))
@@ -1037,6 +1228,9 @@ func (s *Session) keySummaryFromHandle(key uintptr, includeSubkeys bool) (KeySum
 		return out, err
 	}
 	if err := bound.check("key_allows_usage", bound.keyUsage(key, "certify", &out.CanCertify)); err != nil {
+		return out, err
+	}
+	if err := bound.check("key_allows_usage", bound.keyUsage(key, "authenticate", &out.CanAuth)); err != nil {
 		return out, err
 	}
 	if err := bound.check("key_is_primary", bound.keyIsPrimary(key, &out.IsPrimary)); err != nil {

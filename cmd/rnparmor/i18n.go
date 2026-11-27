@@ -1404,4 +1404,274 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangZH: "哈希与对称算法用于保护私钥和对称加密。通常搭配 SHA256 或 SHA512 与 AES256。",
 		LangJA: "ハッシュと共通鍵暗号は秘密鍵と対称暗号化を守ります。通常は SHA256 または SHA512 と AES256 です。",
 	},
+	"table.subkey": {
+		LangEN: "Subkey",
+		LangZH: "子密钥",
+		LangJA: "副鍵",
+	},
+	"table.use.encrypt": {
+		LangEN: "Encrypt",
+		LangZH: "加密",
+		LangJA: "暗号化",
+	},
+	"table.use.sign": {
+		LangEN: "Sign",
+		LangZH: "签名",
+		LangJA: "署名",
+	},
+	"table.use.auth": {
+		LangEN: "Auth",
+		LangZH: "认证",
+		LangJA: "認証",
+	},
+	"badge.auth": {
+		LangEN: "Auth",
+		LangZH: "认证",
+		LangJA: "認証",
+	},
+	"btn.add_subkey": {
+		LangEN: "+ Add Subkey...",
+		LangZH: "+ 添加子密钥...",
+		LangJA: "+ 副鍵を追加...",
+	},
+	"btn.add_subkey_do": {
+		LangEN: "Add Subkey",
+		LangZH: "添加子密钥",
+		LangJA: "副鍵を追加",
+	},
+	"btn.subkey_expiry": {
+		LangEN: "Change Expiry...",
+		LangZH: "续期 / 改有效期...",
+		LangJA: "有効期限を変更...",
+	},
+	"btn.apply_expiry": {
+		LangEN: "Apply",
+		LangZH: "应用",
+		LangJA: "適用",
+	},
+	"btn.subkey_revoke": {
+		LangEN: "Revoke...",
+		LangZH: "吊销...",
+		LangJA: "失効...",
+	},
+	"btn.subkey_revoke_do": {
+		LangEN: "Revoke Subkey",
+		LangZH: "吊销子密钥",
+		LangJA: "副鍵を失効",
+	},
+	"btn.subkey_delete": {
+		LangEN: "Delete...",
+		LangZH: "删除...",
+		LangJA: "削除...",
+	},
+	"title.add_subkey": {
+		LangEN: "Add Subkey",
+		LangZH: "添加子密钥",
+		LangJA: "副鍵を追加",
+	},
+	"title.subkey_expiry": {
+		LangEN: "Change Subkey Expiry",
+		LangZH: "修改子密钥有效期",
+		LangJA: "副鍵の有効期限を変更",
+	},
+	"title.subkey_revoke": {
+		LangEN: "Revoke Subkey",
+		LangZH: "吊销子密钥",
+		LangJA: "副鍵を失効",
+	},
+	"label.subkey_usage": {
+		LangEN: "Usage",
+		LangZH: "用途",
+		LangJA: "用途",
+	},
+	"label.subkey_alg": {
+		LangEN: "Algorithm",
+		LangZH: "算法",
+		LangJA: "アルゴリズム",
+	},
+	"label.session_pass": {
+		LangEN: "Session passphrase",
+		LangZH: "会话口令",
+		LangJA: "セッションのパスフレーズ",
+	},
+	"label.revoke_code": {
+		LangEN: "Reason",
+		LangZH: "吊销原因",
+		LangJA: "失効理由",
+	},
+	"label.revoke_reason": {
+		LangEN: "Note",
+		LangZH: "说明",
+		LangJA: "メモ",
+	},
+	"usage.encrypt": {
+		LangEN: "Encrypt (recommended)",
+		LangZH: "加密（推荐）",
+		LangJA: "暗号化（推奨）",
+	},
+	"usage.sign": {
+		LangEN: "Sign",
+		LangZH: "签名",
+		LangJA: "署名",
+	},
+	"usage.auth": {
+		LangEN: "Authenticate (Auth)",
+		LangZH: "认证（Auth）",
+		LangJA: "認証（Auth）",
+	},
+	"usage.encrypt.desc": {
+		LangEN: "An encryption subkey may use ECDH, RSA, or ElGamal. It cannot use EdDSA.",
+		LangZH: "加密子密钥只能使用 ECDH、RSA 或 ELGAMAL，不能使用 EDDSA。",
+		LangJA: "暗号化副鍵は ECDH、RSA、ELGAMAL のみです。EDDSA は使えません。",
+	},
+	"usage.sign.desc": {
+		LangEN: "A signing subkey may use EdDSA, RSA, or ECDSA. It cannot use ECDH.",
+		LangZH: "签名子密钥只能使用 EDDSA、RSA 或 ECDSA，不能使用 ECDH。",
+		LangJA: "署名副鍵は EDDSA、RSA、ECDSA のみです。ECDH は使えません。",
+	},
+	"usage.auth.desc": {
+		LangEN: "An authentication subkey may use EdDSA, RSA, or ECDSA. It cannot use ECDH.",
+		LangZH: "认证子密钥只能使用 EDDSA、RSA 或 ECDSA，不能使用 ECDH。",
+		LangJA: "認証副鍵は EDDSA、RSA、ECDSA のみです。ECDH は使えません。",
+	},
+	"tip.addsub.ecdh": {
+		LangEN: "Recommended for encryption: Curve25519.",
+		LangZH: "加密推荐 Curve25519。",
+		LangJA: "暗号化の推奨は Curve25519 です。",
+	},
+	"tip.addsub.eddsa": {
+		LangEN: "Recommended for signing and authentication: Ed25519.",
+		LangZH: "签名和认证推荐 Ed25519。",
+		LangJA: "署名と認証の推奨は Ed25519 です。",
+	},
+	"tip.addsub.rsa": {
+		LangEN: "RSA works for encryption, signing, and authentication. 4096 bits is the usual size.",
+		LangZH: "RSA 可用于加密、签名和认证。常用 4096 位。",
+		LangJA: "RSA は暗号化、署名、認証に使えます。通常は 4096 ビットです。",
+	},
+	"tip.addsub.ecdsa": {
+		LangEN: "ECDSA is for signing and authentication, not for encryption.",
+		LangZH: "ECDSA 用于签名和认证，不能用于加密子密钥。",
+		LangJA: "ECDSA は署名と認証用で、暗号化には使いません。",
+	},
+	"tip.addsub.elgamal": {
+		LangEN: "ElGamal is a legacy encryption algorithm. Not recommended for new subkeys.",
+		LangZH: "ELGAMAL 是历史加密算法，不建议用于新的子密钥。",
+		LangJA: "ELGAMAL は過去の暗号化アルゴリズムです。新しい副鍵には非推奨。",
+	},
+	"tip.addsub.expiry": {
+		LangEN: "Never, or a number of years from now. Stored seconds are counted from the moment this subkey was created.",
+		LangZH: "可选永不过期，或自现在起若干年。写入的是自该子密钥创建时刻起的秒数。",
+		LangJA: "無期限、または今から数年。保存される値は副鍵の作成時刻からの秒数です。",
+	},
+	"placeholder.pass_reuse": {
+		LangEN: "Leave blank to reuse the current session passphrase",
+		LangZH: "留空则沿用当前会话口令",
+		LangJA: "空欄なら現在のセッションのパスフレーズを使います",
+	},
+	"placeholder.pass_required": {
+		LangEN: "Required to unlock the primary secret key and protect the new subkey",
+		LangZH: "必填，用于解锁主密钥私钥并保护新子密钥",
+		LangJA: "必須。主鍵の秘密鍵を解錠し、新しい副鍵を保護します",
+	},
+	"exp.never_sub": {
+		LangEN: "Never expires",
+		LangZH: "永不过期",
+		LangJA: "無期限",
+	},
+	"exp.plus1": {
+		LangEN: "1 year from now",
+		LangZH: "自现在起 1 年",
+		LangJA: "今から 1 年",
+	},
+	"exp.plus2": {
+		LangEN: "2 years from now",
+		LangZH: "自现在起 2 年",
+		LangJA: "今から 2 年",
+	},
+	"exp.plus5": {
+		LangEN: "5 years from now",
+		LangZH: "自现在起 5 年",
+		LangJA: "今から 5 年",
+	},
+	"reason.retired": {
+		LangEN: "Retired",
+		LangZH: "停止使用",
+		LangJA: "使用停止",
+	},
+	"reason.superseded": {
+		LangEN: "Superseded",
+		LangZH: "已被替代",
+		LangJA: "後継鍵に更新",
+	},
+	"reason.compromised": {
+		LangEN: "Compromised",
+		LangZH: "已泄露",
+		LangJA: "漏えい",
+	},
+	"reason.no": {
+		LangEN: "No reason",
+		LangZH: "未说明原因",
+		LangJA: "理由なし",
+	},
+	"hint.revoke_subkey": {
+		LangEN: "Revoking this subkey cannot be undone. The primary key stays valid.",
+		LangZH: "吊销该子密钥不可撤销，不影响主密钥。",
+		LangJA: "この副鍵の失効は取り消せません。主鍵はそのまま有効です。",
+	},
+	"hint.expiry_subkey": {
+		LangEN: "This changes when the subkey expires. It does not change the primary key.",
+		LangZH: "只修改该子密钥的有效期，不改变主密钥。",
+		LangJA: "この副鍵の有効期限だけを変えます。主鍵は変わりません。",
+	},
+	"hint.delete_subkey": {
+		LangEN: "Deleting a subkey cannot be undone and may make older messages undecryptable.",
+		LangZH: "删除子密钥不可恢复，可能导致对应的历史密文无法解密。",
+		LangJA: "副鍵の削除は元に戻せません。過去の暗号文を復号できなくなることがあります。",
+	},
+	"dlg.revoke_subkey_title": {
+		LangEN: "Revoke subkey",
+		LangZH: "吊销子密钥",
+		LangJA: "副鍵を失効",
+	},
+	"dlg.revoke_subkey": {
+		LangEN: "This revocation cannot be undone. The primary key is not revoked.",
+		LangZH: "吊销不可撤销，且不会吊销主密钥。",
+		LangJA: "失効は取り消せません。主鍵は失効しません。",
+	},
+	"dlg.delete_subkey_title": {
+		LangEN: "Delete subkey",
+		LangZH: "删除子密钥",
+		LangJA: "副鍵を削除",
+	},
+	"dlg.delete_subkey": {
+		LangEN: "This permanently deletes this subkey and may make older ciphertext impossible to decrypt. The primary key is kept.",
+		LangZH: "这将永久删除该子密钥，可能导致对应的历史密文无法解密。主密钥会保留。",
+		LangJA: "この副鍵を完全に削除します。過去の暗号文を復号できなくなることがあります。主鍵は残します。",
+	},
+	"err.subkey_alg": {
+		LangEN: "That algorithm is not allowed for this subkey usage.",
+		LangZH: "该算法不能用于这个子密钥用途。",
+		LangJA: "この用途の副鍵にはそのアルゴリズムを使えません。",
+	},
+	"action.add_subkey": {
+		LangEN: "Add subkey",
+		LangZH: "添加子密钥",
+		LangJA: "副鍵を追加",
+	},
+	"action.set_key_expiry": {
+		LangEN: "Change expiry",
+		LangZH: "修改有效期",
+		LangJA: "有効期限を変更",
+	},
+	"action.revoke_key": {
+		LangEN: "Revoke subkey",
+		LangZH: "吊销子密钥",
+		LangJA: "副鍵を失効",
+	},
+	"action.delete_subkey": {
+		LangEN: "Delete subkey",
+		LangZH: "删除子密钥",
+		LangJA: "副鍵を削除",
+	},
 }

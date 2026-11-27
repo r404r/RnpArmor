@@ -35,11 +35,13 @@ type uiState struct {
 	workspace  string
 	passphrase string
 
-	keys      []rnp.KeySummary
-	selected  string
-	keyJSON   string
-	features  string
-	packetOut string
+	keys           []rnp.KeySummary
+	selected       string
+	selectedSubkey string
+	collapsedKeys  map[string]bool
+	keyJSON        string
+	features       string
+	packetOut      string
 
 	keyReq rnp.KeyGenRequest
 
@@ -80,6 +82,7 @@ type uiState struct {
 	keySel        int
 	keySort       ui.SortOrder
 	shownSelected string
+	shownSubkey   string
 	shownSig      string
 	keyJSONOpen   bool
 
@@ -104,6 +107,37 @@ type uiState struct {
 
 	pendingCloseNew    bool
 	pendingCloseImport bool
+
+	addSubWin     *mygo.Window
+	subUsage      string
+	subAlg        string
+	subCurve      string
+	subBits       int
+	subHash       string
+	subCipher     string
+	subExpiry     int
+	subPass       string
+	subErr        string
+	subAdvanced   bool
+	subReq        rnp.SubkeyGenRequest
+	expiryWin     *mygo.Window
+	expiryTarget  string
+	expiryCreated uint32
+	expiryChoice  int
+	expiryPass    string
+	expiryErr     string
+	revokeWin     *mygo.Window
+	revokeTarget  string
+	revokeCode    string
+	revokeReason  string
+	revokePass    string
+	revokeErr     string
+	targetFP      string
+	expirySeconds uint32
+
+	pendingCloseAddSub bool
+	pendingCloseExpiry bool
+	pendingCloseRevoke bool
 }
 
 func main() {
@@ -193,6 +227,9 @@ func main() {
 			st.closeAboutWindow()
 			st.closeNewKeyWindow()
 			st.closeImportWindow()
+			st.closeAddSubWindow()
+			st.closeExpiryWindow()
+			st.closeRevokeWindow()
 		})
 		st.mainWin = w
 		st.applyMainMenu()
@@ -256,6 +293,15 @@ func (s *uiState) setLang(l Lang) {
 	}
 	if s.importWin != nil && !s.importWin.IsDestroyed() {
 		s.importWin.SetTitle(s.tr("title.import_text"))
+	}
+	if s.addSubWin != nil && !s.addSubWin.IsDestroyed() {
+		s.addSubWin.SetTitle(s.tr("title.add_subkey"))
+	}
+	if s.expiryWin != nil && !s.expiryWin.IsDestroyed() {
+		s.expiryWin.SetTitle(s.tr("title.subkey_expiry"))
+	}
+	if s.revokeWin != nil && !s.revokeWin.IsDestroyed() {
+		s.revokeWin.SetTitle(s.tr("title.subkey_revoke"))
 	}
 	s.invalidateAll()
 }
@@ -330,6 +376,15 @@ func (s *uiState) invalidateAll() {
 	}
 	if s.importWin != nil && !s.importWin.IsDestroyed() {
 		s.importWin.Invalidate()
+	}
+	if s.addSubWin != nil && !s.addSubWin.IsDestroyed() {
+		s.addSubWin.Invalidate()
+	}
+	if s.expiryWin != nil && !s.expiryWin.IsDestroyed() {
+		s.expiryWin.Invalidate()
+	}
+	if s.revokeWin != nil && !s.revokeWin.IsDestroyed() {
+		s.revokeWin.Invalidate()
 	}
 }
 
@@ -695,6 +750,11 @@ type actionInput struct {
 	importData         []byte
 	exportPath         string
 	exportKind         string
+	subReq             rnp.SubkeyGenRequest
+	targetFP           string
+	expirySeconds      uint32
+	revokeCode         string
+	revokeReason       string
 }
 
 func (in actionInput) tr(key string) string {
@@ -725,6 +785,8 @@ type actionResult struct {
 	hasCopy               bool
 	copyText              string
 	copyConcealed         bool
+	hasSelectSubkey       bool
+	selectSubkey          string
 }
 
 type actionOutcome struct {
@@ -764,6 +826,11 @@ func (s *uiState) snapshot() actionInput {
 		importData:         s.importBytes,
 		exportPath:         s.exportPath,
 		exportKind:         s.exportKind,
+		subReq:             s.subReq,
+		targetFP:           s.targetFP,
+		expirySeconds:      s.expirySeconds,
+		revokeCode:         s.revokeCode,
+		revokeReason:       s.revokeReason,
 	}
 	s.importBytes = nil
 	s.exportPath = ""
@@ -839,10 +906,19 @@ func (s *uiState) applyUI(fn func()) {
 			about := s.aboutWin
 			newW := s.newKeyWin
 			imp := s.importWin
+			addW := s.addSubWin
+			expW := s.expiryWin
+			revW := s.revokeWin
 			closeNew := s.pendingCloseNew
 			closeImp := s.pendingCloseImport
+			closeAdd := s.pendingCloseAddSub
+			closeExp := s.pendingCloseExpiry
+			closeRev := s.pendingCloseRevoke
 			s.pendingCloseNew = false
 			s.pendingCloseImport = false
+			s.pendingCloseAddSub = false
+			s.pendingCloseExpiry = false
+			s.pendingCloseRevoke = false
 			s.mu.Unlock()
 			if about != nil && !about.IsDestroyed() {
 				about.Invalidate()
@@ -853,11 +929,29 @@ func (s *uiState) applyUI(fn func()) {
 			if imp != nil && !imp.IsDestroyed() {
 				imp.Invalidate()
 			}
+			if addW != nil && !addW.IsDestroyed() {
+				addW.Invalidate()
+			}
+			if expW != nil && !expW.IsDestroyed() {
+				expW.Invalidate()
+			}
+			if revW != nil && !revW.IsDestroyed() {
+				revW.Invalidate()
+			}
 			if closeNew && newW != nil && !newW.IsDestroyed() {
 				newW.Close()
 			}
 			if closeImp && imp != nil && !imp.IsDestroyed() {
 				imp.Close()
+			}
+			if closeAdd && addW != nil && !addW.IsDestroyed() {
+				addW.Close()
+			}
+			if closeExp && expW != nil && !expW.IsDestroyed() {
+				expW.Close()
+			}
+			if closeRev && revW != nil && !revW.IsDestroyed() {
+				revW.Close()
 			}
 		})
 		return
@@ -866,6 +960,9 @@ func (s *uiState) applyUI(fn func()) {
 	fn()
 	s.pendingCloseNew = false
 	s.pendingCloseImport = false
+	s.pendingCloseAddSub = false
+	s.pendingCloseExpiry = false
+	s.pendingCloseRevoke = false
 	s.mu.Unlock()
 }
 
@@ -908,6 +1005,11 @@ func (s *uiState) applyResult(title string, out actionOutcome) {
 				s.selected = out.selected
 			}
 		}
+		if res.hasSelectSubkey {
+			s.selectedSubkey = res.selectSubkey
+		} else if s.selectedSubkey != "" && !subkeyStillPresent(s.keys, s.selected, s.selectedSubkey) {
+			s.selectedSubkey = ""
+		}
 	}
 	if res.hasSessionLoaded {
 		s.sessionLoaded = res.sessionLoaded
@@ -924,6 +1026,15 @@ func (s *uiState) applyResult(title string, out actionOutcome) {
 		if title == "action.import_keys" {
 			s.importErr = s.lastErr
 		}
+		if title == "action.add_subkey" {
+			s.subErr = s.lastErr
+		}
+		if title == "action.set_key_expiry" {
+			s.expiryErr = s.lastErr
+		}
+		if title == "action.revoke_key" {
+			s.revokeErr = s.lastErr
+		}
 		return
 	}
 	s.lastErr = ""
@@ -938,6 +1049,35 @@ func (s *uiState) applyResult(title string, out actionOutcome) {
 		s.importText = ""
 		s.importErr = ""
 	}
+	if title == "action.add_subkey" {
+		s.pendingCloseAddSub = true
+		s.subErr = ""
+	}
+	if title == "action.set_key_expiry" {
+		s.pendingCloseExpiry = true
+		s.expiryErr = ""
+	}
+	if title == "action.revoke_key" {
+		s.pendingCloseRevoke = true
+		s.revokeErr = ""
+	}
+}
+
+func subkeyStillPresent(keys []rnp.KeySummary, primary, sub string) bool {
+	if sub == "" {
+		return false
+	}
+	for _, k := range keys {
+		if k.Fingerprint != primary {
+			continue
+		}
+		for _, sk := range k.Subkeys {
+			if sk.Fingerprint == sub {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func performAction(in actionInput, fn sessionAction) actionOutcome {

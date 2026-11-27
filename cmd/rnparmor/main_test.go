@@ -251,7 +251,7 @@ func TestUIStateActionsEndToEnd(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(20 * time.Second):
+	case <-time.After(45 * time.Second):
 		t.Fatal("ui actions timed out")
 	}
 }
@@ -490,6 +490,9 @@ func exerciseUIActions(lib, ws string) error {
 	}
 
 	if err := exercisePublicOnly(s, ws, pubArmor); err != nil {
+		return err
+	}
+	if err := exerciseSubkeyLifecycle(s); err != nil {
 		return err
 	}
 	revPath := filepath.Join(ws, "key.rev.asc")
@@ -1255,4 +1258,296 @@ func TestKeygenPresetsSyncAndTips(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestSubkeyTableExpiryUsageAndCatalog(t *testing.T) {
+	if err := ValidateCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	keys := []string{
+		"table.subkey", "table.use.encrypt", "table.use.sign", "table.use.auth",
+		"badge.auth",
+		"btn.add_subkey", "btn.add_subkey_do", "btn.subkey_expiry", "btn.apply_expiry",
+		"btn.subkey_revoke", "btn.subkey_revoke_do", "btn.subkey_delete",
+		"title.add_subkey", "title.subkey_expiry", "title.subkey_revoke",
+		"label.subkey_usage", "label.subkey_alg", "label.session_pass",
+		"label.revoke_code", "label.revoke_reason",
+		"usage.encrypt", "usage.sign", "usage.auth",
+		"usage.encrypt.desc", "usage.sign.desc", "usage.auth.desc",
+		"tip.addsub.ecdh", "tip.addsub.eddsa", "tip.addsub.rsa", "tip.addsub.ecdsa", "tip.addsub.elgamal", "tip.addsub.expiry",
+		"placeholder.pass_reuse", "placeholder.pass_required",
+		"exp.never_sub", "exp.plus1", "exp.plus2", "exp.plus5",
+		"reason.retired", "reason.superseded", "reason.compromised", "reason.no",
+		"hint.revoke_subkey", "hint.expiry_subkey", "hint.delete_subkey",
+		"dlg.revoke_subkey_title", "dlg.revoke_subkey",
+		"dlg.delete_subkey_title", "dlg.delete_subkey",
+		"err.subkey_alg",
+		"action.add_subkey", "action.set_key_expiry", "action.revoke_key", "action.delete_subkey",
+	}
+	for _, k := range keys {
+		for _, l := range []Lang{LangEN, LangZH, LangJA} {
+			v := strings.TrimSpace(Tr(l, k))
+			if v == "" || v == k {
+				t.Fatalf("translation missing %s/%s: %q", k, l, v)
+			}
+		}
+	}
+	if subkeyTypeText(LangEN) != "  └ Subkey" || subkeyTypeText(LangZH) != "  └ 子密钥" || subkeyTypeText(LangJA) != "  └ 副鍵" {
+		t.Fatal("subkey row label")
+	}
+	if subkeyUsageText(LangEN, rnp.KeySummary{CanEncrypt: true}) != "  Encrypt" || subkeyUsageText(LangEN, rnp.KeySummary{CanSign: true}) != "  Sign" || subkeyUsageText(LangEN, rnp.KeySummary{CanAuth: true}) != "  Auth" {
+		t.Fatal("usage indent")
+	}
+	for _, k := range keys {
+		zh := Tr(LangZH, k)
+		if strings.Contains(zh, "主键") || strings.Contains(zh, "副键") {
+			t.Fatalf("simplified term %s: %s", k, zh)
+		}
+	}
+
+	enc := rnp.KeySummary{Fingerprint: "SUBENC11223344556677889900AABBCCDDEEFF", KeyID: "99AABBCCDDEEFF00", Algorithm: "ECDH", IsSub: true, CanEncrypt: true}
+	sig := rnp.KeySummary{Fingerprint: "SUBSIG11223344556677889900AABBCCDDEEFF", KeyID: "88AABBCCDDEEFF00", Algorithm: "EDDSA", IsSub: true, CanSign: true}
+	auth := rnp.KeySummary{Fingerprint: "SUBAUT11223344556677889900AABBCCDDEEFF", KeyID: "77AABBCCDDEEFF00", Algorithm: "EDDSA", IsSub: true, CanAuth: true}
+	primary := rnp.KeySummary{
+		Fingerprint: "PRIMARY11223344556677889900AABBCCDDEE",
+		KeyID:       "AABBCCDDEEFF0011",
+		PrimaryUID:  "Ada <ada@ex>",
+		Algorithm:   "EDDSA",
+		HasSecret:   true,
+		IsPrimary:   true,
+		Subkeys:     []rnp.KeySummary{enc, sig, auth},
+	}
+	other := rnp.KeySummary{Fingerprint: "OTHER11223344556677889900AABBCCDDEEFF", KeyID: "0011223344556677", PrimaryUID: "Other", Algorithm: "RSA", IsPrimary: true}
+	rows := buildKeyTableRows([]rnp.KeySummary{primary, other}, nil)
+	if len(rows) != 5 || rows[0].Sub || rows[0].PrimaryFP != primary.Fingerprint {
+		t.Fatalf("expanded rows = %+v", rows)
+	}
+	if !rows[1].Sub || rows[1].PrimaryFP != primary.Fingerprint || rows[1].Key.Fingerprint != enc.Fingerprint {
+		t.Fatalf("first subkey row = %+v", rows[1])
+	}
+	if subkeyUsageRowKey(rows[1].Key) != "table.use.encrypt" || subkeyUsageRowKey(rows[2].Key) != "table.use.sign" || subkeyUsageRowKey(rows[3].Key) != "table.use.auth" {
+		t.Fatal("usage row keys")
+	}
+	pFP, subFP := selectionForTableRow(rows[1])
+	if pFP != primary.Fingerprint || subFP != enc.Fingerprint {
+		t.Fatalf("subkey click = %s %s", pFP, subFP)
+	}
+	pFP, subFP = selectionForTableRow(rows[0])
+	if pFP != primary.Fingerprint || subFP != "" {
+		t.Fatalf("primary click = %s %s", pFP, subFP)
+	}
+	if got := keyIDText(rows[1].Key.Fingerprint, rows[1].Key.KeyID, keyIDModeShort); got != "99AABBCCDDEEFF00" {
+		t.Fatalf("subkey short id = %q", got)
+	}
+	if got := keyIDText(rows[1].Key.Fingerprint, rows[1].Key.KeyID, keyIDModeFull); got != enc.Fingerprint {
+		t.Fatalf("subkey fingerprint = %q", got)
+	}
+	folded := buildKeyTableRows([]rnp.KeySummary{primary}, map[string]bool{primary.Fingerprint: true})
+	if len(folded) != 1 || folded[0].Sub {
+		t.Fatalf("collapsed = %+v", folded)
+	}
+	if keyCollapsed(nil, primary.Fingerprint) || keyCollapsed(map[string]bool{}, primary.Fingerprint) {
+		t.Fatal("default expanded")
+	}
+
+	matched := filterPrimaryKeys([]rnp.KeySummary{primary, other}, keyFilterAll, "99aabbcc")
+	if len(matched) != 1 || matched[0].Fingerprint != primary.Fingerprint || len(matched[0].Subkeys) != 3 {
+		t.Fatalf("subkey id search = %+v", matched)
+	}
+	if got := filterPrimaryKeys([]rnp.KeySummary{primary, other}, keyFilterAll, "subaut"); len(got) != 1 || len(got[0].Subkeys) != 3 {
+		t.Fatalf("subkey fingerprint search = %+v", got)
+	}
+	if got := filterPrimaryKeys([]rnp.KeySummary{other, primary}, keyFilterAll, "ecdh"); len(got) != 1 || got[0].Fingerprint != primary.Fingerprint {
+		t.Fatalf("subkey algorithm search = %+v", got)
+	}
+
+	now := time.Unix(1_700_000_000, 0)
+	created := uint32(now.Unix() - 100)
+	if expirationFromNow(created, now, 0) != 0 || expirationFromNow(created, now, -2) != 0 {
+		t.Fatal("zero years")
+	}
+	if got, want := expirationFromNow(created, now, 1), uint32(100+yearSeconds); got != want {
+		t.Fatalf("aged expiry %d want %d", got, want)
+	}
+	if got := expirationFromNow(0, now, 2); got != 2*yearSeconds {
+		t.Fatalf("created 0 = %d", got)
+	}
+	future := uint32(now.Unix() + 50)
+	if got := expirationFromNow(future, now, 1); got != yearSeconds {
+		t.Fatalf("now before created = %d", got)
+	}
+	if got := expirationFromNow(uint32(now.Unix()), now, 5); got != 5*yearSeconds {
+		t.Fatalf("exact now = %d", got)
+	}
+
+	alg, curve, bits := syncAddedSubkey("encrypt", "EDDSA", "Ed25519", 256)
+	if alg != "ECDH" || curve != "Curve25519" || bits != 0 || rnp.UsageAllowsAlg("encrypt", "EDDSA") {
+		t.Fatalf("encrypt rejected eddsa: %s %s %d", alg, curve, bits)
+	}
+	alg, curve, bits = syncAddedSubkey("sign", "ECDH", "Curve25519", 0)
+	if alg != "EDDSA" || curve != "Ed25519" || bits != 0 || rnp.UsageAllowsAlg("sign", "ECDH") {
+		t.Fatalf("sign rejected ecdh: %s %s %d", alg, curve, bits)
+	}
+	alg, curve, bits = syncAddedSubkey("authenticate", "ECDH", "", 0)
+	if alg != "EDDSA" || rnp.UsageAllowsAlg("authenticate", "ECDH") || !rnp.UsageAllowsAlg("authenticate", "ECDSA") {
+		t.Fatalf("auth = %s", alg)
+	}
+	alg, curve, bits = syncAddedSubkey("encrypt", "RSA", "Curve25519", 1024)
+	if alg != "RSA" || curve != "" || bits != 4096 || !rnp.UsageAllowsAlg("encrypt", "ELGAMAL") {
+		t.Fatalf("encrypt rsa = %s %s %d", alg, curve, bits)
+	}
+	alg, curve, bits = syncAddedSubkey("sign", "ECDSA", "Curve25519", 2048)
+	if alg != "ECDSA" || curve != "NIST P-256" || bits != 0 {
+		t.Fatalf("sign ecdsa = %s %s %d", alg, curve, bits)
+	}
+	if _, errKey := validateAddSubkey("encrypt", "EDDSA", "", "SHA256", "AES256", 0, 1, "", ""); errKey != "err.pass_empty" {
+		t.Fatalf("empty pass after sync = %s", errKey)
+	}
+	req, errKey := validateAddSubkey("sign", "ECDH", "Curve25519", "SHA256", "AES256", 0, 2, "secret", "")
+	if errKey != "" || req.Usage != "sign" || req.Algorithm != "EDDSA" || req.Curve != "Ed25519" || req.ExpirationSec != 2*yearSeconds {
+		t.Fatalf("validated = %+v %s", req, errKey)
+	}
+	req, errKey = validateAddSubkey("encrypt", "ELGAMAL", "", "", "", 0, 0, "", "session")
+	if errKey != "" || req.Algorithm != "ELGAMAL" || req.Bits != 3072 || req.HashAlg != "SHA256" || req.Cipher != "AES256" || req.ExpirationSec != 0 {
+		t.Fatalf("elgamal req = %+v %s", req, errKey)
+	}
+	if legal := legalSubkeyAlgs("encrypt"); len(legal) != 3 || legal[0] != "ECDH" {
+		t.Fatalf("encrypt algs %v", legal)
+	}
+	if legal := legalSubkeyAlgs("authenticate"); len(legal) != 3 || legal[0] != "EDDSA" {
+		t.Fatalf("auth algs %v", legal)
+	}
+}
+
+func exerciseSubkeyLifecycle(s *uiState) error {
+	primary := s.selected
+	parent, ok := primaryByFP(s.keys, primary)
+	if !ok || !parent.HasSecret {
+		return fmt.Errorf("subkey lifecycle: primary %q missing", primary)
+	}
+	before := append([]rnp.KeySummary(nil), parent.Subkeys...)
+	s.subReq = rnp.SubkeyGenRequest{
+		Usage:     "encrypt",
+		Algorithm: "ECDH",
+		Curve:     "Curve25519",
+		HashAlg:   "SHA256",
+		Cipher:    "AES256",
+	}
+	if err := runUI(s, "action.add_subkey", s.addSubkey); err != nil {
+		return err
+	}
+	if s.selected != primary {
+		return fmt.Errorf("add subkey selected %q", s.selected)
+	}
+	parent, ok = primaryByFP(s.keys, primary)
+	if !ok {
+		return fmt.Errorf("primary missing after add")
+	}
+	if len(parent.Subkeys) != len(before)+1 {
+		return fmt.Errorf("subkeys %d -> %d", len(before), len(parent.Subkeys))
+	}
+	seen := map[string]bool{}
+	for _, sk := range before {
+		seen[sk.Fingerprint] = true
+	}
+	var added rnp.KeySummary
+	for _, sk := range parent.Subkeys {
+		if !seen[sk.Fingerprint] {
+			added = sk
+			break
+		}
+	}
+	if added.Fingerprint == "" || !added.IsSub || !added.CanEncrypt {
+		return fmt.Errorf("added subkey %+v", added)
+	}
+	if s.selectedSubkey != added.Fingerprint {
+		return fmt.Errorf("selected subkey %q", s.selectedSubkey)
+	}
+	exp := expirationFromNow(added.CreatedUnix, time.Now().UTC(), 1)
+	if exp == 0 {
+		return fmt.Errorf("computed expiry is 0")
+	}
+	s.targetFP = added.Fingerprint
+	s.expirySeconds = exp
+	if err := runUI(s, "action.set_key_expiry", s.setKeyExpiry); err != nil {
+		return err
+	}
+	if s.selected != primary {
+		return fmt.Errorf("expiry selected %q", s.selected)
+	}
+	updated, ok := subByFP(s.keys, primary, added.Fingerprint)
+	if !ok {
+		return fmt.Errorf("subkey missing after expiry")
+	}
+	wantExp := added.CreatedUnix + exp
+	if added.CreatedUnix == 0 {
+		wantExp = exp
+	}
+	if updated.ExpiresUnix != wantExp {
+		return fmt.Errorf("expiry unix %d want %d", updated.ExpiresUnix, wantExp)
+	}
+	parent, _ = primaryByFP(s.keys, primary)
+	if parent.IsRevoked || updated.IsRevoked {
+		return fmt.Errorf("revoked during expiry primary=%v sub=%v", parent.IsRevoked, updated.IsRevoked)
+	}
+	s.targetFP = added.Fingerprint
+	s.revokeCode = "retired"
+	s.revokeReason = "lifecycle"
+	if err := runUI(s, "action.revoke_key", s.revokeKey); err != nil {
+		return err
+	}
+	updated, ok = subByFP(s.keys, primary, added.Fingerprint)
+	if !ok || !updated.IsRevoked {
+		return fmt.Errorf("subkey revoke ok=%v revoked=%v", ok, updated.IsRevoked)
+	}
+	parent, ok = primaryByFP(s.keys, primary)
+	if !ok || parent.IsRevoked || s.selected != primary {
+		return fmt.Errorf("primary after revoke ok=%v revoked=%v selected=%q", ok, parent.IsRevoked, s.selected)
+	}
+	s.targetFP = primary
+	if err := runUI(s, "action.delete_subkey", s.deleteSubkey); err == nil {
+		return fmt.Errorf("delete primary as subkey succeeded")
+	}
+	s.lastErr = ""
+	parent, ok = primaryByFP(s.keys, primary)
+	if !ok || parent.IsRevoked {
+		return fmt.Errorf("primary damaged by refused delete")
+	}
+	s.targetFP = added.Fingerprint
+	if err := runUI(s, "action.delete_subkey", s.deleteSubkey); err != nil {
+		return err
+	}
+	if _, ok := subByFP(s.keys, primary, added.Fingerprint); ok {
+		return fmt.Errorf("deleted subkey still listed")
+	}
+	parent, ok = primaryByFP(s.keys, primary)
+	if !ok || parent.IsRevoked || s.selected != primary {
+		return fmt.Errorf("primary after delete ok=%v revoked=%v selected=%q", ok, parent.IsRevoked, s.selected)
+	}
+	if len(parent.Subkeys) != len(before) {
+		return fmt.Errorf("subkeys left %d want %d", len(parent.Subkeys), len(before))
+	}
+	return nil
+}
+
+func primaryByFP(keys []rnp.KeySummary, fp string) (rnp.KeySummary, bool) {
+	for _, k := range keys {
+		if k.Fingerprint == fp && isPrimaryRow(k) {
+			return k, true
+		}
+	}
+	return rnp.KeySummary{}, false
+}
+
+func subByFP(keys []rnp.KeySummary, primary, fp string) (rnp.KeySummary, bool) {
+	parent, ok := primaryByFP(keys, primary)
+	if !ok {
+		return rnp.KeySummary{}, false
+	}
+	for _, sk := range parent.Subkeys {
+		if sk.Fingerprint == fp {
+			return sk, true
+		}
+	}
+	return rnp.KeySummary{}, false
 }

@@ -857,3 +857,161 @@ func TestOpenOptionalPassPublicOnlyRoundTrip(t *testing.T) {
 		t.Fatalf("relative LoadFrom = %v", err)
 	}
 }
+
+func TestSubkeyLifecycle(t *testing.T) {
+	pass := newPass(t)
+	s := openSession(t, pass)
+	ctx := context.Background()
+	primary, err := s.GenerateKeyWithSpec(ctx, KeyGenRequest{
+		UserID:       "Sub <sub@example.com>",
+		PrimaryAlg:   "EDDSA",
+		PrimaryCurve: "Ed25519",
+		SubkeyAlg:    "ECDH",
+		SubkeyCurve:  "Curve25519",
+		HashAlg:      "SHA256",
+		SymmCipher:   "AES256",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !primary.IsPrimary || !primary.HasSecret || primary.CanAuth {
+		t.Fatalf("primary %+v", primary)
+	}
+	original := map[string]bool{}
+	for _, sk := range primary.Subkeys {
+		original[sk.Fingerprint] = true
+	}
+
+	enc, err := s.AddSubkey(ctx, primary.Fingerprint, SubkeyGenRequest{
+		Usage: "encrypt", Algorithm: "ECDH", Curve: "Curve25519", HashAlg: "SHA256", Cipher: "AES256",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !enc.IsSub || !enc.CanEncrypt || enc.CanSign || enc.CanAuth || enc.Fingerprint == "" {
+		t.Fatalf("encrypt subkey %+v", enc)
+	}
+	sig, err := s.AddSubkey(ctx, primary.Fingerprint, SubkeyGenRequest{
+		Usage: "sign", Algorithm: "EDDSA", Curve: "Ed25519", HashAlg: "SHA256", Cipher: "AES256",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sig.IsSub || !sig.CanSign || sig.CanEncrypt || sig.CanAuth {
+		t.Fatalf("sign subkey %+v", sig)
+	}
+	auth, err := s.AddSubkey(ctx, primary.Fingerprint, SubkeyGenRequest{
+		Usage: "authenticate", Algorithm: "EDDSA", Curve: "Ed25519", HashAlg: "SHA256", Cipher: "AES256",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !auth.IsSub || !auth.CanAuth || auth.CanEncrypt {
+		t.Fatalf("auth subkey %+v", auth)
+	}
+	if _, err := s.AddSubkey(ctx, primary.Fingerprint, SubkeyGenRequest{Usage: "encrypt", Algorithm: "EDDSA"}); err == nil {
+		t.Fatal("eddsa encrypt subkey was accepted")
+	}
+	if _, err := s.AddSubkey(ctx, primary.Fingerprint, SubkeyGenRequest{Usage: "sign", Algorithm: "ECDH", Curve: "Curve25519"}); err == nil {
+		t.Fatal("ecdh sign subkey was accepted")
+	}
+
+	const year = uint32(365 * 24 * 60 * 60)
+	if err := s.SetKeyExpiration(ctx, sig.Fingerprint, year); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeKey(ctx, auth.Fingerprint, "compromised", "lifecycle"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeKey(ctx, enc.Fingerprint, "not-a-code", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteSubkey(ctx, primary.Fingerprint); err == nil {
+		t.Fatal("deleted the primary key")
+	}
+	if err := s.DeleteSubkey(ctx, enc.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := s.ListKeys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := primaryIn(list, primary.Fingerprint)
+	if !ok {
+		t.Fatal("primary missing after lifecycle")
+	}
+	if got.IsRevoked || !got.HasSecret {
+		t.Fatalf("primary damaged %+v", got)
+	}
+	if subIn(got, enc.Fingerprint) {
+		t.Fatal("deleted encrypt subkey still present")
+	}
+	sigNow, ok := subOf(got, sig.Fingerprint)
+	if !ok || sigNow.IsRevoked || sigNow.ExpiresUnix != sigNow.CreatedUnix+year {
+		t.Fatalf("sign subkey %+v", sigNow)
+	}
+	authNow, ok := subOf(got, auth.Fingerprint)
+	if !ok || !authNow.IsRevoked || !authNow.CanAuth {
+		t.Fatalf("auth subkey %+v", authNow)
+	}
+	for fp := range original {
+		if !subIn(got, fp) {
+			t.Fatalf("original subkey %s missing", fp)
+		}
+		if sk, ok := subOf(got, fp); ok && sk.IsRevoked {
+			t.Fatalf("original subkey revoked %+v", sk)
+		}
+	}
+
+	dir := t.TempDir()
+	if err := s.SaveTo(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
+	s2 := openSession(t, pass)
+	if err := s2.LoadFrom(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := s2.ListKeys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, ok := primaryIn(loaded, primary.Fingerprint)
+	if !ok || back.IsRevoked {
+		t.Fatalf("reloaded primary %+v", back)
+	}
+	if subIn(back, enc.Fingerprint) {
+		t.Fatal("deleted subkey survived save/load")
+	}
+	sigBack, ok := subOf(back, sig.Fingerprint)
+	if !ok || sigBack.IsRevoked || sigBack.ExpiresUnix != sigNow.ExpiresUnix {
+		t.Fatalf("reloaded sign subkey %+v", sigBack)
+	}
+	authBack, ok := subOf(back, auth.Fingerprint)
+	if !ok || !authBack.IsRevoked || !authBack.CanAuth {
+		t.Fatalf("reloaded auth subkey %+v", authBack)
+	}
+}
+
+func primaryIn(list []KeySummary, fp string) (KeySummary, bool) {
+	for _, k := range list {
+		if k.IsPrimary && strings.EqualFold(k.Fingerprint, fp) {
+			return k, true
+		}
+	}
+	return KeySummary{}, false
+}
+
+func subOf(primary KeySummary, fp string) (KeySummary, bool) {
+	for _, sk := range primary.Subkeys {
+		if strings.EqualFold(sk.Fingerprint, fp) {
+			return sk, true
+		}
+	}
+	return KeySummary{}, false
+}
+
+func subIn(primary KeySummary, fp string) bool {
+	_, ok := subOf(primary, fp)
+	return ok
+}
