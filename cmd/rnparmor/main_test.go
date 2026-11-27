@@ -1842,6 +1842,7 @@ func TestI18nComplete(t *testing.T) {
 	keys := []string{
 		"status.key_count_one", "status.key_count_many", "tip.copy_lib_path",
 		"toast.done", "toast.path_copied", "toast.fingerprint_copied",
+		"toast.text_signed", "toast.text_encrypted",
 		"btn.ok", "alert.error", "alert.redacted",
 		"state.idle", "state.busy", "status.ready",
 	}

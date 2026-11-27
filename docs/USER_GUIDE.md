@@ -18,7 +18,7 @@ Supported release targets:
 
 ## 2. Download, Installation & First Launch
 
-Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.7` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; `v0.0.5` added PR #14 `+ New Key` algorithm presets/parameter linking/tri-lingual tips and PR #15 hierarchical collapsible subkey tree & full subkey lifecycle management; `v0.0.6` delivered PR #16 empty-passphrase RFC 4880 unprotected key generation and `No Passphrase` lifecycle support; `v0.0.7` shipped PR #17 pinned bottom status bar & graded notification feedback plus PR #18 light Fluent & frosted-glass UI refresh; the `fix/keygen-passphrase-and-expiry` branch adds `+ New Key` passphrase visibility toggles, live mismatch blocking, and real `librnp` op-API key expiration ahead of a future release).
+Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.7` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; `v0.0.5` added PR #14 `+ New Key` algorithm presets/parameter linking/tri-lingual tips and PR #15 hierarchical collapsible subkey tree & full subkey lifecycle management; `v0.0.6` delivered PR #16 empty-passphrase RFC 4880 unprotected key generation and `No Passphrase` lifecycle support; `v0.0.7` shipped PR #17 pinned bottom status bar & graded notification feedback plus PR #18 light Fluent & frosted-glass UI refresh; PR #19 refreshed all 11 Linux demo screenshots across the docs, and PR #20 adds `+ New Key` passphrase visibility toggles, live mismatch blocking, and real `librnp` op-API key expiration for `v0.0.8`).
 
 ### Verifying Release Checksums
 
@@ -89,7 +89,7 @@ Example `--smoke-test` output:
 
 ```text
 status=ok
-app_version=v0.0.4
+app_version=v0.0.7
 library=/path/to/librnp.so
 version=0.18.1+git...
 i18n=ok
@@ -136,6 +136,8 @@ The main window (`1120×780`) uses a **light Fluent & frosted-glass visual shell
 4. **`Help`**
    - **About**: opens a standalone, menu-less, non-modal child window (`580×520`, fixed size, single-instance focused) with a **Close** button. Closing About keeps the main window open; closing the main window closes About, New Key, and Import Key Text automatically.
    - Read-only fields shown in About: **Application Version**, **Author**, **Repository URL**, **RNP Upstream & Version**, **Local RNP Library Path**, **Keyring Directory (portable workspace)**, **pubring.gpg exists**, **secring.gpg exists**, **UI Framework & Runtime** (`MyGo v0.10.0 | purego v0.11.1 | Botan 3.10.0`), plus a reminder that the system default keyring is not read.
+
+![RnpArmor About window (English, Linux runtime)](screenshots/rnparmor-linux-about-en.png)
 
 ## 4. Step-by-Step Guide for All 5 Workspaces
 
@@ -209,7 +211,9 @@ Use this workspace as a master-detail key manager to browse your keyring folder,
 
 ### Workspace 2: `② Text Studio`
 
-Use this workspace for ASCII-armored text encryption, decryption, signing, and verification.
+Use this workspace for ASCII-armored text encryption, decryption, signing, and verification (showing demo plaintext, recipient picker & fingerprint list, `AES256` / `zlib`, signer dropdown, and the 4 text operation buttons):
+
+![RnpArmor Text Studio (English, Linux runtime)](screenshots/rnparmor-linux-text-en.png)
 
 **Fields:**
 
@@ -241,7 +245,9 @@ Use this workspace for ASCII-armored text encryption, decryption, signing, and v
 
 ### Workspace 3: `③ File Workbench`
 
-Use this workspace to encrypt, decrypt, sign, and verify files on disk safely using native file pickers and self-contained recipient/signer controls.
+Use this workspace to encrypt, decrypt, sign, and verify files on disk safely using native file pickers and self-contained recipient/signer controls:
+
+![RnpArmor File Workbench (English, Linux runtime)](screenshots/rnparmor-linux-file-en.png)
 
 **Fields & Native File Dialogs:**
 
@@ -269,7 +275,9 @@ Use this workspace to encrypt, decrypt, sign, and verify files on disk safely us
 
 ### Workspace 4: `④ Packet & Features`
 
-Use this workspace to inspect OpenPGP packet structures and audit supported algorithms in `librnp`.
+Use this workspace to inspect OpenPGP packet structures (JSON packet dump output below) and audit supported algorithms in `librnp`:
+
+![RnpArmor Packet & Features (English, Linux runtime)](screenshots/rnparmor-linux-packet-en.png)
 
 - **Dump packets**:
   1. Click **`Browse...`** next to **Packet input file** (native Open dialog defaulting to the **`OpenPGP`** filter `.asc`, `.pgp`, `.gpg`, `.key`, `.sig`) or enter an absolute path (up to 32 MiB).

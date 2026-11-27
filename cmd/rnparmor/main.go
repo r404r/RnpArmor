@@ -147,6 +147,9 @@ type uiState struct {
 	alertOpen     bool
 	alertTitle    string
 	alertMsg      string
+
+	demoSceneApplied bool
+	demoOpenAbout    bool
 }
 
 func main() {
@@ -909,6 +912,9 @@ func (s *uiState) startRun(title string, fn sessionAction, silent bool) {
 		s.applyUI(func() {
 			s.applyResult(title, out)
 			s.noteActionFeedback(title, out, silent)
+			if out.err == nil && title == "action.load_keyring" {
+				s.applyDemoScene()
+			}
 		})
 	}()
 	if done != nil {
@@ -939,11 +945,13 @@ func (s *uiState) applyUI(fn func()) {
 			closeAdd := s.pendingCloseAddSub
 			closeExp := s.pendingCloseExpiry
 			closeRev := s.pendingCloseRevoke
+			openAbout := s.demoOpenAbout
 			s.pendingCloseNew = false
 			s.pendingCloseImport = false
 			s.pendingCloseAddSub = false
 			s.pendingCloseExpiry = false
 			s.pendingCloseRevoke = false
+			s.demoOpenAbout = false
 			s.mu.Unlock()
 			if about != nil && !about.IsDestroyed() {
 				about.Invalidate()
@@ -977,6 +985,9 @@ func (s *uiState) applyUI(fn func()) {
 			}
 			if closeRev && revW != nil && !revW.IsDestroyed() {
 				revW.Close()
+			}
+			if openAbout {
+				s.openAboutWindow()
 			}
 		})
 		return
@@ -1211,7 +1222,10 @@ func (s *uiState) loadKeyring(sess *rnp.Session, ctx context.Context, in actionI
 		}
 		return actionResult{}, err
 	}
-	return actionResult{}, sess.LoadFrom(ctx, ws)
+	if err := sess.LoadFrom(ctx, ws); err != nil {
+		return actionResult{}, err
+	}
+	return fillDemoPackets(sess, ctx, ws), nil
 }
 
 func (s *uiState) openAndLoad(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
