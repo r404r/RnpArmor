@@ -47,9 +47,22 @@ type KeySummary struct {
 	CanSign     bool
 	CanEncrypt  bool
 	CanCertify  bool
+	CanAuth     bool
 	IsPrimary   bool
 	IsSub       bool
 	Subkeys     []KeySummary
+}
+
+// SubkeyGenRequest asks AddSubkey to append one subkey to an existing
+// primary secret key. Usage is encrypt, sign, or authenticate.
+type SubkeyGenRequest struct {
+	Usage         string
+	Algorithm     string
+	Bits          int
+	Curve         string
+	HashAlg       string
+	Cipher        string
+	ExpirationSec uint32
 }
 
 type KeyGenRequest struct {

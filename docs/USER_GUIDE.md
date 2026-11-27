@@ -18,7 +18,7 @@ Supported release targets:
 
 ## 2. Download, Installation & First Launch
 
-Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.4` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; recent `+ New Key` algorithm presets, dynamic parameter linking, and tri-lingual tips from PR #14 will ship in the next release).
+Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.4` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; recent `+ New Key` algorithm presets, dynamic parameter linking, tri-lingual tips from PR #14, and hierarchical subkey tree & lifecycle management from PR #15 will ship in the next release).
 
 ### Verifying Release Checksums
 
@@ -136,13 +136,19 @@ Use this workspace as a master-detail key manager to browse your keyring folder,
   - Column ID toggle: **`Key ID (16)`** ↔ **`Fingerprint (40)`**.
   - Search box (**`Search UID, Key ID, fingerprint, algorithm`**): filters primary keys in real time.
 
-**Master Table & Detail Inspector:**
+**Master Tree Table & Detail Inspector:**
 
-- **Left Pane (Sortable Primary Key Table)**: columns **`Type`** (`Secret` / `Public`), **`Name / Email`**, **`Key ID`** or **`Fingerprint`**, **`Algorithm`**, and **`Status`** (`Valid` / `Expired` / `Revoked`). Subkeys stay grouped under their primary key instead of cluttering the top-level list. When loading or refreshing keys with no prior selection, RnpArmor automatically prefers a certifiable primary secret key.
+- **Left Pane (Hierarchical Collapsible Key Table)**: top-level rows remain sortable by **`Type`** (`Secret` / `Public`), **`Name / Email`**, **`Key ID`** or **`Fingerprint`**, **`Algorithm`**, and **`Status`** (`Valid` / `Expired` / `Revoked`). Primary keys that have subkeys show a `▾` / `▸` toggle (expanded by default) directly beside their ownership badge:
+  - **Expanded Subkey Rows**: appear indented directly under their primary key (`└ Subkey` with usage `Encrypt`, `Sign`, or `Auth`, 16-char Key ID or 40-char Fingerprint synced with the ID toggle, algorithm, and status).
+  - **Subkey Search & Selection**: search matches across both primary keys and their subkeys (UID, Key ID, fingerprint, and algorithm). Clicking a subkey row keeps its parent primary key selected in the right pane and highlights that subkey card. When loading or refreshing keys with no prior selection, RnpArmor automatically prefers a certifiable primary secret key.
 - **Right Pane (Detail Inspector)**:
-  - **Header & Badges**: primary UID, ownership badge (`Secret+Public` or `Public`), status badge (`Valid`, `Expired`, or `Revoked`), and capability badges (`Certify`, `Sign`, `Encrypt`).
+  - **Header & Badges**: primary UID, ownership badge (`Secret+Public` or `Public`), status badge (`Valid`, `Expired`, or `Revoked`), and capability badges (`Certify`, `Sign`, `Encrypt`, and `Auth` when present).
   - **Metadata**: 40-character **Fingerprint** formatted in 4-character groups with **`Copy Fingerprint`**, 16-character **Key ID**, **Algorithm**, **Created**, and **Expires** (`YYYY-MM-DD` UTC or `Never`).
-  - **Subkeys**: lists each subkey's algorithm, 16-char Key ID, capabilities, and expiration date.
+  - **Subkeys & Lifecycle Management**: lists each subkey card with capability badges (`Encrypt` / `Sign` / `Auth`), status badge (`Valid` / `Expired` / `Revoked`), algorithm, 16-char Key ID, **Created** / **Expires** dates, and grouped 40-char fingerprint (with **`Copy Fingerprint`** when highlighted). When the primary key includes secret material, you can manage subkeys individually without modifying other subkeys or revoking the primary key:
+    - **`+ Add Subkey...`** (`560×680` modal): choose **Usage** (`Encrypt (recommended)`, `Sign`, or `Authenticate (Auth)`), valid usage-restricted **Algorithm** (`ECDH` / `RSA` / `ELGAMAL` for `Encrypt`; `EDDSA` / `RSA` / `ECDSA` for `Sign` and `Authenticate`), curve or bit size, hash/cipher, **Expires** (`Never expires`, `1 year from now`, `2 years from now`, `5 years from now`), and masked **Session passphrase** (leave blank to reuse an active session passphrase, or enter one if none is loaded).
+    - **`Change Expiry...`** (`480×420` modal): updates only the selected subkey's expiration (`Never expires` or `+1` / `+2` / `+5` years from now, stored as seconds from that subkey's creation time) while keeping the primary key unchanged.
+    - **`Revoke...`** (`500×460` modal + native confirmation, hidden once revoked): permanently revokes only that subkey with an RFC reason (`Retired`, `Superseded`, `Compromised`, or `No reason`) and optional note; the primary key remains valid.
+    - **`Delete...`** (native warning confirmation): permanently removes only that subkey from the keyring while keeping the primary key (the backend explicitly refuses deleting a primary key via subkey deletion). Note that deleting an encryption subkey may make historical messages encrypted to it undecryptable.
   - **Public Actions**: **`Copy Public Key`** (copies ASCII-armored public key to clipboard) and **`Export Public (.asc)...`** (native Save dialog).
   - **Secret Actions** *(shown only when the selected key includes a secret key)*:
     - **`Export Secret (.asc)...`**: displays a native warning confirmation prompt first, then opens a Save dialog and writes the file with `0600` permissions.

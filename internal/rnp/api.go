@@ -34,8 +34,11 @@ type api struct {
 	subCreate    func(op *uintptr, ffi, primary uintptr, alg string) uint32
 	genUser      func(op uintptr, userid string) uint32
 	genUsage     func(op uintptr, usage string) uint32
+	genClearUse  func(op uintptr) uint32
 	genHash      func(op uintptr, hash string) uint32
 	genCurve     func(op uintptr, curve string) uint32
+	genBits      func(op uintptr, bits uint32) uint32
+	genExpire    func(op uintptr, expiration uint32) uint32
 	genReqPass   func(op uintptr, request bool) uint32
 	genCipher    func(op uintptr, cipher string) uint32
 	genProtHash  func(op uintptr, hash string) uint32
@@ -84,6 +87,7 @@ type api struct {
 	importKeys   func(ffi, in uintptr, flags uint32, results *uintptr) uint32
 	keyExport    func(key, out uintptr, flags uint32) uint32
 	keyExportRev func(key, out uintptr, flags uint32, hash, code, reason string) uint32
+	keyRevoke    func(key uintptr, flags uint32, hash, code, reason string) uint32
 	keyRemove    func(key uintptr, flags uint32) uint32
 	keyToJSON    func(key uintptr, flags uint32, result *uintptr) uint32
 	keyFprint    func(key uintptr, fprint *uintptr) uint32
@@ -145,8 +149,11 @@ func bind(handle uintptr) error {
 		reg(&bound.subCreate, "rnp_op_generate_subkey_create")
 		reg(&bound.genUser, "rnp_op_generate_set_userid")
 		reg(&bound.genUsage, "rnp_op_generate_add_usage")
+		reg(&bound.genClearUse, "rnp_op_generate_clear_usage")
 		reg(&bound.genHash, "rnp_op_generate_set_hash")
 		reg(&bound.genCurve, "rnp_op_generate_set_curve")
+		reg(&bound.genBits, "rnp_op_generate_set_bits")
+		reg(&bound.genExpire, "rnp_op_generate_set_expiration")
 		reg(&bound.genReqPass, "rnp_op_generate_set_request_password")
 		reg(&bound.genCipher, "rnp_op_generate_set_protection_cipher")
 		reg(&bound.genProtHash, "rnp_op_generate_set_protection_hash")
@@ -195,6 +202,7 @@ func bind(handle uintptr) error {
 		reg(&bound.importKeys, "rnp_import_keys")
 		reg(&bound.keyExport, "rnp_key_export")
 		reg(&bound.keyExportRev, "rnp_key_export_revocation")
+		reg(&bound.keyRevoke, "rnp_key_revoke")
 		reg(&bound.keyRemove, "rnp_key_remove")
 		reg(&bound.keyToJSON, "rnp_key_to_json")
 		reg(&bound.keyFprint, "rnp_key_get_fprint")
