@@ -12,7 +12,7 @@ RnpArmor 是基于 MyGo 原生窗口与 `librnp v0.18.1` 的 OpenPGP 图形工�
 
 ## 界面截图
 
-Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / 工作区 / 语言 / 帮助`，`librnp 0.18.1`），通过 [`.github/workflows/linux-screenshot.yml`](.github/workflows/linux-screenshot.yml) 与 [`scripts/capture-linux-screenshots.sh`](scripts/capture-linux-screenshots.sh) 采集：
+Linux 运行时主窗口实机截图（`1120×780`，融合式 `文件 / 工作区 / 语言 / 帮助` 菜单栏、浅色 Fluent 双层卡片与底部固定状态栏 `librnp 0.18.1`、`3 把密钥 · 就绪`），通过 [`.github/workflows/linux-screenshot.yml`](.github/workflows/linux-screenshot.yml)、`cmd/seeddemo`（仅截图 CI 使用，不打入发布产物，写入 `Alice Chen` 含 2 把子密钥、`Carol Smith` 与仅公钥 `Bob Tanaka` 3 把演示密钥）及 [`scripts/capture-linux-screenshots.sh`](scripts/capture-linux-screenshots.sh) 自动采集：
 
 ![RnpArmor 主窗口（简体中文，Linux 运行时）](docs/screenshots/rnparmor-linux-zh.png)
 
@@ -27,6 +27,27 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
 <summary>日文界面截图</summary>
 
 ![RnpArmor 主窗口（日文，Linux 运行时）](docs/screenshots/rnparmor-linux-ja.png)
+
+</details>
+
+<details>
+<summary>更多工作区与独立 About 子窗口截图（简体中文）</summary>
+
+**文本工作区**（`② 文本加解密与签名`，展示预填演示明文、收件人选择与指纹列表、`AES256` / `zlib`、签名者选择及 4 个文本操作按钮）：
+
+![RnpArmor 文本工作区（简体中文，Linux 运行时）](docs/screenshots/rnparmor-linux-text-zh.png)
+
+**文件工作区**（`③ 文件加解密与签名`，展示演示源文件路径、目标加密文件路径、签名路径、收件人指纹及 4 个文件操作按钮）：
+
+![RnpArmor 文件工作区（简体中文，Linux 运行时）](docs/screenshots/rnparmor-linux-file-zh.png)
+
+**Packet 与特性**（`④ Packet 检视与算法特性`，展示演示签名文件 `demo-signed.asc` 的真实 JSON Packet 解析结果与 `librnp 0.18.1` 算法支持矩阵）：
+
+![RnpArmor Packet 与特性（简体中文，Linux 运行时）](docs/screenshots/rnparmor-linux-packet-zh.png)
+
+**独立无菜单非模态 About 子窗口**（`帮助 → 关于`，`580×520`，展示 `v0.0.7` 版本、作者、仓库地址、`librnp 0.18.1` 及本地动态库路径）：
+
+![RnpArmor About 子窗口（简体中文，Linux 运行时）](docs/screenshots/rnparmor-linux-about-zh.png)
 
 </details>
 
@@ -112,6 +133,8 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
   - `main_test.go`：冒烟输出与文件写入、菜单模板结构、`TestFluentGlassChrome`（Windows 隐藏标题栏+Mica vs Linux/macOS 默认标题栏、融合菜单栏开关、浅色画布与高对比度/字号偏好、主/次/危险按钮外观及 `menuGlass` / `toastGlass` 校验）、状态联动、钥匙圈筛选/搜索/排序/ID 切换/`新建密钥`校验（含设口令与空口令）、`TestKeygenPresetsSyncAndTips`、`TestSubkeyTableExpiryUsageAndCatalog`、`TestStudioKeyPickersAndFileDialogPaths`、`TestI18nComplete`、`TestStatusBarAndFeedback`、文本解密/验签输入解析、收件人留空回退规则单元测试，以及基于真实 `librnp` 的端到端 GUI 动作回归单测（`TestUIStateActionsEndToEnd` 与 `TestUIStateEmptyPassphraseLifecycle`）。
 - `cmd/genwinres/`
   - `main.go`：零第三方依赖的纯 Go AMD64 COFF `.syso` 资源生成器，构建时将 `rnparmor.ico` 临时嵌入 `rnparmor.exe`。
+- `cmd/seeddemo/`
+  - `main.go`、`main_test.go`：仅用于截图 CI 的临时演示数据初始化工具（`--dir`），写入 3 把演示主密钥（`Alice Chen` 含口令及额外签名子密钥、`Carol Smith` 无口令保护、`Bob Tanaka` 仅公钥）及 `demo-note.txt`、`demo-signed.asc`、`demo-encrypted.pgp` 演示文件，不进入发布包。
 - `internal/loadlib/`
   - `open.go`：绝对路径解析 `librnp` 并于加载前校验 `SHA256SUMS`，针对 macOS `.app` 包结构支持从 `Contents/MacOS/SHA256SUMS` 回退至 `Contents/Resources/SHA256SUMS`。
 - `internal/rnp/`
@@ -121,14 +144,14 @@ Linux 运行时主窗口实机截图（`1120×780`，原生菜单栏 `文件 / �
   - `session_test.go`：兼容测试 + 扩展测试（含 `TestSubkeyLifecycle`、`TestEmptyPassphraseKeyLifecycle` 与仅公钥钥匙圈测试）。
 - `scripts/build-windows.ps1`：Windows 构建脚本，调用 `cmd/genwinres` 嵌入临时 `.syso` 图标、编译 `-H=windowsgui` 便携包与 Inno Setup 6 安装包（`rnparmor-windows-amd64-setup.exe`）、校验 PE 子系统、`.rsrc` 资源节与 DLL 导入表，并运行测试、`--smoke-out` 冒烟与打包。
 - `scripts/build-macos.sh`：macOS Apple Silicon（`arm64`）构建脚本，编译静态依赖（`Botan 3.10.0` + `json-c 0.19`）与 `librnp.dylib`，组装 `RnpArmor.app`（写入 `Contents/Resources/RnpArmor.icns` 与 `Info.plist` 的 `CFBundleIconFile`），执行 ad-hoc `codesign --verify --deep --strict`、`go test`、`--smoke-test`，最终打包 `rnparmor-macos-arm64.dmg`。
-- `scripts/capture-linux-screenshots.sh`：在无头 X11（`Xvfb` + `openbox`）下以 `--lang en|zh|ja` 启动 `rnparmor`，通过 `scrot` 抓取聚焦窗口截图并校验分辨率与非空白像素方差。
+- `scripts/capture-linux-screenshots.sh`：通过 `--seeder` 初始化演示钥匙圈后，在无头 X11（`Xvfb` + `openbox`）下结合 `--lang en|zh|ja` 与 `RNPARMOR_DEMO_SCENE` 依次截取并校验全部 11 张聚焦窗口 PNG（分辨率与非空白像素方差）。
 - `packaging/windows/rnparmor.iss`：Windows 安装程序（`rnparmor-windows-amd64-setup.exe`）的 Inno Setup 6 脚本（含 `SetupIconFile`）。
 - `docs/`
   - `USER_GUIDE.md` / `USER_GUIDE.zh-CN.md`：中英文双语终端用户安装、工作区操作与排查指南。
-  - `screenshots/`：Linux 三语运行时实机截图（`rnparmor-linux-{en,zh,ja}.png`）。
+  - `screenshots/`：Linux 演示钥匙圈 11 张实机截图（主窗口 `rnparmor-linux-{en,zh,ja}.png` 及文本/文件/Packet/About `rnparmor-linux-{text,file,packet,about}-{en,zh}.png`）。
 - `.github/workflows/smoke.yml`：`linux`、`windows-portable` 与 `macos-arm64` 三平台 CI（含缓存与同分支并发自动取消）。
 - `.github/workflows/release.yml`：Tag/手动触发的多平台自动打包发布。
-- `.github/workflows/linux-screenshot.yml`：调用 `scripts/capture-linux-screenshots.sh` 采集 Linux 三语实机截图（含 `assets/icons/**` 变更触发），上传 `rnparmor-linux-screenshots` artifact，并可在非 `main` 分支将更新后的 PNG 提交至 `docs/screenshots/`。
+- `.github/workflows/linux-screenshot.yml`：编译 `librnp.so`、`rnparmor` 与 `seeddemo` 并调用 `scripts/capture-linux-screenshots.sh` 采集 11 张 Linux 实机截图（含 `cmd/rnparmor/**`、`cmd/seeddemo/**`、`scripts/capture-linux-screenshots.sh`、`.github/workflows/linux-screenshot.yml` 或 `assets/icons/**` PR 变更触发），上传 `rnparmor-linux-screenshots` artifact，并可在非 `main` 分支将更新后的 11 张 PNG 提交至 `docs/screenshots/`。
 
 ## 五大工作区说明
 
@@ -348,9 +371,9 @@ Windows 依赖构建钉扎并打包以下组件：
 
 - 触发条件：
   - `workflow_dispatch`（可选 `commit_screenshots` 布尔输入，仅限非 `main` 分支）
-  - 修改 `scripts/capture-linux-screenshots.sh`、`.github/workflows/linux-screenshot.yml` 或 `assets/icons/**` 的 `pull_request`
+  - 修改 `scripts/capture-linux-screenshots.sh`、`.github/workflows/linux-screenshot.yml`、`assets/icons/**`、`cmd/rnparmor/**` 或 `cmd/seeddemo/**` 的 `pull_request`
 - `linux-screenshot` 作业（`runs-on: ubuntu-latest`）：
-  - 构建 pinned `librnp.so` 与 `rnparmor`，在 `Xvfb` + `openbox` 下运行 `scripts/capture-linux-screenshots.sh`，上传 `rnparmor-linux-screenshots`（`out/screenshots/*.png`），并按条件在非 `main` 分支提交 `docs/screenshots/rnparmor-linux-{en,zh,ja}.png`
+  - 构建 pinned `librnp.so`、`rnparmor` 与 `seeddemo`，在 `Xvfb` + `openbox` 下运行 `scripts/capture-linux-screenshots.sh`，上传 `rnparmor-linux-screenshots`（`out/screenshots/*.png`），并按条件在非 `main` 分支提交全部 11 张 `docs/screenshots/rnparmor-linux-*.png` 截图
 
 ## 安全边界与注意事项
 
@@ -362,8 +385,8 @@ Windows 依赖构建钉扎并打包以下组件：
 
 ## 仓库状态说明
 
-- `v0.0.1`–`v0.0.6` 多平台版本均已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）：`v0.0.2` 合入 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、三端应用图标与双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)），`v0.0.3` 修复了 GUI 操作重入死锁与钥匙圈持久化边界问题，`v0.0.4` 合并发布 Phase 1（主从双栏 Keys 管理页、16/40 位 ID 切换、掩码双口令新建密钥弹窗、空口令公钥只读打开与原生文件夹选择器）、Phase 2（`cmd/rnparmor/studio_ui.go` 共享收件人/签名者下拉、掩码对称口令与文件/Packet 原生文件对话窗）及 Release 发布重试与取消草稿加固，`v0.0.5` 合入 PR #14（`+ 新建密钥` 5 档算法预设、动态参数联动、统一`主密钥 / 子密钥`术语、三语动态说明与悬停提示及 `TestKeygenPresetsSyncAndTips`）和 PR #15（`cmd/rnparmor/subkey_ui.go`、左侧树形可折叠子密钥列表、完整子密钥生命周期接口 `AddSubkey`/`SetKeyExpiration`/`RevokeKey`/`DeleteSubkey`、`TestSubkeyLifecycle`、`TestSubkeyTableExpiryUsageAndCatalog` 及扩展 `TestUIStateActionsEndToEnd`），`v0.0.6` 合入 PR #16（双空口令 RFC 4880 无口令保护私钥生成、`无口令保护`徽章、无口令主密钥下子密钥与加解密免口令支持、`TestEmptyPassphraseKeyLifecycle` 及 `TestUIStateEmptyPassphraseLifecycle`）。
-- 已合入 `main`（PR #17）及待随下一版本（`v0.0.7` 尚未打 Tag 发布）推出的变更：PR #17 合入 `cmd/rnparmor/feedback_ui.go`、底部固定状态栏、点击库路径复制轻提示、方案 A 分级通知反馈、`TestI18nComplete` 与 `TestStatusBarAndFeedback`；当前分支 `feat/fluent-glass-ui` 新增 `cmd/rnparmor/style_ui.go`（遵循系统高对比度/字号/强调色偏好的浅色 Fluent 主题、#edf1f7 / Windows 11 Mica 与纯白 `rnpCard` 双层景深、渐变高光 1 DIP 按压立体按钮、Windows 隐藏标题栏/Linux 融合式可拖动菜单栏与 macOS 系统菜单栏、`mygo/plugins/glass` 磨砂下拉/右键/Toast 浮层）与 `TestFluentGlassChrome` 单元测试。
+- `v0.0.1`–`v0.0.7` 多平台版本均已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）：`v0.0.2` 合入 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、三端应用图标与双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)），`v0.0.3` 修复了 GUI 操作重入死锁与钥匙圈持久化边界问题，`v0.0.4` 合并发布 Phase 1（主从双栏 Keys 管理页、16/40 位 ID 切换、掩码双口令新建密钥弹窗、空口令公钥只读打开与原生文件夹选择器）、Phase 2（`cmd/rnparmor/studio_ui.go` 共享收件人/签名者下拉、掩码对称口令与文件/Packet 原生文件对话窗）及 Release 发布重试与取消草稿加固，`v0.0.5` 合入 PR #14（`+ 新建密钥` 5 档算法预设、动态参数联动、统一`主密钥 / 子密钥`术语、三语动态说明与悬停提示及 `TestKeygenPresetsSyncAndTips`）和 PR #15（`cmd/rnparmor/subkey_ui.go`、左侧树形可折叠子密钥列表、完整子密钥生命周期接口 `AddSubkey`/`SetKeyExpiration`/`RevokeKey`/`DeleteSubkey`、`TestSubkeyLifecycle`、`TestSubkeyTableExpiryUsageAndCatalog` 及扩展 `TestUIStateActionsEndToEnd`），`v0.0.6` 合入 PR #16（双空口令 RFC 4880 无口令保护私钥生成、`无口令保护`徽章、无口令主密钥下子密钥与加解密免口令支持、`TestEmptyPassphraseKeyLifecycle` 及 `TestUIStateEmptyPassphraseLifecycle`），`v0.0.7` 合入 PR #17（`cmd/rnparmor/feedback_ui.go` 底部固定状态栏、方案 A 分级通知反馈、`TestI18nComplete` 与 `TestStatusBarAndFeedback`）与 PR #18（`cmd/rnparmor/style_ui.go` 遵循系统偏好的浅色 Fluent 主题、#edf1f7 / Windows 11 Mica 与纯白 `rnpCard` 双层景深、渐变按压微沉按钮、分平台菜单栏、`mygo/plugins/glass` 磨砂浮层及 `TestFluentGlassChrome`）。
+- 当前分支 `feat/rich-doc-screenshots` 新增仅用于截图 CI 的演示钥匙圈初始化工具 `cmd/seeddemo`，刷新了 `docs/screenshots/` 中全部 11 张 Linux 运行时演示截图（EN/ZH/JA 主窗口及 EN/ZH 文本、文件、Packet 与独立 About 子窗口），并在 `README.md`、`README.zh-CN.md`、`docs/USER_GUIDE.md` 与 `docs/USER_GUIDE.zh-CN.md` 中完整图文呈现。
 - 桌面端人工交互体验（Windows 10/11 中文输入法、高 DPI 与安装程序流程，以及 macOS Apple Silicon 首次启动未公证 Gatekeeper 提示）仍依赖真实桌面环境，需在专门手工测试中确认。
 
 ## 许可证
