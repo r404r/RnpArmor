@@ -256,6 +256,178 @@ func TestUIStateActionsEndToEnd(t *testing.T) {
 	}
 }
 
+func TestUIStateEmptyPassphraseLifecycle(t *testing.T) {
+	if strings.TrimSpace(os.Getenv("RNPARMOR_LIBRNP")) == "" {
+		t.Skip("RNPARMOR_LIBRNP is not set")
+	}
+	lib, err := rnp.DefaultLibrary()
+	if err != nil {
+		t.Skip(err.Error())
+	}
+	ws := t.TempDir()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- exerciseEmptyPassphraseUI(lib, ws)
+	}()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(45 * time.Second):
+		t.Fatal("empty passphrase ui timed out")
+	}
+}
+
+func exerciseEmptyPassphraseUI(lib, ws string) error {
+	const plain = "hello unprotected"
+	s := &uiState{
+		libPath:     lib,
+		workspace:   ws,
+		passphrase:  "",
+		encCipher:   "AES256",
+		encCompress: "zlib",
+		textMode:    string(rnp.SignModeDetached),
+		textInput:   plain,
+		langIdx:     LangIndex(LangEN),
+		keyReq: rnp.KeyGenRequest{
+			PrimaryAlg:   "EDDSA",
+			PrimaryCurve: "Ed25519",
+			SubkeyAlg:    "ECDH",
+			SubkeyCurve:  "Curve25519",
+			HashAlg:      "SHA256",
+			SymmCipher:   "AES256",
+		},
+	}
+	if err := runUI(s, "action.open_session", s.openSession); err != nil {
+		return err
+	}
+	req, errKey := validateNewKey("Open", "open@example.com", "", "", 0, s.keyReq)
+	if errKey != "" || !req.Unprotected {
+		return fmt.Errorf("validate empty key: %s %+v", errKey, req)
+	}
+	kept := s.passphrase
+	s.newKeyPass = ""
+	s.newKeyPass2 = ""
+	s.keyReq = req
+	if err := runUI(s, "action.generate_key", s.generateKey); err != nil {
+		return err
+	}
+	if s.passphrase != kept {
+		return fmt.Errorf("empty generate changed session passphrase")
+	}
+	parent, ok := primaryByFP(s.keys, s.selected)
+	if !ok || !parent.HasSecret || parent.IsProtected || parent.IsLocked || len(parent.Subkeys) == 0 {
+		return fmt.Errorf("generated %+v", parent)
+	}
+	for _, sk := range parent.Subkeys {
+		if !sk.HasSecret || sk.IsProtected || sk.IsLocked {
+			return fmt.Errorf("generated subkey %+v", sk)
+		}
+	}
+
+	s.textInput = plain
+	s.encRecipients = ""
+	s.encPassword = ""
+	s.encSign = false
+	if err := runUI(s, "action.encrypt_text", s.encryptText); err != nil {
+		return err
+	}
+	if !strings.Contains(s.textOutput, "-----BEGIN PGP MESSAGE-----") {
+		return fmt.Errorf("ciphertext: %q", s.textOutput)
+	}
+	if err := runUI(s, "action.decrypt_text", s.decryptText); err != nil {
+		return err
+	}
+	if s.textOutput != plain {
+		return fmt.Errorf("decrypt got %q", s.textOutput)
+	}
+	s.textInput = plain
+	s.textOutput = ""
+	s.textVerifyInput = ""
+	s.textVerifyDetached = ""
+	s.textSigner = ""
+	s.textMode = string(rnp.SignModeDetached)
+	if err := runUI(s, "action.sign_text", s.signText); err != nil {
+		return err
+	}
+	if !strings.Contains(s.textOutput, "-----BEGIN PGP SIGNATURE-----") {
+		return fmt.Errorf("signature: %q", s.textOutput)
+	}
+	if err := runUI(s, "action.verify_text", s.verifyText); err != nil {
+		return err
+	}
+	if !strings.Contains(s.textOutput, "[Math: VALID]") {
+		return fmt.Errorf("verify: %q", s.textOutput)
+	}
+	if err := runUI(s, "action.export_secret", s.exportSecret); err != nil {
+		return err
+	}
+	if !strings.Contains(s.keyJSON, "BEGIN PGP PRIVATE KEY BLOCK") {
+		return fmt.Errorf("secret export: %s", s.keyJSON)
+	}
+
+	subReq, errKey := validateAddSubkey("sign", "EDDSA", "", "SHA256", "AES256", 0, 1, "", s.passphrase, s.primaryProtected())
+	if errKey != "" || !subReq.Unprotected {
+		return fmt.Errorf("validate add subkey: %s %+v protected=%v", errKey, subReq, s.primaryProtected())
+	}
+	before := len(parent.Subkeys)
+	s.subReq = subReq
+	if err := runUI(s, "action.add_subkey", s.addSubkey); err != nil {
+		return err
+	}
+	if s.passphrase != kept {
+		return fmt.Errorf("empty add subkey changed session passphrase")
+	}
+	parent, ok = primaryByFP(s.keys, s.selected)
+	if !ok || len(parent.Subkeys) != before+1 {
+		return fmt.Errorf("subkeys after add ok=%v n=%d", ok, len(parent.Subkeys))
+	}
+	added, ok := subByFP(s.keys, s.selected, s.selectedSubkey)
+	if !ok || !added.HasSecret || added.IsProtected || added.IsLocked || !added.CanSign {
+		return fmt.Errorf("added %+v", added)
+	}
+	s.targetFP = added.Fingerprint
+	s.expirySeconds = expirationFromNow(added.CreatedUnix, time.Now().UTC(), 1)
+	if s.expirySeconds == 0 {
+		return fmt.Errorf("expiry is 0")
+	}
+	if err := runUI(s, "action.set_key_expiry", s.setKeyExpiry); err != nil {
+		return err
+	}
+	updated, ok := subByFP(s.keys, s.selected, added.Fingerprint)
+	wantExp := added.CreatedUnix + s.expirySeconds
+	if added.CreatedUnix == 0 {
+		wantExp = s.expirySeconds
+	}
+	if !ok || updated.ExpiresUnix != wantExp || updated.IsProtected {
+		return fmt.Errorf("expiry %+v want %d", updated, wantExp)
+	}
+	s.targetFP = added.Fingerprint
+	s.revokeCode = "retired"
+	s.revokeReason = "empty-pass"
+	if err := runUI(s, "action.revoke_key", s.revokeKey); err != nil {
+		return err
+	}
+	updated, ok = subByFP(s.keys, s.selected, added.Fingerprint)
+	parent, _ = primaryByFP(s.keys, s.selected)
+	if !ok || !updated.IsRevoked || parent.IsRevoked {
+		return fmt.Errorf("revoke sub=%+v primaryRevoked=%v", updated, parent.IsRevoked)
+	}
+	s.targetFP = added.Fingerprint
+	if err := runUI(s, "action.delete_subkey", s.deleteSubkey); err != nil {
+		return err
+	}
+	if _, ok := subByFP(s.keys, s.selected, added.Fingerprint); ok {
+		return fmt.Errorf("deleted subkey still listed")
+	}
+	parent, ok = primaryByFP(s.keys, s.selected)
+	if !ok || parent.IsRevoked || len(parent.Subkeys) != before || parent.IsProtected {
+		return fmt.Errorf("primary after delete %+v", parent)
+	}
+	return nil
+}
+
 func exerciseUIActions(lib, ws string) error {
 	const plain = "hello from RnpArmor"
 	s := &uiState{
@@ -658,7 +830,8 @@ func TestKeyManagerFilterSearchSortAndForms(t *testing.T) {
 		"btn.generate", "btn.paste_clipboard", "btn.load_json",
 		"seg.all", "seg.mine", "seg.public", "seg.id16", "seg.fp40",
 		"col.type", "col.name", "col.key_id", "col.fingerprint", "col.algorithm", "col.status",
-		"badge.secret", "badge.public", "badge.secret_public", "badge.valid", "badge.expired", "badge.revoked",
+		"badge.secret", "badge.public", "badge.secret_public", "badge.unprotected", "badge.valid", "badge.expired", "badge.revoked",
+		"placeholder.new_pass", "placeholder.confirm_pass", "desc.pass_unprotected", "desc.pass_protected",
 		"placeholder.search", "placeholder.unlock_pass", "placeholder.import_text",
 		"err.name_or_email", "err.pass_empty", "err.pass_mismatch", "err.import_empty",
 		"empty.keys", "empty.search", "empty.select", "empty.subkeys",
@@ -799,18 +972,36 @@ func TestKeyManagerFilterSearchSortAndForms(t *testing.T) {
 	if _, errKey := validateNewKey("  ", "", "secret", "secret", 0, base); errKey != "err.name_or_email" {
 		t.Fatalf("empty name = %s", errKey)
 	}
-	if _, errKey := validateNewKey("Ada", "ada@ex", "", "secret", 0, base); errKey != "err.pass_empty" {
-		t.Fatalf("empty pass = %s", errKey)
+	if _, errKey := validateNewKey("Ada", "ada@ex", "", "secret", 0, base); errKey != "err.pass_mismatch" {
+		t.Fatalf("confirm filled = %s", errKey)
+	}
+	if _, errKey := validateNewKey("Ada", "ada@ex", "secret", "", 0, base); errKey != "err.pass_mismatch" {
+		t.Fatalf("pass filled = %s", errKey)
 	}
 	if _, errKey := validateNewKey("Ada", "ada@ex", "one", "two", 1, base); errKey != "err.pass_mismatch" {
 		t.Fatalf("mismatch = %s", errKey)
+	}
+	openReq, errKey := validateNewKey("Ada", "ada@ex", "", "", 0, base)
+	if errKey != "" || !openReq.Unprotected || openReq.UserID != "Ada <ada@ex>" {
+		t.Fatalf("empty pass = %+v %s", openReq, errKey)
+	}
+	held := &uiState{passphrase: "other-key", newKeyPass: "", newKeyPass2: "ignored"}
+	held.takeNewKeyPassphrase()
+	if held.passphrase != "other-key" || held.newKeyPass != "" || held.newKeyPass2 != "" {
+		t.Fatalf("empty generate clobbered passphrase %q %q %q", held.passphrase, held.newKeyPass, held.newKeyPass2)
+	}
+	held.newKeyPass = "fresh"
+	held.newKeyPass2 = "fresh"
+	held.takeNewKeyPassphrase()
+	if held.passphrase != "fresh" || held.newKeyPass != "" || held.newKeyPass2 != "" {
+		t.Fatalf("typed generate passphrase %q fields %q %q", held.passphrase, held.newKeyPass, held.newKeyPass2)
 	}
 	const day = 24 * 60 * 60
 	req, errKey := validateNewKey(" Ada ", " ada@ex ", "secret", "secret", 2, base)
 	if errKey != "" {
 		t.Fatal(errKey)
 	}
-	if req.UserID != "Ada <ada@ex>" || req.ExpirationSec != 2*365*day || req.PrimaryAlg != "EDDSA" || req.SubkeyCurve != "Curve25519" {
+	if req.UserID != "Ada <ada@ex>" || req.ExpirationSec != 2*365*day || req.PrimaryAlg != "EDDSA" || req.SubkeyCurve != "Curve25519" || req.Unprotected {
 		t.Fatalf("request = %+v", req)
 	}
 	nameOnly, errKey := validateNewKey("Ada", "", "secret", "secret", 0, base)
@@ -1275,7 +1466,8 @@ func TestSubkeyTableExpiryUsageAndCatalog(t *testing.T) {
 		"usage.encrypt", "usage.sign", "usage.auth",
 		"usage.encrypt.desc", "usage.sign.desc", "usage.auth.desc",
 		"tip.addsub.ecdh", "tip.addsub.eddsa", "tip.addsub.rsa", "tip.addsub.ecdsa", "tip.addsub.elgamal", "tip.addsub.expiry",
-		"placeholder.pass_reuse", "placeholder.pass_required",
+		"placeholder.pass_reuse", "placeholder.pass_required", "placeholder.pass_optional_unprotected",
+		"badge.unprotected", "desc.pass_unprotected", "desc.pass_protected",
 		"exp.never_sub", "exp.plus1", "exp.plus2", "exp.plus5",
 		"reason.retired", "reason.superseded", "reason.compromised", "reason.no",
 		"hint.revoke_subkey", "hint.expiry_subkey", "hint.delete_subkey",
@@ -1400,16 +1592,46 @@ func TestSubkeyTableExpiryUsageAndCatalog(t *testing.T) {
 	if alg != "ECDSA" || curve != "NIST P-256" || bits != 0 {
 		t.Fatalf("sign ecdsa = %s %s %d", alg, curve, bits)
 	}
-	if _, errKey := validateAddSubkey("encrypt", "EDDSA", "", "SHA256", "AES256", 0, 1, "", ""); errKey != "err.pass_empty" {
+	if _, errKey := validateAddSubkey("encrypt", "EDDSA", "", "SHA256", "AES256", 0, 1, "", "", true); errKey != "err.pass_empty" {
 		t.Fatalf("empty pass after sync = %s", errKey)
 	}
-	req, errKey := validateAddSubkey("sign", "ECDH", "Curve25519", "SHA256", "AES256", 0, 2, "secret", "")
-	if errKey != "" || req.Usage != "sign" || req.Algorithm != "EDDSA" || req.Curve != "Ed25519" || req.ExpirationSec != 2*yearSeconds {
+	req, errKey := validateAddSubkey("sign", "ECDH", "Curve25519", "SHA256", "AES256", 0, 2, "secret", "", true)
+	if errKey != "" || req.Usage != "sign" || req.Algorithm != "EDDSA" || req.Curve != "Ed25519" || req.ExpirationSec != 2*yearSeconds || req.Unprotected {
 		t.Fatalf("validated = %+v %s", req, errKey)
 	}
-	req, errKey = validateAddSubkey("encrypt", "ELGAMAL", "", "", "", 0, 0, "", "session")
-	if errKey != "" || req.Algorithm != "ELGAMAL" || req.Bits != 3072 || req.HashAlg != "SHA256" || req.Cipher != "AES256" || req.ExpirationSec != 0 {
+	req, errKey = validateAddSubkey("encrypt", "ELGAMAL", "", "", "", 0, 0, "", "session", true)
+	if errKey != "" || req.Algorithm != "ELGAMAL" || req.Bits != 3072 || req.HashAlg != "SHA256" || req.Cipher != "AES256" || req.ExpirationSec != 0 || req.Unprotected {
 		t.Fatalf("elgamal req = %+v %s", req, errKey)
+	}
+	req, errKey = validateAddSubkey("sign", "EDDSA", "", "SHA256", "AES256", 0, 1, "", "", false)
+	if errKey != "" || !req.Unprotected || req.Algorithm != "EDDSA" {
+		t.Fatalf("unprotected empty = %+v %s", req, errKey)
+	}
+	req, errKey = validateAddSubkey("sign", "EDDSA", "", "SHA256", "AES256", 0, 0, "typed-pass", "session", false)
+	if errKey != "" || req.Unprotected {
+		t.Fatalf("typed pass on open primary = %+v %s", req, errKey)
+	}
+	openPrimary := &uiState{
+		selected: "P",
+		keys: []rnp.KeySummary{{
+			Fingerprint: "P", IsPrimary: true, HasSecret: true, IsProtected: false,
+		}},
+	}
+	if openPrimary.primaryProtected() {
+		t.Fatal("unprotected primary")
+	}
+	openPrimary.keys[0].IsProtected = true
+	if !openPrimary.primaryProtected() {
+		t.Fatal("protected primary")
+	}
+	openPrimary.keys[0].HasSecret = false
+	openPrimary.keys[0].IsProtected = false
+	if !openPrimary.primaryProtected() {
+		t.Fatal("public primary")
+	}
+	openPrimary.selected = "missing"
+	if !openPrimary.primaryProtected() {
+		t.Fatal("missing primary")
 	}
 	if legal := legalSubkeyAlgs("encrypt"); len(legal) != 3 || legal[0] != "ECDH" {
 		t.Fatalf("encrypt algs %v", legal)

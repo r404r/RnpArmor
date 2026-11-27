@@ -396,27 +396,34 @@ func (s *Session) GenerateKeyWithSpec(ctx context.Context, req KeyGenRequest) (K
 	err := s.Do(ctx, func(context.Context) error {
 		primaryAlg := defaultAlg(req.PrimaryAlg, "EDDSA")
 		hashAlg := defaultAlg(req.HashAlg, "SHA256")
-		symm := defaultAlg(req.SymmCipher, "AES256")
 		uid := strings.TrimSpace(req.UserID)
 		if uid == "" {
 			uid = "rnp-armor-ephemeral"
 		}
 
-		protect := map[string]any{
-			"cipher": symm,
-			"hash":   hashAlg,
-			"mode":   "CFB",
-		}
-		if req.S2KIterations > 0 {
-			protect["iterations"] = req.S2KIterations
+		// Omitting protection leaves the secret as RFC 4880 plaintext.
+		// The default still encrypts the secret with the password callback.
+		var protect map[string]any
+		if !req.Unprotected {
+			symm := defaultAlg(req.SymmCipher, "AES256")
+			protect = map[string]any{
+				"cipher": symm,
+				"hash":   hashAlg,
+				"mode":   "CFB",
+			}
+			if req.S2KIterations > 0 {
+				protect["iterations"] = req.S2KIterations
+			}
 		}
 
 		primary := map[string]any{
-			"type":       primaryAlg,
-			"userid":     uid,
-			"usage":      []string{"sign", "certify"},
-			"hash":       hashAlg,
-			"protection": protect,
+			"type":   primaryAlg,
+			"userid": uid,
+			"usage":  []string{"sign", "certify"},
+			"hash":   hashAlg,
+		}
+		if protect != nil {
+			primary["protection"] = protect
 		}
 		if req.PrimaryBits > 0 && (primaryAlg == "RSA" || primaryAlg == "DSA" || primaryAlg == "ELGAMAL") {
 			primary["length"] = req.PrimaryBits
@@ -444,9 +451,11 @@ func (s *Session) GenerateKeyWithSpec(ctx context.Context, req KeyGenRequest) (K
 			}
 		}
 		sub := map[string]any{
-			"type":       subAlg,
-			"usage":      []string{"encrypt"},
-			"protection": protect,
+			"type":  subAlg,
+			"usage": []string{"encrypt"},
+		}
+		if protect != nil {
+			sub["protection"] = protect
 		}
 		if req.SubkeyBits > 0 && (subAlg == "RSA" || subAlg == "DSA" || subAlg == "ELGAMAL") {
 			sub["length"] = req.SubkeyBits
@@ -638,7 +647,8 @@ func normalizeSubkeyUsage(v string) string {
 }
 
 // AddSubkey appends one subkey to the primary secret key identified by
-// primaryFprint. The new secret is protected through the password callback.
+// primaryFprint. A protected subkey uses the password callback.
+// Unprotected skips secret-key protection and does not ask for a passphrase.
 func (s *Session) AddSubkey(ctx context.Context, primaryFprint string, req SubkeyGenRequest) (KeySummary, error) {
 	var out KeySummary
 	err := s.Do(ctx, func(context.Context) error {
@@ -712,25 +722,32 @@ func (s *Session) AddSubkey(ctx context.Context, primaryFprint string, req Subke
 			return err
 		}
 		hash := defaultAlg(req.HashAlg, "SHA256")
-		cipher := defaultAlg(req.Cipher, "AES256")
 		if err := bound.check("generate_subkey", bound.genHash(op, hash)); err != nil {
 			return err
 		}
-		if err := bound.check("generate_subkey", bound.genCipher(op, cipher)); err != nil {
-			return err
-		}
-		if err := bound.check("generate_subkey", bound.genProtHash(op, hash)); err != nil {
-			return err
-		}
-		if err := bound.check("generate_subkey", bound.genReqPass(op, true)); err != nil {
-			return err
-		}
-		// Same secret-key protection as Generate, still via the password callback.
-		if err := bound.check("generate_subkey", bound.genMode(op, "cfb")); err != nil {
-			return err
-		}
-		if err := bound.check("generate_subkey", bound.genIter(op, 1024)); err != nil {
-			return err
+		if req.Unprotected {
+			// Binding-signature hash stays. Protection params would encrypt the secret.
+			if err := bound.check("generate_subkey", bound.genReqPass(op, false)); err != nil {
+				return err
+			}
+		} else {
+			cipher := defaultAlg(req.Cipher, "AES256")
+			if err := bound.check("generate_subkey", bound.genCipher(op, cipher)); err != nil {
+				return err
+			}
+			if err := bound.check("generate_subkey", bound.genProtHash(op, hash)); err != nil {
+				return err
+			}
+			if err := bound.check("generate_subkey", bound.genReqPass(op, true)); err != nil {
+				return err
+			}
+			// Same secret-key protection as Generate, still via the password callback.
+			if err := bound.check("generate_subkey", bound.genMode(op, "cfb")); err != nil {
+				return err
+			}
+			if err := bound.check("generate_subkey", bound.genIter(op, 1024)); err != nil {
+				return err
+			}
 		}
 		if err := bound.check("generate_subkey", bound.genExec(op)); err != nil {
 			return err
@@ -1215,6 +1232,9 @@ func (s *Session) keySummaryFromHandle(key uintptr, includeSubkeys bool) (KeySum
 	}
 	if out.HasSecret {
 		if err := bound.check("key_is_locked", bound.keyLocked(key, &out.IsLocked)); err != nil {
+			return out, err
+		}
+		if err := bound.check("key_is_protected", bound.keyProtected(key, &out.IsProtected)); err != nil {
 			return out, err
 		}
 	}

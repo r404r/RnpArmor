@@ -43,6 +43,7 @@ type KeySummary struct {
 	ExpiresUnix uint32
 	HasSecret   bool
 	IsLocked    bool
+	IsProtected bool // secret only; public keys stay false
 	IsRevoked   bool
 	CanSign     bool
 	CanEncrypt  bool
@@ -55,6 +56,7 @@ type KeySummary struct {
 
 // SubkeyGenRequest asks AddSubkey to append one subkey to an existing
 // primary secret key. Usage is encrypt, sign, or authenticate.
+// Unprotected skips secret-key protection. The default false keeps it.
 type SubkeyGenRequest struct {
 	Usage         string
 	Algorithm     string
@@ -63,6 +65,7 @@ type SubkeyGenRequest struct {
 	HashAlg       string
 	Cipher        string
 	ExpirationSec uint32
+	Unprotected   bool
 }
 
 type KeyGenRequest struct {
@@ -77,6 +80,7 @@ type KeyGenRequest struct {
 	SymmCipher    string
 	S2KIterations uint32
 	ExpirationSec uint32
+	Unprotected   bool // omit protection JSON; default false stays protected
 }
 
 type EncryptOptions struct {

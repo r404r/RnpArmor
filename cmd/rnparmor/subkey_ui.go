@@ -236,13 +236,13 @@ func subkeyUsageRowKey(k rnp.KeySummary) string {
 	}
 }
 
-func validateAddSubkey(usage, alg, curve, hash, cipher string, bits, expiry int, typed, sessionPass string) (rnp.SubkeyGenRequest, string) {
+func validateAddSubkey(usage, alg, curve, hash, cipher string, bits, expiry int, typed, sessionPass string, primaryProtected bool) (rnp.SubkeyGenRequest, string) {
 	usage = normalizeUIUsage(usage)
 	alg, curve, bits = syncAddedSubkey(usage, alg, curve, bits)
 	if !rnp.UsageAllowsAlg(usage, alg) {
 		return rnp.SubkeyGenRequest{}, "err.subkey_alg"
 	}
-	if typed == "" && sessionPass == "" {
+	if primaryProtected && typed == "" && sessionPass == "" {
 		return rnp.SubkeyGenRequest{}, "err.pass_empty"
 	}
 	if strings.TrimSpace(hash) == "" {
@@ -259,7 +259,34 @@ func validateAddSubkey(usage, alg, curve, hash, cipher string, bits, expiry int,
 		HashAlg:       hash,
 		Cipher:        cipher,
 		ExpirationSec: expirySeconds(expiry),
+		Unprotected:   !primaryProtected && typed == "",
 	}, ""
+}
+
+// primaryProtected is false only when the selected primary secret is stored
+// without a passphrase. A missing or public key still requires one.
+func (s *uiState) primaryProtected() bool {
+	fp := strings.TrimSpace(s.selected)
+	if fp == "" {
+		return true
+	}
+	for _, k := range s.keys {
+		if k.Fingerprint != fp || !isPrimaryRow(k) {
+			continue
+		}
+		return !(k.HasSecret && !k.IsProtected)
+	}
+	return true
+}
+
+func subkeyPassPlaceholder(s *uiState, primaryProtected bool) string {
+	if !primaryProtected {
+		return s.tr("placeholder.pass_optional_unprotected")
+	}
+	if s.passphrase != "" {
+		return s.tr("placeholder.pass_reuse")
+	}
+	return s.tr("placeholder.pass_required")
 }
 
 func (s *uiState) openAddSubkeyWindow() {
@@ -333,10 +360,8 @@ func (s *uiState) viewAddSubkey(c *ui.Context) {
 		s.subExpiry = 0
 	}
 	curExp := choices[s.subExpiry]
-	passPh := s.tr("placeholder.pass_required")
-	if s.passphrase != "" {
-		passPh = s.tr("placeholder.pass_reuse")
-	}
+	primaryProtected := s.primaryProtected()
+	passPh := subkeyPassPlaceholder(s, primaryProtected)
 
 	ui.Column(c).Fill().Children(func() {
 		ui.Scroll(c).Fill().Children(func() {
@@ -373,7 +398,7 @@ func (s *uiState) viewAddSubkey(c *ui.Context) {
 				}
 				ui.Row(c).Gap(8).Children(func() {
 					if ui.PrimaryButton(c, s.tr("btn.add_subkey_do")).Clicked() {
-						req, errKey := validateAddSubkey(s.subUsage, s.subAlg, s.subCurve, s.subHash, s.subCipher, s.subBits, s.subExpiry, s.subPass, s.passphrase)
+						req, errKey := validateAddSubkey(s.subUsage, s.subAlg, s.subCurve, s.subHash, s.subCipher, s.subBits, s.subExpiry, s.subPass, s.passphrase, primaryProtected)
 						if errKey != "" {
 							s.subErr = s.tr(errKey)
 							return
@@ -443,10 +468,8 @@ func (s *uiState) viewSubkeyExpiry(c *ui.Context) {
 		s.expiryChoice = 0
 	}
 	cur := choices[s.expiryChoice]
-	passPh := s.tr("placeholder.pass_required")
-	if s.passphrase != "" {
-		passPh = s.tr("placeholder.pass_reuse")
-	}
+	primaryProtected := s.primaryProtected()
+	passPh := subkeyPassPlaceholder(s, primaryProtected)
 	ui.Column(c).Fill().Padding(16).Gap(8).Children(func() {
 		ui.Text(c, s.tr("title.subkey_expiry")).FontSize(18).Bold()
 		ui.Text(c, s.tr("hint.expiry_subkey")).TextColor(t.TextMuted)
@@ -466,7 +489,7 @@ func (s *uiState) viewSubkeyExpiry(c *ui.Context) {
 		}
 		ui.Row(c).Gap(8).Children(func() {
 			if ui.PrimaryButton(c, s.tr("btn.apply_expiry")).Clicked() {
-				if s.expiryPass == "" && s.passphrase == "" {
+				if primaryProtected && s.expiryPass == "" && s.passphrase == "" {
 					s.expiryErr = s.tr("err.pass_empty")
 					return
 				}
@@ -526,10 +549,7 @@ func (s *uiState) viewRevokeSubkey(c *ui.Context) {
 		s.revokeCode = "retired"
 	}
 	cur := s.tr(revokeCodeLabelKey(s.revokeCode))
-	passPh := s.tr("placeholder.pass_required")
-	if s.passphrase != "" {
-		passPh = s.tr("placeholder.pass_reuse")
-	}
+	passPh := subkeyPassPlaceholder(s, s.primaryProtected())
 	ui.Column(c).Fill().Padding(16).Gap(8).Children(func() {
 		ui.Text(c, s.tr("title.subkey_revoke")).FontSize(18).Bold()
 		ui.Text(c, s.tr("hint.revoke_subkey")).TextColor(t.Danger)
@@ -560,7 +580,7 @@ func (s *uiState) viewRevokeSubkey(c *ui.Context) {
 }
 
 func (s *uiState) confirmRevokeSubkey() {
-	if s.revokePass == "" && s.passphrase == "" {
+	if s.primaryProtected() && s.revokePass == "" && s.passphrase == "" {
 		s.revokeErr = s.tr("err.pass_empty")
 		return
 	}
@@ -669,6 +689,9 @@ func (s *uiState) viewSubkeyCard(c *ui.Context, parentHasSecret bool, sub rnp.Ke
 			}
 			if sub.CanAuth {
 				ui.Badge(c, s.tr("badge.auth"))
+			}
+			if sub.HasSecret && !sub.IsProtected {
+				ui.Badge(c, s.tr("badge.unprotected"))
 			}
 			ui.Badge(c, s.tr("badge."+keyStatusCode(sub, time.Now().UTC())))
 		})
