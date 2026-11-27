@@ -18,7 +18,7 @@ Supported release targets:
 
 ## 2. Download, Installation & First Launch
 
-Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.6` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; `v0.0.5` added PR #14 `+ New Key` algorithm presets/parameter linking/tri-lingual tips and PR #15 hierarchical collapsible subkey tree & full subkey lifecycle management; `v0.0.6` delivered PR #16 empty-passphrase RFC 4880 unprotected key generation and `No Passphrase` lifecycle support; the pinned bottom status bar and graded notification feedback from `feat/statusbar-notifications` will ship in the next release).
+Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.6` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; `v0.0.5` added PR #14 `+ New Key` algorithm presets/parameter linking/tri-lingual tips and PR #15 hierarchical collapsible subkey tree & full subkey lifecycle management; `v0.0.6` delivered PR #16 empty-passphrase RFC 4880 unprotected key generation and `No Passphrase` lifecycle support; PR #17 merged the pinned bottom status bar & graded notification feedback to `main`; the light Fluent & frosted-glass UI refresh on `feat/fluent-glass-ui` will ship in the next release).
 
 ### Verifying Release Checksums
 
@@ -99,18 +99,29 @@ i18n=ok
 
 ![RnpArmor main window (English, Linux runtime)](screenshots/rnparmor-linux-en.png)
 
-The main window (`1120×780`) displays the compact app title above the 5 workspace tabs, a **pinned bottom status bar**, graded notification feedback (**Toasts** & in-app **AlertDialogs**), and a native 4-group menu bar:
+The main window (`1120×780`) uses a **light Fluent & frosted-glass visual shell** paired with the 5 workspace tabs, a **pinned bottom status bar**, graded notification feedback (**Toasts** & in-app **AlertDialogs**), and a 4-group menu bar adapted per desktop platform:
+
+**Light Fluent Theme, Two-Layer Depth & Frosted Overlays:**
+
+- **Light-only theme with OS accessibility support**: RnpArmor stays in a light visual theme while still honoring system high-contrast mode, desktop text-scale factors, and OS accent preferences.
+- **Two-layer depth layout**: all 5 workspaces (plus standalone child windows) sit inside pure-white (`#ffffff`) rounded cards with crisp borders and soft elevation shadows over a light cool-gray canvas (`#edf1f7`). On **Windows 11**, the main window enables native **Mica** translucency behind cards (automatically falling back to cool gray on Windows 10 and Linux).
+- **Tactile raised buttons**: secondary, primary, and danger buttons use restrained vertical gradients, a top hairline highlight, a bottom fold line, hover lift shadows, and a subtle `1 DIP` downward press motion.
+- **Frosted-glass menus & toasts (`mygo/plugins/glass`)**: in-app dropdown selects, context menus, popover menu panels, and bottom-bar notification toasts render with translucent frosted-glass material, rounded borders, and soft drop shadows.
 
 **Pinned Bottom Status Bar & Notifications:**
 
 - **Bottom Status Bar**: fixed at the very bottom of the main window (replacing the former stacked header lines to maximize workspace height). Shows the loaded `librnp` version, the single-line `librnp` / `rnp.dll` library path (hover to inspect the full path; click to copy it to the clipboard with a **`Library path copied`** toast), the loaded **primary-key count** (e.g., `2 keys` or `1 key`), and live state (**`Ready`** or **`busy · <action>`**).
 - **Graded Notification Feedback**:
-  - **Routine success (`Toast`)**: key generation, import/export, copying public/secret keys, fingerprints, or the library path, key deletion, encrypt/decrypt/sign actions, packet dumps, feature queries, keyring load/save, and subkey operations show a 4-second auto-dismissing toast centered just above the bottom status bar (hover pauses the timer; click **`×`** to dismiss early; never covers the status bar).
+  - **Routine success (`Toast`)**: key generation, import/export, copying public/secret keys, fingerprints, or the library path, key deletion, encrypt/decrypt/sign actions, packet dumps, feature queries, keyring load/save, and subkey operations show a 4-second auto-dismissing frosted-glass toast centered just above the bottom status bar (hover pauses the timer; click **`×`** to dismiss early; never covers the status bar).
   - **Verification results & main-window errors (`AlertDialog`)**: **`Verify text`** and **`Verify file`** results, as well as failures occurring in the main window, open a rounded in-app alert dialog with details and an **`OK`** button.
   - **Child-window inline errors**: form validation or action failures triggered inside an open child window (**New Key**, **Import Key Text**, **Add Subkey**, **Change Subkey Expiry**, **Revoke Subkey**) remain as inline red error text inside that child window so your focus stays on the active field (falling back to a main-window alert if that window has already closed).
   - **Silent startup & redaction**: automatic keyring loading at launch stays silent without popup notices; alert/error messages automatically mask in-memory passphrases (`••••`) and redact secret/private key blocks.
 
-**Native 4-Group Menu Bar:**
+**4-Group Menu Bar (Platform-Integrated on Windows/Linux, System Menu Bar on macOS):**
+
+- **Windows**: hides the legacy title bar (`40 DIP` header band with Mica) and draws **`File` / `Workspace` / `Language` / `Help`** directly inside the top integrated bar (preserving the top-right native window buttons and supporting window dragging on the app title and empty spacer area).
+- **Linux**: keeps the window manager's native title bar and window controls while rendering the same integrated glass-popover menu bar inside the window.
+- **macOS**: uses the native macOS system menu bar at the top of the screen and displays the app title above the tabs inside the window.
 
 1. **`File`**
    - **Choose Folder...**: opens the native system folder picker, sets **Workspace**, and automatically loads keys from that folder.
