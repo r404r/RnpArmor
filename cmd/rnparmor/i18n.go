@@ -315,7 +315,7 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangJA: "ユーザー ID",
 	},
 	"label.primary": {
-		LangEN: "Primary",
+		LangEN: "Primary Key",
 		LangZH: "主密钥",
 		LangJA: "主鍵",
 	},
@@ -1283,5 +1283,125 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangEN: "All files",
 		LangZH: "所有文件",
 		LangJA: "すべてのファイル",
+	},
+	"label.alg_preset": {
+		LangEN: "Algorithm preset",
+		LangZH: "算法预设",
+		LangJA: "アルゴリズムのプリセット",
+	},
+	"label.enc_subkey": {
+		LangEN: "Encryption Subkey",
+		LangZH: "加密子密钥",
+		LangJA: "暗号化副鍵",
+	},
+	"preset.modern": {
+		LangEN: "Modern (Ed25519 + Curve25519)",
+		LangZH: "现代推荐（Ed25519 + Curve25519）",
+		LangJA: "現代的（Ed25519 + Curve25519）",
+	},
+	"preset.rsa4096": {
+		LangEN: "RSA 4096 + RSA 4096",
+		LangZH: "RSA 4096 + RSA 4096",
+		LangJA: "RSA 4096 + RSA 4096",
+	},
+	"preset.rsa3072": {
+		LangEN: "RSA 3072 + RSA 3072",
+		LangZH: "RSA 3072 + RSA 3072",
+		LangJA: "RSA 3072 + RSA 3072",
+	},
+	"preset.nist_p256": {
+		LangEN: "NIST P-256",
+		LangZH: "NIST P-256（合规）",
+		LangJA: "NIST P-256（準拠）",
+	},
+	"preset.custom": {
+		LangEN: "Custom",
+		LangZH: "自定义",
+		LangJA: "カスタム",
+	},
+	"preset.modern.desc": {
+		LangEN: "Recommended: Ed25519 with Curve25519. Short keys, fast, and widely supported.",
+		LangZH: "推荐：Ed25519 配 Curve25519。主密钥短、速度快，现代客户端通用。",
+		LangJA: "推奨：Ed25519 と Curve25519。主鍵は短く高速で、新しいクライアントで広く使えます。",
+	},
+	"preset.rsa4096.desc": {
+		LangEN: "Highest compatibility: RSA 4096 for both the primary key and the encryption subkey.",
+		LangZH: "最高兼容：主密钥与加密子密钥均为 RSA 4096。",
+		LangJA: "高い互換性：主鍵と暗号化副鍵のどちらも RSA 4096。",
+	},
+	"preset.rsa3072.desc": {
+		LangEN: "Balanced compatibility: RSA 3072 for both the primary key and the encryption subkey.",
+		LangZH: "兼容与体积均衡：主密钥与加密子密钥均为 RSA 3072。",
+		LangJA: "互換とサイズの均衡：主鍵と暗号化副鍵のどちらも RSA 3072。",
+	},
+	"preset.nist_p256.desc": {
+		LangEN: "NIST profile: ECDSA P-256 for the primary key and ECDH P-256 for the encryption subkey.",
+		LangZH: "NIST 合规：主密钥为 ECDSA P-256，加密子密钥为 ECDH P-256。",
+		LangJA: "NIST 準拠：主鍵は ECDSA P-256、暗号化副鍵は ECDH P-256。",
+	},
+	"preset.custom.desc": {
+		LangEN: "Custom: choose the primary key and encryption subkey algorithms yourself.",
+		LangZH: "自定义：自行选择主密钥与加密子密钥算法。",
+		LangJA: "カスタム：主鍵と暗号化副鍵のアルゴリズムを自分で選びます。",
+	},
+	"tip.preset.roles": {
+		LangEN: "The primary key certifies and signs. The subkey encrypts. Pick a preset, or customize each one.",
+		LangZH: "主密钥负责认证和签名，子密钥负责加密。可选预设，也可分别自定义。",
+		LangJA: "主鍵は認証と署名、副鍵は暗号化を担当します。プリセットか個別の指定を選べます。",
+	},
+	"tip.primary.eddsa": {
+		LangEN: "Recommended: short keys, fast, and supported by modern clients.",
+		LangZH: "推荐：密钥短、速度快、现代客户端通用。",
+		LangJA: "推奨：鍵は短く高速で、新しいクライアントで使えます。",
+	},
+	"tip.primary.rsa": {
+		LangEN: "High compatibility: for older PGP clients or enterprise gateways.",
+		LangZH: "高兼容：适合旧版 PGP 客户端或企业网关。",
+		LangJA: "高い互換性：古い PGP クライアントや企業ゲートウェイ向け。",
+	},
+	"tip.primary.ecdsa": {
+		LangEN: "NIST elliptic curves, for environments that require them.",
+		LangZH: "NIST 标准椭圆曲线，适合合规场景。",
+		LangJA: "NIST 標準の楕円曲線。準拠が必要な場面向け。",
+	},
+	"tip.primary.dsa": {
+		LangEN: "A legacy algorithm. Not recommended for new keys.",
+		LangZH: "历史兼容算法，不建议用于新密钥。",
+		LangJA: "過去の互換用アルゴリズム。新しい鍵には非推奨。",
+	},
+	"tip.primary.role": {
+		LangEN: "Primary key: certifies and signs. The curve or size follows the algorithm.",
+		LangZH: "主密钥负责认证和签名。曲线或位数随算法变化。",
+		LangJA: "主鍵は認証と署名を担当します。曲線またはビット長はアルゴリズムに従います。",
+	},
+	"tip.subkey.ecdh": {
+		LangEN: "Recommended: Curve25519 is the modern encryption partner for Ed25519.",
+		LangZH: "推荐：Curve25519 是 Ed25519 的现代加密搭档。",
+		LangJA: "推奨：Curve25519 は Ed25519 の現代的な暗号化の相手です。",
+	},
+	"tip.subkey.rsa": {
+		LangEN: "Compatible with older tools.",
+		LangZH: "兼容旧版工具。",
+		LangJA: "古いツールとの互換性があります。",
+	},
+	"tip.subkey.elgamal": {
+		LangEN: "A legacy algorithm. Large, and not recommended for new keys.",
+		LangZH: "历史遗留算法，体积大，不建议用于新密钥。",
+		LangJA: "過去のアルゴリズム。サイズが大きく、新しい鍵には非推奨。",
+	},
+	"tip.subkey.role": {
+		LangEN: "Encryption subkey: encrypts to you. Its curve or size follows the algorithm.",
+		LangZH: "加密子密钥负责加密。曲线或位数随算法变化。",
+		LangJA: "暗号化副鍵は暗号化を担当します。曲線またはビット長はアルゴリズムに従います。",
+	},
+	"tip.crypto.desc": {
+		LangEN: "Recommended: SHA256 or SHA512, with AES256.",
+		LangZH: "推荐使用 SHA256 或 SHA512，对称算法用 AES256。",
+		LangJA: "推奨は SHA256 または SHA512 と AES256 です。",
+	},
+	"tip.crypto.role": {
+		LangEN: "Hash and cipher protect the secret key and symmetric encryption. SHA256 or SHA512 with AES256 is the usual pair.",
+		LangZH: "哈希与对称算法用于保护私钥和对称加密。通常搭配 SHA256 或 SHA512 与 AES256。",
+		LangJA: "ハッシュと共通鍵暗号は秘密鍵と対称暗号化を守ります。通常は SHA256 または SHA512 と AES256 です。",
 	},
 }

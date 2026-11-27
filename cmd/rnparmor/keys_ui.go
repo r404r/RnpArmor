@@ -389,7 +389,8 @@ func (s *uiState) reportAsyncErr(err error) {
 }
 
 func (s *uiState) openNewKeyWindow() {
-	s.openChild(s.tr("title.new_key"), 520, 560, s.viewNewKey, &s.newKeyWin)
+	w, h := newKeyWindowSize()
+	s.openChild(s.tr("title.new_key"), w, h, s.viewNewKey, &s.newKeyWin)
 }
 
 func (s *uiState) openImportTextWindow() {
@@ -438,87 +439,6 @@ func (s *uiState) closeImportWindow() {
 	if s.importWin != nil && !s.importWin.IsDestroyed() {
 		s.importWin.Close()
 	}
-}
-
-func (s *uiState) viewNewKey(c *ui.Context) {
-	t := c.Theme()
-	choices := []string{s.tr("exp.never"), s.tr("exp.1y"), s.tr("exp.2y"), s.tr("exp.5y")}
-	if s.newKeyExpiry < 0 || s.newKeyExpiry >= len(choices) {
-		s.newKeyExpiry = 0
-	}
-	cur := choices[s.newKeyExpiry]
-	ui.Column(c).Fill().Padding(16).Gap(8).Children(func() {
-		ui.Text(c, s.tr("title.new_key")).FontSize(18).Bold()
-		ui.Form(c, func() {
-			ui.Field(c, s.tr("label.name"), func() {
-				ui.TextInput(c, &s.newKeyName).Placeholder(s.tr("placeholder.name"))
-			})
-			ui.Field(c, s.tr("label.email"), func() {
-				ui.TextInput(c, &s.newKeyEmail).Placeholder(s.tr("placeholder.email"))
-			})
-			ui.Field(c, s.tr("label.passphrase"), func() {
-				ui.TextInput(c, &s.newKeyPass).Password().Placeholder(s.tr("placeholder.new_pass"))
-			})
-			ui.Field(c, s.tr("label.confirm_pass"), func() {
-				ui.TextInput(c, &s.newKeyPass2).Password().Placeholder(s.tr("placeholder.confirm_pass"))
-			})
-			ui.Field(c, s.tr("label.expiration"), func() {
-				ui.Select(c, &cur, choices)
-			})
-		})
-		for i, label := range choices {
-			if cur == label {
-				s.newKeyExpiry = i
-			}
-		}
-		ui.Collapsible(c, s.tr("label.advanced"), &s.newKeyAdvanced, func() {
-			ui.Field(c, s.tr("label.primary"), func() {
-				ui.Row(c).Gap(8).Children(func() {
-					ui.Select(c, &s.keyReq.PrimaryAlg, []string{"EDDSA", "RSA", "ECDSA", "DSA"}).Width(140)
-					ui.TextInput(c, &s.keyReq.PrimaryCurve).Placeholder(s.tr("placeholder.curve"))
-					bits := float64(s.keyReq.PrimaryBits)
-					if ui.NumberInput(c, &bits, 0, 8192, 1).Width(100).Changed() {
-						s.keyReq.PrimaryBits = int(bits)
-					}
-				})
-			})
-			ui.Field(c, s.tr("label.subkey"), func() {
-				ui.Row(c).Gap(8).Children(func() {
-					ui.Select(c, &s.keyReq.SubkeyAlg, []string{"ECDH", "RSA", "ELGAMAL", ""}).Width(140)
-					ui.TextInput(c, &s.keyReq.SubkeyCurve).Placeholder(s.tr("placeholder.curve"))
-					bits := float64(s.keyReq.SubkeyBits)
-					if ui.NumberInput(c, &bits, 0, 8192, 1).Width(100).Changed() {
-						s.keyReq.SubkeyBits = int(bits)
-					}
-				})
-			})
-			ui.Field(c, s.tr("label.crypto"), func() {
-				ui.Row(c).Gap(8).Children(func() {
-					ui.Select(c, &s.keyReq.HashAlg, []string{"SHA256", "SHA384", "SHA512", "SHA3-256"}).Width(160)
-					ui.Select(c, &s.keyReq.SymmCipher, []string{"AES256", "AES192", "AES128", "Camellia256"}).Width(160)
-				})
-			})
-		})
-		if s.newKeyErr != "" {
-			ui.Text(c, s.newKeyErr).TextColor(t.Danger)
-		}
-		ui.Row(c).Gap(8).Children(func() {
-			if ui.PrimaryButton(c, s.tr("btn.generate")).Clicked() {
-				req, errKey := validateNewKey(s.newKeyName, s.newKeyEmail, s.newKeyPass, s.newKeyPass2, s.newKeyExpiry, s.keyReq)
-				if errKey != "" {
-					s.newKeyErr = s.tr(errKey)
-					return
-				}
-				s.newKeyErr = ""
-				s.adoptPassphrase(s.newKeyPass)
-				s.keyReq = req
-				s.run("action.generate_key", s.generateKey)
-			}
-			if ui.Button(c, s.tr("btn.close")).Clicked() {
-				s.closeNewKeyWindow()
-			}
-		})
-	})
 }
 
 func (s *uiState) viewImportText(c *ui.Context) {

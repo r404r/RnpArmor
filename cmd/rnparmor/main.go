@@ -89,6 +89,7 @@ type uiState struct {
 	newKeyPass     string
 	newKeyPass2    string
 	newKeyExpiry   int
+	newKeyPreset   string
 	newKeyAdvanced bool
 	newKeyErr      string
 

@@ -1068,3 +1068,191 @@ func TestStudioKeyPickersAndFileDialogPaths(t *testing.T) {
 		}
 	}
 }
+
+func TestKeygenPresetsSyncAndTips(t *testing.T) {
+	if err := ValidateCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	keys := []string{
+		"label.alg_preset", "label.enc_subkey",
+		"preset.modern", "preset.rsa4096", "preset.rsa3072", "preset.nist_p256", "preset.custom",
+		"preset.modern.desc", "preset.rsa4096.desc", "preset.rsa3072.desc", "preset.nist_p256.desc", "preset.custom.desc",
+		"tip.preset.roles",
+		"tip.primary.eddsa", "tip.primary.rsa", "tip.primary.ecdsa", "tip.primary.dsa", "tip.primary.role",
+		"tip.subkey.ecdh", "tip.subkey.rsa", "tip.subkey.elgamal", "tip.subkey.role",
+		"tip.crypto.desc", "tip.crypto.role",
+	}
+	seen := map[string]bool{}
+	for _, k := range keys {
+		if seen[k] {
+			t.Fatalf("duplicate key %s", k)
+		}
+		seen[k] = true
+		for _, l := range []Lang{LangEN, LangZH, LangJA} {
+			v := strings.TrimSpace(Tr(l, k))
+			if v == "" || v == k {
+				t.Fatalf("translation missing %s/%s: %q", k, l, v)
+			}
+		}
+	}
+	for k, m := range i18nCatalog {
+		zh := m[LangZH]
+		if strings.Contains(zh, "主键") || strings.Contains(zh, "副键") {
+			t.Fatalf("simplified term %s: %s", k, zh)
+		}
+	}
+	if Tr(LangEN, "label.primary") != "Primary Key" || Tr(LangZH, "label.primary") != "主密钥" || Tr(LangJA, "label.primary") != "主鍵" {
+		t.Fatal("primary term")
+	}
+	if Tr(LangEN, "label.subkey") != "Subkey" || Tr(LangZH, "label.subkey") != "子密钥" || Tr(LangJA, "label.subkey") != "副鍵" {
+		t.Fatal("subkey term")
+	}
+	if Tr(LangZH, "label.enc_subkey") != "加密子密钥" || Tr(LangJA, "label.enc_subkey") != "暗号化副鍵" {
+		t.Fatal("encryption subkey term")
+	}
+
+	base := rnp.KeyGenRequest{UserID: "Ada", ExpirationSec: 9, S2KIterations: 3}
+	modern := applyKeyPreset(presetModern, base)
+	if modern.UserID != "Ada" || modern.ExpirationSec != 9 || modern.S2KIterations != 3 {
+		t.Fatalf("identity wiped: %+v", modern)
+	}
+	if modern.PrimaryAlg != "EDDSA" || modern.PrimaryCurve != "Ed25519" || modern.PrimaryBits != 0 {
+		t.Fatalf("modern primary: %+v", modern)
+	}
+	if modern.SubkeyAlg != "ECDH" || modern.SubkeyCurve != "Curve25519" || modern.SubkeyBits != 0 {
+		t.Fatalf("modern subkey: %+v", modern)
+	}
+	if modern.HashAlg != "SHA256" || modern.SymmCipher != "AES256" {
+		t.Fatalf("modern crypto: %+v", modern)
+	}
+	rsa4096 := applyKeyPreset(presetRSA4096, modern)
+	if rsa4096.PrimaryAlg != "RSA" || rsa4096.PrimaryBits != 4096 || rsa4096.PrimaryCurve != "" {
+		t.Fatalf("rsa4096 primary: %+v", rsa4096)
+	}
+	if rsa4096.SubkeyAlg != "RSA" || rsa4096.SubkeyBits != 4096 || rsa4096.SubkeyCurve != "" || rsa4096.UserID != "Ada" {
+		t.Fatalf("rsa4096 subkey: %+v", rsa4096)
+	}
+	rsa3072 := applyKeyPreset(presetRSA3072, modern)
+	if rsa3072.PrimaryBits != 3072 || rsa3072.SubkeyBits != 3072 || rsa3072.PrimaryCurve != "" || rsa3072.SubkeyAlg != "RSA" {
+		t.Fatalf("rsa3072: %+v", rsa3072)
+	}
+	nist := applyKeyPreset(presetNISTP256, modern)
+	if nist.PrimaryAlg != "ECDSA" || nist.PrimaryCurve != "NIST P-256" || nist.PrimaryBits != 0 {
+		t.Fatalf("nist primary: %+v", nist)
+	}
+	if nist.SubkeyAlg != "ECDH" || nist.SubkeyCurve != "NIST P-256" || nist.SubkeyBits != 0 {
+		t.Fatalf("nist subkey: %+v", nist)
+	}
+	if got := applyKeyPreset("nope", base); !keygenSpecEqual(got, modern) {
+		t.Fatalf("unknown preset: %+v", got)
+	}
+	customIn := modern
+	customIn.PrimaryAlg = "RSA"
+	customIn.PrimaryBits = 0
+	customIn.PrimaryCurve = "Ed25519"
+	custom := applyKeyPreset(presetCustom, customIn)
+	if custom.PrimaryAlg != "RSA" || custom.PrimaryBits != 4096 || custom.PrimaryCurve != "" || custom.UserID != "Ada" {
+		t.Fatalf("custom sync: %+v", custom)
+	}
+	if presetForRequest(modern) != presetModern || presetForRequest(rsa4096) != presetRSA4096 || presetForRequest(rsa3072) != presetRSA3072 || presetForRequest(nist) != presetNISTP256 {
+		t.Fatal("preset match")
+	}
+	tweaked := modern
+	tweaked.HashAlg = "SHA512"
+	if presetForRequest(tweaked) != presetCustom {
+		t.Fatal("tweaked still matches a preset")
+	}
+	if id, open := notePresetDrift(presetModern, modern); id != presetModern || open {
+		t.Fatalf("stable modern %s %v", id, open)
+	}
+	if id, open := notePresetDrift(presetModern, tweaked); id != presetCustom || !open {
+		t.Fatalf("drift %s %v", id, open)
+	}
+	if id, open := notePresetDrift(presetCustom, tweaked); id != presetCustom || open {
+		t.Fatalf("stay custom %s %v", id, open)
+	}
+
+	eddsa := syncPrimaryAlgParams(rnp.KeyGenRequest{PrimaryAlg: "EDDSA", PrimaryCurve: "NIST P-256", PrimaryBits: 4096})
+	if eddsa.PrimaryCurve != "Ed25519" || eddsa.PrimaryBits != 0 || eddsa.PrimaryAlg != "EDDSA" {
+		t.Fatalf("eddsa sync: %+v", eddsa)
+	}
+	ecdsa := syncPrimaryAlgParams(rnp.KeyGenRequest{PrimaryAlg: "ECDSA", PrimaryCurve: "Ed25519", PrimaryBits: 256})
+	if ecdsa.PrimaryCurve != "NIST P-256" || ecdsa.PrimaryBits != 0 {
+		t.Fatalf("ecdsa kept %s bits %d", ecdsa.PrimaryCurve, ecdsa.PrimaryBits)
+	}
+	keptCurve := syncPrimaryAlgParams(rnp.KeyGenRequest{PrimaryAlg: "ECDSA", PrimaryCurve: "NIST P-384"})
+	if keptCurve.PrimaryCurve != "NIST P-384" {
+		t.Fatalf("curve reset: %s", keptCurve.PrimaryCurve)
+	}
+	rsa := syncPrimaryAlgParams(rnp.KeyGenRequest{PrimaryAlg: "rsa", PrimaryBits: 0, PrimaryCurve: "Ed25519"})
+	if rsa.PrimaryAlg != "RSA" || rsa.PrimaryBits != 4096 || rsa.PrimaryCurve != "" {
+		t.Fatalf("rsa sync: %+v", rsa)
+	}
+	dsa := syncPrimaryAlgParams(rnp.KeyGenRequest{PrimaryAlg: "DSA", PrimaryBits: 4096, PrimaryCurve: "NIST P-256"})
+	if dsa.PrimaryBits != 3072 || dsa.PrimaryCurve != "" {
+		t.Fatalf("dsa sync: %+v", dsa)
+	}
+	dsaOK := syncPrimaryAlgParams(rnp.KeyGenRequest{PrimaryAlg: "DSA", PrimaryBits: 2048})
+	if dsaOK.PrimaryBits != 2048 {
+		t.Fatalf("dsa 2048: %d", dsaOK.PrimaryBits)
+	}
+
+	ecdh := syncSubkeyAlgParams(rnp.KeyGenRequest{SubkeyAlg: "ECDH", SubkeyCurve: "Ed25519", SubkeyBits: 4096})
+	if ecdh.SubkeyAlg != "ECDH" || ecdh.SubkeyCurve != "Curve25519" || ecdh.SubkeyBits != 0 {
+		t.Fatalf("ecdh sync: %+v", ecdh)
+	}
+	ecdhKeep := syncSubkeyAlgParams(rnp.KeyGenRequest{SubkeyAlg: "ECDH", SubkeyCurve: "NIST P-521"})
+	if ecdhKeep.SubkeyCurve != "NIST P-521" || ecdhKeep.SubkeyBits != 0 {
+		t.Fatalf("ecdh keep: %+v", ecdhKeep)
+	}
+	subRSA := syncSubkeyAlgParams(rnp.KeyGenRequest{SubkeyAlg: "", SubkeyBits: 0, SubkeyCurve: "Curve25519"})
+	if subRSA.SubkeyAlg != "ECDH" || subRSA.SubkeyCurve != "Curve25519" {
+		t.Fatalf("empty subkey: %+v", subRSA)
+	}
+	subRSA = syncSubkeyAlgParams(rnp.KeyGenRequest{SubkeyAlg: "RSA", SubkeyBits: 0, SubkeyCurve: "Curve25519"})
+	if subRSA.SubkeyBits != 4096 || subRSA.SubkeyCurve != "" || subRSA.SubkeyAlg != "RSA" {
+		t.Fatalf("sub rsa: %+v", subRSA)
+	}
+	elg := syncSubkeyAlgParams(rnp.KeyGenRequest{SubkeyAlg: "ELGAMAL", SubkeyBits: 0, SubkeyCurve: "NIST P-256"})
+	if elg.SubkeyBits != 3072 || elg.SubkeyCurve != "" {
+		t.Fatalf("elgamal default: %+v", elg)
+	}
+	elg = syncSubkeyAlgParams(rnp.KeyGenRequest{SubkeyAlg: "ELGAMAL", SubkeyBits: 4096})
+	if elg.SubkeyBits != 4096 {
+		t.Fatalf("elgamal keep: %d", elg.SubkeyBits)
+	}
+
+	if primaryAlgTipKey(" eddsa ") != "tip.primary.eddsa" || primaryAlgTipKey("") != "tip.primary.eddsa" {
+		t.Fatal("eddsa tip")
+	}
+	if primaryAlgTipKey("rsa") != "tip.primary.rsa" || primaryAlgTipKey("ECDSA") != "tip.primary.ecdsa" || primaryAlgTipKey("DSA") != "tip.primary.dsa" {
+		t.Fatal("primary tips")
+	}
+	if subkeyAlgTipKey("ecdh") != "tip.subkey.ecdh" || subkeyAlgTipKey("") != "tip.subkey.ecdh" {
+		t.Fatal("ecdh tip")
+	}
+	if subkeyAlgTipKey("RSA") != "tip.subkey.rsa" || subkeyAlgTipKey("ELGAMAL") != "tip.subkey.elgamal" {
+		t.Fatal("subkey tips")
+	}
+	if presetDescKey(presetModern) != "preset.modern.desc" || presetDescKey(presetRSA4096) != "preset.rsa4096.desc" || presetDescKey(presetRSA3072) != "preset.rsa3072.desc" {
+		t.Fatal("preset desc")
+	}
+	if presetDescKey(presetNISTP256) != "preset.nist_p256.desc" || presetDescKey(presetCustom) != "preset.custom.desc" || presetDescKey("nope") != "preset.modern.desc" {
+		t.Fatal("preset desc fallback")
+	}
+	w, h := newKeyWindowSize()
+	if w != 560 || h != 640 {
+		t.Fatalf("window %d x %d", w, h)
+	}
+	labels := make([]string, 0, 5)
+	for _, id := range presetIDs() {
+		labels = append(labels, Tr(LangEN, presetLabelKey(id)))
+	}
+	for i := range labels {
+		for j := i + 1; j < len(labels); j++ {
+			if labels[i] == labels[j] {
+				t.Fatalf("preset labels collide: %s", labels[i])
+			}
+		}
+	}
+}
