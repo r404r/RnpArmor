@@ -18,7 +18,7 @@ Supported release targets:
 
 ## 2. Download, Installation & First Launch
 
-Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.3` are released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide, and `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` ships both the Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs).
+Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.4` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; recent `+ New Key` algorithm presets, dynamic parameter linking, and tri-lingual tips from PR #14 will ship in the next release).
 
 ### Verifying Release Checksums
 
@@ -89,7 +89,7 @@ Example `--smoke-test` output:
 
 ```text
 status=ok
-app_version=v0.0.3
+app_version=v0.0.4
 library=/path/to/librnp.so
 version=0.18.1+git...
 i18n=ok
@@ -126,7 +126,7 @@ Use this workspace as a master-detail key manager to browse your keyring folder,
 **Toolbar & Filter Bar:**
 
 - **Top Toolbar**:
-  - **`+ New Key`**: opens the standalone **`New Key`** window (`520×560`).
+  - **`+ New Key`**: opens the standalone **`New Key`** window (`560×640`).
   - **`Import File...`**: opens a native file picker filtered for `.asc`, `.pgp`, `.gpg`, and `.key`, imports keys into the active session, and updates disk keyring files if **Workspace** is non-empty.
   - **`Import Text...`**: opens the **`Import Key Text`** child window (`560×420`), where you can paste an ASCII-armored public/secret key or click **`Paste from Clipboard`**, then click **`Import`**.
   - **`Refresh`**: reloads and refreshes the keyring list from **Workspace**.
@@ -156,11 +156,17 @@ Use this workspace as a master-detail key manager to browse your keyring folder,
 1. Enter **`Name`** and/or **`Email`** (at least one is required; both combine as `Name <Email>`).
 2. Enter and confirm a masked **`Passphrase`** and **`Confirm Passphrase`** (required and must match; there is no pre-filled default). Upon successful generation, RnpArmor adopts this passphrase into the active in-memory session and clears the form inputs.
 3. Choose **`Expiration`**: `Never`, `1 Year`, `2 Years`, or `5 Years`.
-4. Optionally expand **`Advanced algorithms`**:
-   - **Primary**: algorithm (`EDDSA`, `RSA`, `ECDSA`, `DSA`; default `EDDSA`), curve (`Ed25519`, `Curve25519` / `X25519`, `NIST P-256`, `NIST P-384`, `NIST P-521`, `secp256k1`; default `Ed25519`), and bit length (`0`–`8192`).
-   - **Subkey**: algorithm (`ECDH`, `RSA`, `ELGAMAL`, or empty `""`; default `ECDH`), curve (default `Curve25519`), and bit length (`0`–`8192`).
-   - **Crypto**: hash (`SHA256`, `SHA384`, `SHA512`, `SHA3-256`; default `SHA256`) and symmetric cipher (`AES256`, `AES192`, `AES128`, `Camellia256`; default `AES256`).
-5. Click **`Generate Key`**.
+4. Choose **`Algorithm preset`** (`SHA256` + `AES256` defaults):
+   - **`Modern (Ed25519 + Curve25519)`** *(default, recommended)*: `EDDSA` (`Ed25519`) **Primary Key** + `ECDH` (`Curve25519`) **Encryption Subkey**.
+   - **`RSA 4096 + RSA 4096`**: `RSA 4096` **Primary Key** + `RSA 4096` **Encryption Subkey** (highest legacy compatibility).
+   - **`RSA 3072 + RSA 3072`**: `RSA 3072` **Primary Key** + `RSA 3072` **Encryption Subkey**.
+   - **`NIST P-256`**: `ECDSA` (`NIST P-256`) **Primary Key** + `ECDH` (`NIST P-256`) **Encryption Subkey**.
+   - **`Custom`**: automatically expands **`Advanced algorithms`** (manually editing any algorithm option away from a named preset also switches the preset to **`Custom`** and expands the section).
+5. Optionally expand **`Advanced algorithms`** (each field shows a dynamic inline description and hover tooltip in English, Chinese, and Japanese; parameters automatically link to valid curves or key sizes for the selected algorithm):
+   - **Primary Key**: `EDDSA` (fixed `Ed25519`), `RSA` (`2048` / `3072` / `4096` bits), `ECDSA` (`NIST P-256` / `NIST P-384` / `NIST P-521`), or `DSA` (`2048` / `3072` bits; noted in UI tips as legacy/not recommended).
+   - **Encryption Subkey**: `ECDH` (`Curve25519` / `NIST P-256` / `NIST P-384` / `NIST P-521`), `RSA` (`2048` / `3072` / `4096` bits), or `ELGAMAL` (`2048` / `3072` / `4096` bits; noted in UI tips as legacy/not recommended).
+   - **Crypto**: hash (`SHA256`, `SHA384`, `SHA512`, `SHA3-256`; UI tips recommend `SHA256` or `SHA512`) and symmetric cipher (`AES256`, `AES192`, `AES128`, `Camellia256`; UI tips recommend `AES256`).
+6. Click **`Generate Key`**.
 
 **Non-clobbering Keyring Persistence:**
 
