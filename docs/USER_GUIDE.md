@@ -18,7 +18,7 @@ Supported release targets:
 
 ## 2. Download, Installation & First Launch
 
-Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.8` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; `v0.0.5` added PR #14 `+ New Key` algorithm presets/parameter linking/tri-lingual tips and PR #15 hierarchical collapsible subkey tree & full subkey lifecycle management; `v0.0.6` delivered PR #16 empty-passphrase RFC 4880 unprotected key generation and `No Passphrase` lifecycle support; `v0.0.7` shipped PR #17 pinned bottom status bar & graded notification feedback plus PR #18 light Fluent & frosted-glass UI refresh; `v0.0.8` shipped PR #19 refreshing all 11 Linux demo screenshots across the docs and PR #20 adding `+ New Key` passphrase visibility toggles, live mismatch blocking, and real `librnp` op-API key expiration; PR #21 extends the show/hide passphrase eye toggle across all remaining password inputs, and PR #22 switches Windows CI builds to package pinned prebuilt `r404r/rnp@v0.18.1-win.2` DLLs for `v0.0.9`).
+Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.9` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; `v0.0.5` added PR #14 `+ New Key` algorithm presets/parameter linking/tri-lingual tips and PR #15 hierarchical collapsible subkey tree & full subkey lifecycle management; `v0.0.6` delivered PR #16 empty-passphrase RFC 4880 unprotected key generation and `No Passphrase` lifecycle support; `v0.0.7` shipped PR #17 pinned bottom status bar & graded notification feedback plus PR #18 light Fluent & frosted-glass UI refresh; `v0.0.8` shipped PR #19 refreshing all 11 Linux demo screenshots across the docs and PR #20 adding `+ New Key` passphrase visibility toggles, live mismatch blocking, and real `librnp` op-API key expiration; `v0.0.9` delivered PR #21 extending the show/hide passphrase eye toggle across all remaining password inputs, PR #22 switching Windows CI builds to package pinned prebuilt `r404r/rnp@v0.18.1-win.2` DLLs, and PR #23 refreshing the `v0.0.9` screenshots; the unreleased `feat/macos-cmdq-quit-confirm` branch adds the macOS Application menu with `Cmd+Q` and cross-platform quit confirmation ahead of a future release).
 
 ### Verifying Release Checksums
 
@@ -118,18 +118,18 @@ The main window (`1120×780`) uses a **light Fluent & frosted-glass visual shell
   - **Child-window inline errors**: form validation or action failures triggered inside an open child window (**New Key**, **Import Key Text**, **Add Subkey**, **Change Subkey Expiry**, **Revoke Subkey**) remain as inline red error text inside that child window so your focus stays on the active field (falling back to a main-window alert if that window has already closed).
   - **Silent startup & redaction**: automatic keyring loading at launch stays silent without popup notices; alert/error messages automatically mask in-memory passphrases (`••••`) and redact secret/private key blocks.
 
-**4-Group Menu Bar (Platform-Integrated on Windows/Linux, System Menu Bar on macOS):**
+**Menu Bar (Platform-Integrated 4-Group Bar on Windows/Linux, System Menu Bar + Application Menu on macOS):**
 
 - **Windows**: hides the legacy title bar (`40 DIP` header band with Mica) and draws **`File` / `Workspace` / `Language` / `Help`** directly inside the top integrated bar (preserving the top-right native window buttons and supporting window dragging on the app title and empty spacer area).
 - **Linux**: keeps the window manager's native title bar and window controls while rendering the same integrated glass-popover menu bar inside the window.
-- **macOS**: uses the native macOS system menu bar at the top of the screen and displays the app title above the tabs inside the window.
+- **macOS**: uses the native macOS system menu bar at the top of the screen starting with the **`RnpArmor`** Application menu (**`About`**, **`Services`**, **`Hide`**, **`Hide Others`**, **`Show All`**, and **`Quit`** bound to **`Cmd+Q`**), followed by **`File`**, **`Workspace`**, **`Language`**, and **`Help`**, and displays the app title above the tabs inside the window.
 
 1. **`File`**
    - **Choose Folder...**: opens the native system folder picker, sets **Workspace**, and automatically loads keys from that folder.
    - **Open session**: initializes an in-memory `librnp` session (and loads `pubring.gpg` / `secring.gpg` if present in **Workspace**).
    - **Load keyring**: loads `pubring.gpg` (and `secring.gpg`, if present) from the configured **Workspace** directory.
    - **Save keyring**: writes `pubring.gpg` (and `secring.gpg` when secret keys exist) to the **Workspace** directory.
-   - **Quit**: closes the application.
+   - **Quit**: on every platform, clicking **`File → Quit`**—and on macOS, pressing **`Cmd+Q`** or choosing **`Quit`** from the Application menu or Dock context menu—raises a tri-lingual confirmation dialog (**`Quit RnpArmor?`**) on the main window (with an extra warning if a `librnp` operation is currently running). Click **`Quit`** to exit, or click **`Cancel`** / press `Esc` to keep RnpArmor running. OS shutdown/logout (`SessionEnding`) and closing the main window directly via its window close button (`×`) exit without stalling on a second prompt.
 2. **`Workspace`**
    - Radio items synchronized bi-directionally with the 5 tabs: **Keys**, **Text Studio**, **File Workbench**, **Packet & Features**, **Portable Keyring**.
 3. **`Language`**
