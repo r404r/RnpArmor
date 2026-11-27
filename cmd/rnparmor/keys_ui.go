@@ -69,9 +69,9 @@ func (s *uiState) viewKeys(c *ui.Context) {
 		titleKey, idWidth := idColumnSpec(s.keyIDMode)
 		cols := []ui.TableColumn{
 			{Title: s.tr("col.type"), ID: "type", Width: 120, MinWidth: 100, Sortable: true},
-			{Title: s.tr("col.name"), ID: "name", Width: 185, MinWidth: 120, Sortable: true},
+			{Title: s.tr("col.name"), ID: "name", Width: 170, MinWidth: 120, Sortable: true},
 			{Title: s.tr(titleKey), ID: "id", Width: idWidth, MinWidth: 120, Sortable: true},
-			{Title: s.tr("col.algorithm"), ID: "alg", Width: 95, MinWidth: 80, Sortable: true},
+			{Title: s.tr("col.algorithm"), ID: "alg", Width: 110, MinWidth: 96, Sortable: true},
 			{Title: s.tr("col.status"), ID: "status", Width: 78, MinWidth: 68, Sortable: true},
 		}
 		ui.SplitPercent(c, &s.keySplitPct, func() {
