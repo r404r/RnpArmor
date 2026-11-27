@@ -1773,3 +1773,121 @@ func subByFP(keys []rnp.KeySummary, primary, fp string) (rnp.KeySummary, bool) {
 	}
 	return rnp.KeySummary{}, false
 }
+
+func TestI18nComplete(t *testing.T) {
+	if err := ValidateCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	keys := []string{
+		"status.key_count_one", "status.key_count_many", "tip.copy_lib_path",
+		"toast.done", "toast.path_copied", "toast.fingerprint_copied",
+		"btn.ok", "alert.error", "alert.redacted",
+		"state.idle", "state.busy", "status.ready",
+	}
+	for _, k := range keys {
+		for _, l := range []Lang{LangEN, LangZH, LangJA} {
+			v := strings.TrimSpace(Tr(l, k))
+			if v == "" || v == k {
+				t.Fatalf("translation missing %s/%s: %q", k, l, v)
+			}
+		}
+		zh := Tr(LangZH, k)
+		if strings.Contains(zh, "主键") || strings.Contains(zh, "副键") {
+			t.Fatalf("simplified term %s: %s", k, zh)
+		}
+	}
+}
+
+func TestStatusBarAndFeedback(t *testing.T) {
+	keys := []rnp.KeySummary{
+		{Fingerprint: "P1", IsPrimary: true, Subkeys: []rnp.KeySummary{{Fingerprint: "S1", IsSub: true}}},
+		{Fingerprint: "P2", IsPrimary: true},
+		{Fingerprint: "S2", IsSub: true},
+	}
+	if countPrimaryKeys(keys) != 2 {
+		t.Fatalf("primary count %d", countPrimaryKeys(keys))
+	}
+	if formatPrimaryCount(LangEN, 0) != "0 keys" || formatPrimaryCount(LangEN, 1) != "1 key" || formatPrimaryCount(LangEN, 3) != "3 keys" {
+		t.Fatalf("en counts %q %q %q", formatPrimaryCount(LangEN, 0), formatPrimaryCount(LangEN, 1), formatPrimaryCount(LangEN, 3))
+	}
+	if formatPrimaryCount(LangZH, 0) != "0 把密钥" || formatPrimaryCount(LangZH, 3) != "3 把密钥" {
+		t.Fatalf("zh counts %q %q", formatPrimaryCount(LangZH, 0), formatPrimaryCount(LangZH, 3))
+	}
+	if formatPrimaryCount(LangJA, 1) != "1 件の鍵" || formatPrimaryCount(LangJA, 3) != "3 件の鍵" {
+		t.Fatalf("ja counts %q %q", formatPrimaryCount(LangJA, 1), formatPrimaryCount(LangJA, 3))
+	}
+
+	bar := &uiState{langIdx: LangIndex(LangEN), statusKey: "status.ready", keys: keys}
+	if bar.statusBarState() != "Ready" {
+		t.Fatalf("idle %q", bar.statusBarState())
+	}
+	if bar.statusBarRight() != "2 keys  ·  Ready" {
+		t.Fatalf("right %q", bar.statusBarRight())
+	}
+	bar.busy = true
+	bar.statusKey = "action.encrypt_text"
+	if bar.statusBarState() != "busy · Encrypt text" {
+		t.Fatalf("busy %q", bar.statusBarState())
+	}
+	bar.langIdx = LangIndex(LangZH)
+	if bar.statusBarRight() != "2 把密钥  ·  忙碌 · 加密文本" {
+		t.Fatalf("zh right %q", bar.statusBarRight())
+	}
+
+	if feedbackRoute("action.encrypt_text", false, false, false) != "toast" {
+		t.Fatal("success toast")
+	}
+	if feedbackRoute("action.verify_text", false, false, false) != "alert" || feedbackRoute("action.verify_file", false, false, false) != "alert" {
+		t.Fatal("verify alert")
+	}
+	if feedbackRoute("action.save", true, false, false) != "alert" {
+		t.Fatal("failure alert")
+	}
+	if feedbackRoute("action.generate_key", true, false, true) != "inline" {
+		t.Fatal("child inline")
+	}
+	if feedbackRoute("action.generate_key", true, false, false) != "alert" {
+		t.Fatal("closed child alert")
+	}
+	if feedbackRoute("action.load_keyring", false, true, false) != "none" || feedbackRoute("action.load_keyring", true, true, false) != "none" {
+		t.Fatal("silent load")
+	}
+
+	s := &uiState{langIdx: LangIndex(LangEN), passphrase: "super-secret-pass"}
+	s.noteActionFeedback("action.encrypt_text", actionOutcome{}, false)
+	if s.alertOpen || len(s.pendingToasts) != 1 || s.pendingToasts[0].Type != "success" || s.pendingToasts[0].Timeout != toastLifetime {
+		t.Fatalf("toast %+v alert %v", s.pendingToasts, s.alertOpen)
+	}
+	if strings.Contains(s.pendingToasts[0].Title, "super-secret-pass") || strings.Contains(s.pendingToasts[0].Description, "BEGIN PGP") {
+		t.Fatal("success toast leaked")
+	}
+
+	s.pendingToasts = nil
+	s.textOutput = "[Math: VALID]\nkey=ABC"
+	s.noteActionFeedback("action.verify_text", actionOutcome{}, false)
+	if !s.alertOpen || len(s.pendingToasts) != 0 || !strings.Contains(s.alertMsg, "[Math: VALID]") {
+		t.Fatalf("verify alert %v %q toasts %d", s.alertOpen, s.alertMsg, len(s.pendingToasts))
+	}
+
+	s.alertOpen = false
+	s.noteActionFeedback("action.save", actionOutcome{err: fmt.Errorf("disk full super-secret-pass")}, false)
+	if !s.alertOpen || len(s.pendingToasts) != 0 || strings.Contains(s.alertMsg, "super-secret-pass") || !strings.Contains(s.alertMsg, "••••") {
+		t.Fatalf("failure alert %q", s.alertMsg)
+	}
+
+	s.alertOpen = false
+	s.alertMsg = ""
+	s.noteActionFeedback("action.export_secret", actionOutcome{err: fmt.Errorf("-----BEGIN PGP PRIVATE KEY BLOCK----- super-secret-pass")}, false)
+	if !s.alertOpen || strings.Contains(s.alertMsg, "super-secret-pass") || strings.Contains(s.alertMsg, "PRIVATE KEY") {
+		t.Fatalf("redacted %q", s.alertMsg)
+	}
+
+	s.alertOpen = false
+	s.alertMsg = ""
+	s.pendingToasts = nil
+	s.noteActionFeedback("action.load_keyring", actionOutcome{}, true)
+	s.noteActionFeedback("action.load_keyring", actionOutcome{err: fmt.Errorf("missing ring")}, true)
+	if s.alertOpen || s.alertMsg != "" || len(s.pendingToasts) != 0 {
+		t.Fatalf("silent load notified alert=%v %q toasts=%d", s.alertOpen, s.alertMsg, len(s.pendingToasts))
+	}
+}

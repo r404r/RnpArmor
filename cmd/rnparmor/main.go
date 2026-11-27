@@ -138,6 +138,12 @@ type uiState struct {
 	pendingCloseAddSub bool
 	pendingCloseExpiry bool
 	pendingCloseRevoke bool
+
+	pendingToasts []ui.Toast
+	toastSeq      uint64
+	alertOpen     bool
+	alertTitle    string
+	alertMsg      string
 }
 
 func main() {
@@ -461,43 +467,40 @@ func (s *uiState) applyMainMenu() {
 }
 
 func (s *uiState) view(c *ui.Context) {
-	t := c.Theme()
-	ui.Column(c).Fill().Padding(14).Gap(10).Children(func() {
-		ui.Column(c).Gap(8).Children(func() {
+	s.flushPendingToasts(c)
+	ui.Column(c).Fill().Children(func() {
+		ui.Column(c).Padding(14).Gap(10).Grow(1).MinHeight(0).Children(func() {
 			ui.Text(c, s.tr("title.app")).FontSize(24).Bold()
-			ui.Textf(c, "librnp %s", s.version).TextColor(t.TextMuted)
-			ui.Text(c, s.libPath).FontSize(11).TextColor(t.TextMuted)
-			ui.Text(c, s.statusLine()).FontSize(12).TextColor(t.TextMuted)
-		})
-		ui.Divider(c)
-
-		prevTab := s.tab
-		ui.Tabs(c, &s.tab,
-			s.tr("tab.keys"),
-			s.tr("tab.text"),
-			s.tr("tab.file"),
-			s.tr("tab.packet"),
-			s.tr("tab.portable"),
-		).Value("workspaces")
-		if s.tab != prevTab {
-			s.applyMainMenu()
-		}
-
-		ui.Scroll(c).Fill().Children(func() {
-			switch s.tab {
-			case 0:
-				s.viewKeys(c)
-			case 1:
-				s.viewTextStudio(c)
-			case 2:
-				s.viewFileWorkbench(c)
-			case 3:
-				s.viewPackets(c)
-			default:
-				s.viewPortable(c)
+			prevTab := s.tab
+			ui.Tabs(c, &s.tab,
+				s.tr("tab.keys"),
+				s.tr("tab.text"),
+				s.tr("tab.file"),
+				s.tr("tab.packet"),
+				s.tr("tab.portable"),
+			).Value("workspaces")
+			if s.tab != prevTab {
+				s.applyMainMenu()
 			}
+			ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+				switch s.tab {
+				case 0:
+					s.viewKeys(c)
+				case 1:
+					s.viewTextStudio(c)
+				case 2:
+					s.viewFileWorkbench(c)
+				case 3:
+					s.viewPackets(c)
+				default:
+					s.viewPortable(c)
+				}
+			})
 		})
+		s.viewStatusBar(c)
 	})
+	s.viewToastViewport(c)
+	ui.AlertDialog(c, &s.alertOpen, s.alertTitle, s.alertMsg, s.tr("btn.ok"))
 }
 
 func (s *uiState) statusLine() string {
@@ -848,6 +851,14 @@ func invalidateWins(mainWin, aboutWin *mygo.Window) {
 }
 
 func (s *uiState) run(title string, fn sessionAction) {
+	s.startRun(title, fn, false)
+}
+
+func (s *uiState) runSilent(title string, fn sessionAction) {
+	s.startRun(title, fn, true)
+}
+
+func (s *uiState) startRun(title string, fn sessionAction, silent bool) {
 	s.mu.Lock()
 	if s.busy {
 		s.mu.Unlock()
@@ -884,6 +895,7 @@ func (s *uiState) run(title string, fn sessionAction) {
 		}
 		s.applyUI(func() {
 			s.applyResult(title, out)
+			s.noteActionFeedback(title, out, silent)
 		})
 	}()
 	if done != nil {
@@ -1017,7 +1029,7 @@ func (s *uiState) applyResult(title string, out actionOutcome) {
 	s.busy = false
 	s.statusKey = title
 	if out.err != nil {
-		s.lastErr = s.tr(title) + ": " + out.err.Error()
+		s.lastErr = s.tr(title) + ": " + s.safeNotice(out.err.Error())
 		s.statusDone = false
 		s.closeImportOnSuccess = false
 		if title == "action.generate_key" {
@@ -1475,7 +1487,7 @@ func (s *uiState) autoLoadKeyring() {
 		return
 	}
 	s.workspace = abs
-	s.run("action.load_keyring", s.loadKeyring)
+	s.runSilent("action.load_keyring", s.loadKeyring)
 }
 
 func fileExists(path string) bool {

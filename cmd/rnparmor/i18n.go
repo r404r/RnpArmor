@@ -1694,4 +1694,49 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangZH: "删除子密钥",
 		LangJA: "副鍵を削除",
 	},
+	"status.key_count_one": {
+		LangEN: "1 key",
+		LangZH: "1 把密钥",
+		LangJA: "1 件の鍵",
+	},
+	"status.key_count_many": {
+		LangEN: "%d keys",
+		LangZH: "%d 把密钥",
+		LangJA: "%d 件の鍵",
+	},
+	"tip.copy_lib_path": {
+		LangEN: "Click to copy the path",
+		LangZH: "点击复制路径",
+		LangJA: "クリックしてパスをコピー",
+	},
+	"toast.done": {
+		LangEN: "Done",
+		LangZH: "已完成",
+		LangJA: "完了",
+	},
+	"toast.path_copied": {
+		LangEN: "Library path copied",
+		LangZH: "已复制库路径",
+		LangJA: "ライブラリのパスをコピーしました",
+	},
+	"toast.fingerprint_copied": {
+		LangEN: "Fingerprint copied",
+		LangZH: "指纹已复制",
+		LangJA: "フィンガープリントをコピーしました",
+	},
+	"btn.ok": {
+		LangEN: "OK",
+		LangZH: "确定",
+		LangJA: "OK",
+	},
+	"alert.error": {
+		LangEN: "Something went wrong",
+		LangZH: "操作失败",
+		LangJA: "操作に失敗しました",
+	},
+	"alert.redacted": {
+		LangEN: "The details were hidden because they may contain key material.",
+		LangZH: "详情已隐藏，因为其中可能包含密钥材料。",
+		LangJA: "鍵の内容が含まれる可能性があるため、詳細は表示しません。",
+	},
 }

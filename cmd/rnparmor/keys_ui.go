@@ -168,10 +168,7 @@ func (s *uiState) viewKeyDetail(c *ui.Context, rows []rnp.KeySummary, idx int) {
 			ui.Text(c, s.tr("label.fingerprint")).FontSize(12).TextColor(t.TextMuted)
 			ui.Text(c, grouped)
 			if ui.Button(c, s.tr("btn.copy_fingerprint")).Clicked() {
-				text := grouped
-				go func() {
-					_ = mygo.Clipboard.Write(transfer.TextData(text))
-				}()
+				s.copyFingerprintText(grouped)
 			}
 			ui.Textf(c, "%s: %s", s.tr("label.key_id"), keyIDText(k.Fingerprint, k.KeyID, keyIDModeShort))
 			ui.Textf(c, "%s: %s", s.tr("col.algorithm"), k.Algorithm)
@@ -418,8 +415,10 @@ func (s *uiState) reportAsyncErr(err error) {
 		return
 	}
 	mygo.RunOnMain(func() {
-		s.lastErr = err.Error()
+		msg := s.safeNotice(err.Error())
+		s.lastErr = msg
 		s.statusDone = false
+		s.showAlert(s.tr("alert.error"), msg)
 		s.invalidateAll()
 	})
 }
