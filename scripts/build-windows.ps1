@@ -1,14 +1,16 @@
 # Build Windows x64 portable outputs in staged mode:
-#   -Stage fetch-deps : download/checksum/extract Botan/json-c/zlib/bzip2 sources
-#   -Stage botan      : build/install minimized static Botan into out/deps
-#   -Stage small-deps : build/install json-c/zlib/bzip2 + cache dependency licenses
-#   -Stage deps       : fetch-deps -> botan -> small-deps
-#   -Stage rnp        : build librnp (rnp.dll) into out/win-build/rnp-dll
-#   -Stage package    : build rnparmor.exe, run tests/smoke, package zip/report
-#   -Stage all        : deps -> rnp -> package (default)
+#   -Stage fetch-deps   : download/checksum/extract Botan/json-c/zlib/bzip2 sources
+#   -Stage botan        : build/install minimized static Botan into out/deps
+#   -Stage small-deps   : build/install json-c/zlib/bzip2 + cache dependency licenses
+#   -Stage deps         : fetch-deps -> botan -> small-deps
+#   -Stage rnp          : source-build librnp into out/lib (fallback)
+#   -Stage prebuilt-rnp : download the pinned rnp_windows_portable zip into out/lib
+#   -Stage package      : build rnparmor.exe, run tests/smoke, package zip/report
+#   -Stage all          : deps -> rnp -> package (source fallback)
+# CI calls prebuilt-rnp, then package. Source stages stay callable.
 param(
     [string]$Version = "dev",
-    [ValidateSet("all", "deps", "fetch-deps", "botan", "small-deps", "rnp", "package")]
+    [ValidateSet("all", "deps", "fetch-deps", "botan", "small-deps", "rnp", "prebuilt-rnp", "package")]
     [string]$Stage = "all"
 )
 
@@ -376,10 +378,8 @@ if (-not $vsRoot -and (Test-Path $vswhere)) {
 }
 $ninja = Find-Ninja $vsRoot
 $py = Resolve-Python
-if (-not $py) { throw "Python 3 is required to extract/build dependencies" }
-if (-not $ninja) { throw "ninja.exe was not found; it is required for Windows dependency builds" }
-Log "python: $py"
-Log "ninja: $ninja"
+if ($py) { Log "python: $py" } else { Log "python: not found; source stages will fail without it" }
+if ($ninja) { Log "ninja: $ninja" } else { Log "ninja: not found; source stages will fail without it" }
 
 $toolchain = Join-Path $root "scripts\windows\msvc-mt.cmake"
 $cmakeCommon = @(
@@ -418,7 +418,247 @@ $botanModulesFile = Join-Path $root "scripts\windows\botan3-modules.txt"
 $botanModulesHash = Get-Hash $botanModulesFile "SHA256"
 $botanStampPath = Join-Path $botanPrefix ".modules-sha256"
 
+function Ensure-SourceTools {
+    if (-not $py) { throw "Python 3 is required to extract/build dependencies" }
+    if (-not $ninja) { throw "ninja.exe was not found; it is required for Windows dependency builds" }
+}
+
+function Get-SystemDllAllow {
+    return @{
+        "kernel32.dll" = $true; "kernelbase.dll" = $true; "ntdll.dll" = $true
+        "user32.dll" = $true; "gdi32.dll" = $true; "gdiplus.dll" = $true
+        "advapi32.dll" = $true; "shell32.dll" = $true; "shlwapi.dll" = $true
+        "ole32.dll" = $true; "oleaut32.dll" = $true; "combase.dll" = $true
+        "comdlg32.dll" = $true; "rpcrt4.dll" = $true; "sechost.dll" = $true
+        "bcrypt.dll" = $true; "bcryptprimitives.dll" = $true; "crypt32.dll" = $true
+        "ncrypt.dll" = $true; "ws2_32.dll" = $true; "wsock32.dll" = $true
+        "iphlpapi.dll" = $true; "dnsapi.dll" = $true; "imm32.dll" = $true
+        "userenv.dll" = $true; "version.dll" = $true; "winmm.dll" = $true
+        "dwmapi.dll" = $true; "uxtheme.dll" = $true; "shcore.dll" = $true
+        "d3d11.dll" = $true; "dxgi.dll" = $true; "d3dcompiler_47.dll" = $true
+        "dwrite.dll" = $true; "d2d1.dll" = $true; "oleacc.dll" = $true
+        "usp10.dll" = $true; "normaliz.dll" = $true; "psapi.dll" = $true
+        "powrprof.dll" = $true; "setupapi.dll" = $true; "cfgmgr32.dll" = $true
+        "hid.dll" = $true; "winhttp.dll" = $true; "secur32.dll" = $true
+        "netapi32.dll" = $true; "mpr.dll" = $true; "wtsapi32.dll" = $true
+        "propsys.dll" = $true; "msimg32.dll" = $true; "comctl32.dll" = $true
+        "msvcrt.dll" = $true; "wintrust.dll" = $true; "imagehlp.dll" = $true
+        "dbghelp.dll" = $true; "nsi.dll" = $true; "mswsock.dll" = $true
+        "sspicli.dll" = $true; "profapi.dll" = $true; "cryptbase.dll" = $true
+        "ucrtbase.dll" = $true; "winspool.drv" = $true; "avrt.dll" = $true
+        "mmdevapi.dll" = $true; "wldp.dll" = $true
+    }
+}
+
+function Test-SystemDll([string]$Name) {
+    $key = $Name.ToLower()
+    if ((Get-SystemDllAllow).ContainsKey($key)) { return $true }
+    if ($key -like "api-ms-win-*" -or $key -like "ext-ms-*") { return $true }
+    return $false
+}
+
+function Get-DumpbinImports([string]$Path) {
+    if (-not (Get-Command dumpbin.exe -ErrorAction SilentlyContinue)) {
+        throw "dumpbin.exe is missing; refusing to guess DLL dependencies"
+    }
+    $text = & dumpbin.exe /nologo /imports $Path | Out-String
+    $names = New-Object System.Collections.Generic.List[string]
+    foreach ($line in ($text -split "`r?`n")) {
+        $t = $line.Trim()
+        if ($t -match '^(?i)[A-Za-z0-9_.-]+\.(dll|drv)$') {
+            [void]$names.Add($t.ToLower())
+        }
+    }
+    return @{ Text = $text; Names = $names }
+}
+
+function Clear-PrebuiltStamp {
+    $dir = Join-Path $root "out\prebuilt-rnp"
+    if (Test-Path -LiteralPath $dir) {
+        Remove-Item -Recurse -Force $dir
+    }
+}
+
+function Publish-LibDlls([string[]]$Sources) {
+    $libDir = Join-Path $root "out\lib"
+    New-Item -ItemType Directory -Force -Path $libDir | Out-Null
+    Get-ChildItem -LiteralPath $libDir -Filter "*.dll" -File -ErrorAction SilentlyContinue |
+        Remove-Item -Force
+    $sums = Join-Path $libDir "SHA256SUMS"
+    if (Test-Path -LiteralPath $sums) { Remove-Item -LiteralPath $sums -Force }
+    $copied = @()
+    foreach ($src in $Sources) {
+        $dest = Join-Path $libDir (Split-Path $src -Leaf)
+        Copy-Item -LiteralPath $src -Destination $dest -Force
+        $copied += $dest
+    }
+    $lines = @(foreach ($path in ($copied | Sort-Object { Split-Path $_ -Leaf })) {
+        "{0}  {1}" -f (Get-Hash $path "SHA256"), (Split-Path $path -Leaf)
+    })
+    if ($lines.Count -lt 1) { throw "no DLLs to publish into out/lib" }
+    Set-Content -LiteralPath $sums -Value ($lines -join "`n") -Encoding ascii
+    $listed = Get-Content -LiteralPath $sums -Raw
+    if ($listed -notmatch '(?im)^[0-9a-f]{64}  rnp\.dll\s*$') {
+        throw "out/lib/SHA256SUMS does not list rnp.dll"
+    }
+}
+
+function Copy-LicenseSet([string]$DestDir) {
+    New-Item -ItemType Directory -Force -Path $DestDir | Out-Null
+    $third = Join-Path $root "third_party\licenses"
+    if (-not (Test-Path -LiteralPath $third)) { throw "third_party/licenses is missing" }
+    foreach ($f in @(Get-ChildItem -LiteralPath $third -File)) {
+        Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $DestDir $f.Name) -Force
+    }
+    $pre = Join-Path $root "out\prebuilt-rnp\licenses"
+    if (Test-Path -LiteralPath $pre) {
+        foreach ($f in @(Get-ChildItem -LiteralPath $pre -File)) {
+            $hit = @(Get-ChildItem -LiteralPath $DestDir -File) |
+                Where-Object { $_.Name -ieq $f.Name } |
+                Select-Object -First 1
+            if ($hit -and ($hit.Name -cne $f.Name)) {
+                Remove-Item -LiteralPath $hit.FullName -Force
+            }
+            Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $DestDir $f.Name) -Force
+        }
+        return
+    }
+    Copy-Item (Resolve-LicensePath $depsLicenses "botan-license.txt" (Join-Path $botanSrc "license.txt")) (Join-Path $DestDir "botan-license.txt") -Force
+    Copy-Item (Resolve-LicensePath $depsLicenses "dirent-LICENSE" $direntLicenseSrc) (Join-Path $DestDir "dirent-LICENSE") -Force
+    Copy-Item (Resolve-LicensePath $depsLicenses "json-c-COPYING" (Join-Path $jsonSrc "COPYING")) (Join-Path $DestDir "json-c-COPYING") -Force
+    Copy-Item (Resolve-LicensePath $depsLicenses "zlib-LICENSE" (Join-Path $zlibSrc "LICENSE")) (Join-Path $DestDir "zlib-LICENSE") -Force
+    Copy-Item (Resolve-LicensePath $depsLicenses "bzip2-LICENSE" (Join-Path $bzSrc "LICENSE")) (Join-Path $DestDir "bzip2-LICENSE") -Force
+}
+
+function Build-PrebuiltRnp {
+    $pin = $pins.rnp_windows_portable
+    if (-not $pin) { throw "deps/pins.json missing rnp_windows_portable" }
+    foreach ($name in @("repo", "tag", "commit", "url", "sha256")) {
+        $val = [string]$pin.$name
+        if ([string]::IsNullOrWhiteSpace($val)) { throw "rnp_windows_portable.$name is empty" }
+    }
+    $sha = ([string]$pin.sha256).ToLower()
+    if ($sha -notmatch '^[0-9a-f]{64}$') { throw "rnp_windows_portable.sha256 is not 64 hex characters" }
+    if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) { throw "curl.exe is required to download the portable zip" }
+    if (-not (Get-Command tar.exe -ErrorAction SilentlyContinue)) { throw "tar.exe is required to extract the portable zip" }
+
+    $cacheDir = Join-Path $root "out\cache"
+    New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+    $zipPath = Join-Path $cacheDir "rnp-windows-x64-portable.zip"
+    if (Test-Path -LiteralPath $zipPath) {
+        $got = Get-Hash $zipPath "SHA256"
+        if ($got -ne $sha) {
+            Log "cached portable zip hash mismatch ($got); downloading again"
+            Remove-Item -LiteralPath $zipPath -Force
+        } else {
+            Log "reuse $zipPath"
+        }
+    }
+    if (-not (Test-Path -LiteralPath $zipPath)) {
+        Get-Pinned ([string]$pin.url) $zipPath $sha $null
+    }
+
+    $extract = Join-Path $work "rnp-windows-portable"
+    if (Test-Path -LiteralPath $extract) { Remove-Item -Recurse -Force $extract }
+    New-Item -ItemType Directory -Force -Path $extract | Out-Null
+    Run "tar.exe" @("-xf", $zipPath, "-C", $extract)
+    $top = Join-Path $extract "rnp-windows-x64-portable"
+    if (-not (Test-Path -LiteralPath $top -PathType Container)) {
+        throw "portable zip missing top directory rnp-windows-x64-portable"
+    }
+
+    $required = @(
+        "rnp.dll",
+        "botan-3.dll",
+        "bz2.dll",
+        "libz.dll",
+        "MSVCP140.dll",
+        "VCRUNTIME140.dll",
+        "VCRUNTIME140_1.dll"
+    )
+    foreach ($dllName in $required) {
+        if (-not (Test-Path -LiteralPath (Join-Path $top $dllName) -PathType Leaf)) {
+            throw "portable zip missing $dllName"
+        }
+    }
+    $licenseNames = @(
+        "RNP-LICENSE.md",
+        "RNP-LICENSE-OCB.md",
+        "sexpp-LICENSE.md",
+        "vcpkg-botan.txt",
+        "vcpkg-bzip2.txt",
+        "vcpkg-zlib.txt",
+        "vcpkg-dirent.txt",
+        "vcpkg-getopt-win32.txt",
+        "nlohmann-json-MIT.txt",
+        "msvc-runtime-license.txt"
+    )
+    $licSrc = Join-Path $top "licenses"
+    if (-not (Test-Path -LiteralPath $licSrc -PathType Container)) {
+        throw "portable zip missing licenses/"
+    }
+    foreach ($licName in $licenseNames) {
+        if (-not (Test-Path -LiteralPath (Join-Path $licSrc $licName) -PathType Leaf)) {
+            throw "portable zip licenses missing $licName"
+        }
+    }
+
+    $rnpDll = Join-Path $top "rnp.dll"
+    $imports = Get-DumpbinImports $rnpDll
+    $sources = @()
+    foreach ($dllName in $required) { $sources += (Join-Path $top $dllName) }
+    $wantGetopt = $false
+    foreach ($imp in $imports.Names) {
+        if ($imp -eq "getopt.dll") { $wantGetopt = $true }
+    }
+    if ($wantGetopt) {
+        $getopt = Join-Path $top "getopt.dll"
+        if (-not (Test-Path -LiteralPath $getopt -PathType Leaf)) {
+            throw "rnp.dll imports getopt.dll but the zip does not contain it"
+        }
+        $sources += $getopt
+        Log "rnp.dll imports getopt.dll; including it"
+    } else {
+        Log "rnp.dll does not import getopt.dll; leaving it out"
+    }
+
+    $staged = @{}
+    foreach ($src in $sources) {
+        $leaf = (Split-Path $src -Leaf).ToLower()
+        if ($leaf -eq "rnp.exe" -or $leaf -eq "rnpkeys.exe" -or $leaf -eq "readme.txt") {
+            throw "refusing to stage $leaf"
+        }
+        $staged[$leaf] = $true
+    }
+    foreach ($imp in $imports.Names) {
+        if (Test-SystemDll $imp) { continue }
+        if ($staged.ContainsKey($imp)) { continue }
+        throw "rnp.dll imports $imp, which is not a system DLL and is not staged from the portable zip"
+    }
+
+    Publish-LibDlls $sources
+
+    $stamp = Join-Path $root "out\prebuilt-rnp"
+    if (Test-Path -LiteralPath $stamp) { Remove-Item -Recurse -Force $stamp }
+    $stampLic = Join-Path $stamp "licenses"
+    New-Item -ItemType Directory -Force -Path $stampLic | Out-Null
+    foreach ($f in @(Get-ChildItem -LiteralPath $licSrc -File)) {
+        Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $stampLic $f.Name) -Force
+    }
+    $dllList = (($sources | ForEach-Object { Split-Path $_ -Leaf }) | Sort-Object) -join ", "
+@"
+mode=prebuilt
+repo=$($pin.repo)
+tag=$($pin.tag)
+commit=$($pin.commit)
+url=$($pin.url)
+sha256=$sha
+dlls=$dllList
+"@ | Set-Content -LiteralPath (Join-Path $stamp "source.txt") -Encoding ascii
+    Log "prebuilt rnp staged from $($pin.tag) ($sha)"
+}
 function Build-FetchDeps {
+    Ensure-SourceTools
     if (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -BotanModulesHash $botanModulesHash -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix) {
         Log "deps hot cache hit: skip fetch-deps"
         return
@@ -439,6 +679,7 @@ function Build-FetchDeps {
 }
 
 function Build-Botan {
+    Ensure-SourceTools
     if (Test-BotanReady -BotanPrefix $botanPrefix -ExpectedModulesHash $botanModulesHash) {
         Log "botan cache hit with matching modules hash: skip botan"
         return
@@ -479,6 +720,7 @@ function Build-Botan {
 }
 
 function Build-SmallDeps {
+    Ensure-SourceTools
     if (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -BotanModulesHash $botanModulesHash -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix) {
         Log "deps hot cache hit: skip small-deps"
         return
@@ -544,6 +786,7 @@ function Build-Deps {
 }
 
 function Build-Rnp {
+    Ensure-SourceTools
     if (-not (Test-DepsHot -DepsRoot $deps -BotanPrefix $botanPrefix -BotanModulesHash $botanModulesHash -JsonPrefix $jsonPrefix -ZlibPrefix $zlibPrefix -BzPrefix $bzPrefix)) {
         throw "dependency cache is incomplete; run -Stage deps first"
     }
@@ -635,24 +878,38 @@ add_compile_options($<$<C_COMPILER_ID:MSVC>:/DBOTAN_DLL=> $<$<CXX_COMPILER_ID:MS
     }
 
     Copy-Item -Force $dll.FullName $rnpDllPath
+    Clear-PrebuiltStamp
+    Publish-LibDlls @($rnpDllPath)
     Log "rnp.dll cached at $rnpDllPath"
     Write-Host "rnp.dll sha256 $(Get-Hash $rnpDllPath 'SHA256')"
 }
 
 function Build-Package {
-    if (-not (Test-Path -LiteralPath $rnpDllPath)) {
-        $rnpBuild = Join-Path $work "rnp"
-        if (Test-Path $rnpBuild) {
-            $dll = Get-ChildItem -Path $rnpBuild -Recurse -Filter "rnp.dll" |
-                Where-Object { $_.FullName -notmatch "examples|tests" } |
-                Select-Object -First 1
-            if ($dll) {
-                Copy-Item -Force $dll.FullName $rnpDllPath
+    $libDir = Join-Path $root "out\lib"
+    if (-not (Test-Path -LiteralPath $libDir)) {
+        New-Item -ItemType Directory -Force -Path $libDir | Out-Null
+    }
+    $dllItems = @(Get-ChildItem -LiteralPath $libDir -Filter "*.dll" -File -ErrorAction SilentlyContinue)
+    if ($dllItems.Count -eq 0) {
+        if (-not (Test-Path -LiteralPath $rnpDllPath)) {
+            $rnpBuild = Join-Path $work "rnp"
+            if (Test-Path $rnpBuild) {
+                $dll = Get-ChildItem -Path $rnpBuild -Recurse -Filter "rnp.dll" |
+                    Where-Object { $_.FullName -notmatch "examples|tests" } |
+                    Select-Object -First 1
+                if ($dll) {
+                    Copy-Item -Force $dll.FullName $rnpDllPath
+                }
             }
         }
+        if (Test-Path -LiteralPath $rnpDllPath) {
+            Publish-LibDlls @($rnpDllPath)
+            $dllItems = @(Get-ChildItem -LiteralPath $libDir -Filter "*.dll" -File)
+        }
     }
-    if (-not (Test-Path -LiteralPath $rnpDllPath)) {
-        throw "rnp.dll not found at $rnpDllPath; run -Stage rnp first"
+    $rnpLib = $dllItems | Where-Object { $_.Name -ieq "rnp.dll" } | Select-Object -First 1
+    if (-not $rnpLib) {
+        throw "rnp.dll not found in out/lib; run -Stage prebuilt-rnp or -Stage rnp first"
     }
 
     $goCmd = Get-Command go.exe -ErrorAction SilentlyContinue
@@ -679,17 +936,19 @@ function Build-Package {
     New-Item -ItemType Directory -Force -Path $dist, (Join-Path $dist "licenses") | Out-Null
 
     Copy-Item $exeBuilt (Join-Path $dist "rnparmor.exe")
-    Copy-Item $rnpDllPath (Join-Path $dist "rnp.dll")
-    Copy-Item (Join-Path $root "third_party\licenses\rnp-LICENSE.md") (Join-Path $dist "licenses\rnp-LICENSE.md")
-    Copy-Item (Join-Path $root "third_party\licenses\sexpp-LICENSE.md") (Join-Path $dist "licenses\sexpp-LICENSE.md")
-    Copy-Item (Resolve-LicensePath $depsLicenses "botan-license.txt" (Join-Path $botanSrc "license.txt")) (Join-Path $dist "licenses\botan-license.txt")
-    Copy-Item (Resolve-LicensePath $depsLicenses "dirent-LICENSE" $direntLicenseSrc) (Join-Path $dist "licenses\dirent-LICENSE")
-    Copy-Item (Resolve-LicensePath $depsLicenses "json-c-COPYING" (Join-Path $jsonSrc "COPYING")) (Join-Path $dist "licenses\json-c-COPYING")
-    Copy-Item (Resolve-LicensePath $depsLicenses "zlib-LICENSE" (Join-Path $zlibSrc "LICENSE")) (Join-Path $dist "licenses\zlib-LICENSE")
-    Copy-Item (Resolve-LicensePath $depsLicenses "bzip2-LICENSE" (Join-Path $bzSrc "LICENSE")) (Join-Path $dist "licenses\bzip2-LICENSE")
-    Copy-Item (Join-Path $root "third_party\licenses\mygo-MIT.txt") (Join-Path $dist "licenses\mygo-MIT.txt")
-    Copy-Item (Join-Path $root "third_party\licenses\purego-Apache-2.0.txt") (Join-Path $dist "licenses\purego-Apache-2.0.txt")
+    foreach ($dll in $dllItems) {
+        Copy-Item -LiteralPath $dll.FullName -Destination (Join-Path $dist $dll.Name) -Force
+    }
+    Copy-LicenseSet (Join-Path $dist "licenses")
     Copy-Item (Join-Path $root "LICENSE") (Join-Path $dist "LICENSE")
+    $shippedDlls = (($dllItems | ForEach-Object { $_.Name }) | Sort-Object) -join "`n"
+    $stampPath = Join-Path $root "out\prebuilt-rnp\source.txt"
+    $bundleMode = "source"
+    $bundleNote = "mode=source`nrepo=$($pins.rnp.source)`ntag=$($pins.rnp.tag)`ncommit=$($pins.rnp.commit)"
+    if (Test-Path -LiteralPath $stampPath) {
+        $bundleMode = "prebuilt"
+        $bundleNote = (Get-Content -LiteralPath $stampPath -Raw).TrimEnd()
+    }
 
     $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
     if (-not $dumpbin) { throw "dumpbin.exe is missing; refusing to guess DLL dependencies" }
@@ -712,41 +971,28 @@ function Build-Package {
 
     $depReport = New-Object System.Text.StringBuilder
     $unknown = @()
-    $allow = @{
-        "kernel32.dll" = $true; "kernelbase.dll" = $true; "ntdll.dll" = $true
-        "user32.dll" = $true; "gdi32.dll" = $true; "gdiplus.dll" = $true
-        "advapi32.dll" = $true; "shell32.dll" = $true; "shlwapi.dll" = $true
-        "ole32.dll" = $true; "oleaut32.dll" = $true; "combase.dll" = $true
-        "comdlg32.dll" = $true; "rpcrt4.dll" = $true; "sechost.dll" = $true
-        "bcrypt.dll" = $true; "bcryptprimitives.dll" = $true; "crypt32.dll" = $true
-        "ncrypt.dll" = $true; "ws2_32.dll" = $true; "wsock32.dll" = $true
-        "iphlpapi.dll" = $true; "dnsapi.dll" = $true; "imm32.dll" = $true
-        "userenv.dll" = $true; "version.dll" = $true; "winmm.dll" = $true
-        "dwmapi.dll" = $true; "uxtheme.dll" = $true; "shcore.dll" = $true
-        "d3d11.dll" = $true; "dxgi.dll" = $true; "d3dcompiler_47.dll" = $true
-        "dwrite.dll" = $true; "d2d1.dll" = $true; "oleacc.dll" = $true
-        "usp10.dll" = $true; "normaliz.dll" = $true; "psapi.dll" = $true
-        "powrprof.dll" = $true; "setupapi.dll" = $true; "cfgmgr32.dll" = $true
-        "hid.dll" = $true; "winhttp.dll" = $true; "secur32.dll" = $true
-        "netapi32.dll" = $true; "mpr.dll" = $true; "wtsapi32.dll" = $true
-        "propsys.dll" = $true; "msimg32.dll" = $true; "comctl32.dll" = $true
-        "msvcrt.dll" = $true; "wintrust.dll" = $true; "imagehlp.dll" = $true
-        "dbghelp.dll" = $true; "nsi.dll" = $true; "mswsock.dll" = $true
-        "sspicli.dll" = $true; "profapi.dll" = $true; "cryptbase.dll" = $true
-        "ucrtbase.dll" = $true; "winspool.drv" = $true; "avrt.dll" = $true
-        "mmdevapi.dll" = $true; "wldp.dll" = $true
+    $packaged = @{}
+    Get-ChildItem -LiteralPath $dist -Filter "*.dll" -File | ForEach-Object {
+        $packaged[$_.Name.ToLower()] = $_.FullName
     }
-
-    foreach ($bin in @((Join-Path $dist "rnparmor.exe"), (Join-Path $dist "rnp.dll"))) {
-        $text = & dumpbin.exe /nologo /dependents $bin | Out-String
+    $queue = New-Object System.Collections.Generic.Queue[string]
+    foreach ($path in @($packaged.Values)) { $queue.Enqueue([string]$path) }
+    $queue.Enqueue((Join-Path $dist "rnparmor.exe"))
+    $seen = @{}
+    while ($queue.Count -gt 0) {
+        $bin = [string]$queue.Dequeue()
+        $leaf = (Split-Path $bin -Leaf).ToLower()
+        if ($seen.ContainsKey($leaf)) { continue }
+        $seen[$leaf] = $true
+        $parsed = Get-DumpbinImports $bin
         [void]$depReport.AppendLine("==== $(Split-Path $bin -Leaf) ====")
-        [void]$depReport.AppendLine($text.TrimEnd())
-        foreach ($line in ($text -split "`r?`n")) {
-            $t = $line.Trim()
-            if ($t -notmatch '^(?i)[A-Za-z0-9_.-]+\.(dll|drv)$') { continue }
-            $name = $t.ToLower()
-            if ($allow.ContainsKey($name)) { continue }
-            if ($name -like "api-ms-win-*" -or $name -like "ext-ms-*") { continue }
+        [void]$depReport.AppendLine($parsed.Text.TrimEnd())
+        foreach ($name in @($parsed.Names)) {
+            if (Test-SystemDll $name) { continue }
+            if ($packaged.ContainsKey($name)) {
+                if (-not $seen.ContainsKey($name)) { $queue.Enqueue([string]$packaged[$name]) }
+                continue
+            }
             $unknown += "$name from $(Split-Path $bin -Leaf)"
         }
     }
@@ -756,7 +1002,7 @@ function Build-Package {
         throw ("unexpected DLL imports, not bundled and not in the Windows system allowlist:`n" + ($unknown -join "`n"))
     }
 
-@"
+$portableNote = @"
 RnpArmor Windows x64 portable directory.
 
 Start rnparmor.exe from this folder. It loads rnp.dll from the same directory
@@ -773,7 +1019,33 @@ zlib and bzip2 are linked into rnp.dll. Their licenses are still included.
 A GitHub-hosted Windows runner is not a manual Windows 10 or 11 desktop test.
 Chinese input and high-DPI were not tested. An in-flight librnp call cannot be
 cancelled; cancellation only discards output after the call returns.
-"@ | Set-Content -LiteralPath (Join-Path $dist "PORTABLE.txt") -Encoding utf8
+"@
+    if ($bundleMode -eq "prebuilt") {
+        $portableNote = @"
+RnpArmor Windows x64 portable directory.
+
+Start rnparmor.exe from this folder. It loads rnp.dll from the same directory
+with an absolute path and LoadLibraryEx flags that do not search the current
+directory or PATH. Runtime DLLs that rnp.dll imports sit in this same folder.
+
+Prebuilt librnp:
+$bundleNote
+
+Shipped DLLs:
+$shippedDlls
+
+This copy was built for testing. Do not put real keys or passphrases in it.
+The program does not read the default keyring unless a later build adds an
+explicit directory, and this build does not.
+
+RnpArmor is licensed under the Apache License, Version 2.0 (see LICENSE). Third-party license texts are in licenses\.
+
+A GitHub-hosted Windows runner is not a manual Windows 10 or 11 desktop test.
+Chinese input and high-DPI were not tested. An in-flight librnp call cannot be
+cancelled; cancellation only discards output after the call returns.
+"@
+    }
+    $portableNote | Set-Content -LiteralPath (Join-Path $dist "PORTABLE.txt") -Encoding utf8
 
     Push-Location $dist
     try {
@@ -939,6 +1211,15 @@ public class RnpArmorWin {
     if (-not (Test-Path -LiteralPath $iss)) {
         throw "Inno Setup script missing: $iss"
     }
+    $issText = Get-Content -LiteralPath $iss -Raw
+    foreach ($needle in @(
+        'Source: "{#SourceDir}\*.dll"; DestDir: "{app}"',
+        'Source: "{#SourceDir}\licenses\*"; DestDir: "{app}\licenses"'
+    )) {
+        if (-not $issText.Contains($needle)) {
+            throw "Inno Setup script does not install sibling DLLs and licenses into {app}: missing $needle"
+        }
+    }
     Run $iscc @(
         "/DAppVersion=$installerVer",
         "/DAppVersionInfo=$installerVerInfo",
@@ -968,7 +1249,11 @@ commit $head
 version $Version
 os $($os.ProductName) build $($os.CurrentBuild) display $($os.DisplayVersion)
 go $(& $go version)
-dll $rnpDllPath
+dll $($rnpLib.FullName)
+rnp_bundle:
+$bundleNote
+shipped_dlls:
+$shippedDlls
 RNPARMOR_LIBRNP during tests: packaged rnp.dll, PATH=$env:SystemRoot\System32
 go test: passed
 smoke: $smokeState
@@ -994,6 +1279,7 @@ try {
         "small-deps" { Invoke-TimedStage "small-deps" { Build-SmallDeps } }
         "deps" { Invoke-TimedStage "deps" { Build-Deps } }
         "rnp" { Invoke-TimedStage "rnp" { Build-Rnp } }
+        "prebuilt-rnp" { Invoke-TimedStage "prebuilt-rnp" { Build-PrebuiltRnp } }
         "package" { Invoke-TimedStage "package" { Build-Package } }
         "all" {
             Invoke-TimedStage "deps" { Build-Deps }

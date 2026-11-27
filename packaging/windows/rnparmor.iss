@@ -48,7 +48,13 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
 
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\rnparmor.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\SHA256SUMS"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\PORTABLE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\DEPENDENCIES.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\RnpArmor"; Filename: "{app}\rnparmor.exe"

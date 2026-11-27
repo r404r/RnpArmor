@@ -55,39 +55,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.4"
-      - uses: actions/setup-python@v5
+      # Source fallback (fetch-deps, botan, small-deps, rnp) stays in
+      # scripts/build-windows.ps1. This job uses the pinned portable zip.
+      - name: cache prebuilt rnp
+        uses: actions/cache@v4
         with:
-          python-version: "3.12"
-      - name: cache deps
-        id: cache-deps
-        uses: actions/cache/restore@v4
-        with:
-          path: out/deps
-          key: ${{ runner.os }}-deps-v4-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}
-          restore-keys: |
-            ${{ runner.os }}-deps-v4-
-      - name: fetch & extract deps
-        timeout-minutes: 8
+          path: out/cache/rnp-windows-x64-portable.zip
+          key: ${{ runner.os }}-rnp-windows-portable-v1-${{ hashFiles('deps/pins.json') }}
+      - name: stage prebuilt rnp
         shell: pwsh
-        run: ./scripts/build-windows.ps1 -Stage fetch-deps
-      - name: build botan
-        timeout-minutes: 30
-        shell: pwsh
-        run: ./scripts/build-windows.ps1 -Stage botan
-      - name: build json-c, zlib, bzip2
-        timeout-minutes: 10
-        shell: pwsh
-        run: ./scripts/build-windows.ps1 -Stage small-deps
-      - name: save deps cache
-        if: steps.cache-deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: out/deps
-          key: ${{ runner.os }}-deps-v4-${{ hashFiles('deps/pins.json', 'scripts/windows/**') }}
-      - name: build librnp (rnp.dll)
-        timeout-minutes: 15
-        shell: pwsh
-        run: ./scripts/build-windows.ps1 -Stage rnp
+        run: ./scripts/build-windows.ps1 -Stage prebuilt-rnp
       - name: build, test, smoke, and zip
         timeout-minutes: 20
         shell: pwsh

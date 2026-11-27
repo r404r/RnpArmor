@@ -10,8 +10,10 @@ RnpArmor 本身采用 Apache License, Version 2.0（详见仓库根目录 `LICEN
 | json-c | 0.19，tag `json-c-0.19-20260627`，tarball SHA-256 `37ad0249902e301bd9052bf712e511fcc6acff4ecaad4b5900aad9ce564e26de` | MIT。rnp v0.18.1 仍链接它；更晚的 rnp `main` 才把 JSON 放进库内，那不是这个 tag | `third_party/licenses/json-c-COPYING` |
 | MyGo | `v0.10.0`，提交 `ebde9399baf2734b3361856a53f4036859973d1d` | MIT，Copyright (c) 2026 MyGo contributors | `third_party/licenses/mygo-MIT.txt` |
 | purego | `v0.11.1`，提交 `15800b5b0a4f3febc099cf663d75ab558a6db8f2` | Apache-2.0 | `third_party/licenses/purego-Apache-2.0.txt` |
+| nlohmann/json | Windows 预编译包内的 vendored 头。Copyright 2013-2023 Niels Lohmann。不是单独的 DLL | MIT | 预编译包 `licenses/nlohmann-json-MIT.txt`，打进 Windows 分发包的 `licenses/`。仓库里不另存一份 |
+| MSVC VC143 CRT | `14.44.35112` x64 `Microsoft.VC143.CRT`：`MSVCP140.dll`、`VCRUNTIME140.dll`、`VCRUNTIME140_1.dll` | Visual Studio 再分发条款 | 预编译包 `licenses/msvc-runtime-license.txt` |
 
-Windows 包把下面两份静态链进 `rnp.dll`，许可文本放进 zip 的 `licenses/`：
+源码回退的 Windows 包把下面两份静态链进 `rnp.dll`，许可文本放进 zip 的 `licenses/`：
 
 - zlib 1.4，tarball SHA-256 `02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584`（GitHub release asset digest，下载后再算过一次）。许可是 zlib 许可。
 - bzip2 1.0.8，sourceware `sha512.sum` 中的 SHA-512 `083f5e675d73f3233c7930ebe20425a533feedeaaa9d8cc86831312a6581cefbe6ed0d08d2fa89be81082f2a5abdabca8b3c080bf97218a1bd59dc118a30b9f3`。同一文件的 SHA-256 是 `ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269`。许可是 Julian Seward 的四条款文本。
@@ -25,12 +27,24 @@ Windows 构建 `librnp` 还会使用下列头文件兼容依赖，其许可文�
   - `license_sha256`：`2f414f6c48e8c25ffb5d03cddd6043b3b613187f758d0a6964ca2ad7ed749e50`
   - Windows portable 包内路径：`licenses/dirent-LICENSE`
 
+默认的 Windows CI（`smoke.yml` 与 `release.yml` 的 `windows-portable`）不走上面的源码静态链接。它下载 `deps/pins.json` 的 `rnp_windows_portable`：
+
+- 仓库 `r404r/rnp`，tag `v0.18.1-win.2`，提交 `5ede42bfd49c4992550d3c642d5d1b2286c1da9a`
+- 压缩包 `https://github.com/r404r/rnp/releases/download/v0.18.1-win.2/rnp-windows-x64-portable.zip`
+- SHA-256 `5886bf2bcd17ca2f0ed1e959c9e08a21865fc9c4a8bbf42d4dc691a53414361b`（4,328,958 字节）
+
+这份 `rnp.dll` 动态链接同目录的 `botan-3.dll`、`bz2.dll`、`libz.dll`，以及上表里的三个 VC143 运行库 DLL。上游压缩包里还有 `getopt.dll`，但当前这份 `rnp.dll` 的导入表没有它，所以 RnpArmor 不带走它；只有 `rnp.dll` 真的导入 `getopt.dll` 时，`-Stage prebuilt-rnp` 才会把它放进 `out/lib/`。`rnp.exe`、`rnpkeys.exe` 和 `README.txt` 不进入 RnpArmor 的分发包。
+
+打包时把 `third_party/licenses/`（含 `mygo-MIT.txt`、`purego-Apache-2.0.txt`）和预编译包的 `licenses/` 一起放进最终 `licenses/`。nlohmann/json 与 MSVC 运行库只出现在这条预编译路径上：nlohmann/json 是编进 `rnp.dll` 的头文件，三个 VC 运行库 DLL 放在 `rnp.dll` 旁边，这样没有安装 VC++ 可再发行组件的系统也能加载。`msvc-runtime-license.txt` 记录 DLL 来自 `Microsoft.VC143.CRT` 14.44.35112，并指向 [Visual Studio 许可条款](https://visualstudio.microsoft.com/license-terms/) 与 [微软再分发说明](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)。
+
+源码回退（`-Stage fetch-deps`、`botan`、`small-deps`、`rnp`）仍静态链接 Botan、json-c、zlib、bzip2，并使用上面的静态构建许可。`-Stage rnp` 会清掉预编译标记，并换成 `out/lib/` 里那一份静态 `rnp.dll`。不要把两套 DLL 混放。
+
 Linux 测试仍动态链接发行版的 zlib 和 bzip2，不是上面这两个钉扎 tarball 编出来的同一份二进制：
 
 - zlib1g `1:1.3.dfsg-3.1ubuntu2.3`，zlib 许可。
 - libbz2 `1.0.8-5.1ubuntu0.1`，bzip2 自己的四条款许可。
 
-Windows portable 目录如果带上 `zlib1.dll`、`bz2.dll` 或其他非系统 DLL，必须使用那次构建实际产生的文件，并把对应许可文本放进同一个目录。不要拿这份 Linux 包里的 soname 当作 Windows DLL 文件名。
+Windows portable 目录如果带上 `libz.dll`、`bz2.dll` 或其他非系统 DLL，必须使用那次构建实际产生的文件，并把对应许可文本放进同一个目录。钉扎的预编译包使用的文件名是 `libz.dll` 和 `bz2.dll`，不是 Linux 的 soname，也不是 `zlib1.dll`。
 
 macOS `.dmg`（`RnpArmor.app`）中的 `RnpArmor.app/Contents/MacOS/librnp.dylib` 静态链入钉扎的 `Botan 3.10.0`、`json-c 0.19`（及 `sexpp`），并动态链接 macOS 系统自带的 `/usr/lib/libz` 与 `/usr/lib/libbz2`（以及系统 `Security` framework）。`RnpArmor.app/Contents/Resources/licenses/` 包含下列第三方许可全文：
 

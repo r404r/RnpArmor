@@ -29,6 +29,16 @@
     "sexpp_commit": "c641a2f36520bab783657a58650d9fda548b9dec",
     "sexpp_source": "https://github.com/rnpgp/sexpp"
   },
+  "rnp_windows_portable": {
+    "repo": "r404r/rnp",
+    "tag": "v0.18.1-win.2",
+    "commit": "5ede42bfd49c4992550d3c642d5d1b2286c1da9a",
+    "url": "https://github.com/r404r/rnp/releases/download/v0.18.1-win.2/rnp-windows-x64-portable.zip",
+    "sha256": "5886bf2bcd17ca2f0ed1e959c9e08a21865fc9c4a8bbf42d4dc691a53414361b",
+    "top_dir": "rnp-windows-x64-portable",
+    "bytes": 4328958,
+    "note": "Windows x64 便携包，发布在 fork r404r/rnp。Windows CI 默认下载这份 zip，不再从源码编译 rnp.dll。SHA-256 与发行文件一致。"
+  },
   "json_c": {
     "version": "0.19",
     "tag": "json-c-0.19-20260627",
