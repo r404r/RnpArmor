@@ -144,6 +144,9 @@ func (s *uiState) viewKeyDetail(c *ui.Context, rows []rnp.KeySummary, idx int) {
 			ui.Row(c).Gap(6).Children(func() {
 				if k.HasSecret {
 					ui.Badge(c, s.tr("badge.secret_public"))
+					if !k.IsProtected {
+						ui.Badge(c, s.tr("badge.unprotected"))
+					}
 				} else {
 					ui.Badge(c, s.tr("badge.public"))
 				}
@@ -724,9 +727,6 @@ func validateNewKey(name, email, pass, confirm string, expiry int, base rnp.KeyG
 	if name == "" && email == "" {
 		return rnp.KeyGenRequest{}, "err.name_or_email"
 	}
-	if pass == "" {
-		return rnp.KeyGenRequest{}, "err.pass_empty"
-	}
 	if pass != confirm {
 		return rnp.KeyGenRequest{}, "err.pass_mismatch"
 	}
@@ -740,6 +740,7 @@ func validateNewKey(name, email, pass, confirm string, expiry int, base rnp.KeyG
 	req := base
 	req.UserID = uid
 	req.ExpirationSec = expirySeconds(expiry)
+	req.Unprotected = pass == "" && confirm == ""
 	return req, ""
 }
 

@@ -99,6 +99,7 @@ type api struct {
 	keySetExpiry func(key uintptr, sec uint32) uint32
 	keySecret    func(key uintptr, have *bool) uint32
 	keyLocked    func(key uintptr, locked *bool) uint32
+	keyProtected func(key uintptr, protected *bool) uint32
 	keyRevoked   func(key uintptr, revoked *bool) uint32
 	keyUsage     func(key uintptr, usage string, allowed *bool) uint32
 	keyIsPrimary func(key uintptr, primary *bool) uint32
@@ -214,6 +215,7 @@ func bind(handle uintptr) error {
 		reg(&bound.keySetExpiry, "rnp_key_set_expiration")
 		reg(&bound.keySecret, "rnp_key_have_secret")
 		reg(&bound.keyLocked, "rnp_key_is_locked")
+		reg(&bound.keyProtected, "rnp_key_is_protected")
 		reg(&bound.keyRevoked, "rnp_key_is_revoked")
 		reg(&bound.keyUsage, "rnp_key_allows_usage")
 		reg(&bound.keyIsPrimary, "rnp_key_is_primary")

@@ -993,6 +993,210 @@ func TestSubkeyLifecycle(t *testing.T) {
 	}
 }
 
+func TestEmptyPassphraseKeyLifecycle(t *testing.T) {
+	lib := libPath(t)
+	ctx := context.Background()
+
+	pass := newPass(t)
+	prot := openSession(t, pass)
+	psum, err := prot.GenerateKeyWithSpec(ctx, KeyGenRequest{
+		UserID:       "Protected <prot@example.com>",
+		PrimaryAlg:   "EDDSA",
+		PrimaryCurve: "Ed25519",
+		SubkeyAlg:    "ECDH",
+		SubkeyCurve:  "Curve25519",
+		HashAlg:      "SHA256",
+		SymmCipher:   "AES256",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !psum.HasSecret || !psum.IsProtected {
+		t.Fatalf("protected primary %+v", psum)
+	}
+	if len(psum.Subkeys) == 0 {
+		t.Fatal("protected primary has no subkey")
+	}
+	for _, sk := range psum.Subkeys {
+		if !sk.HasSecret || !sk.IsProtected {
+			t.Fatalf("protected subkey %+v", sk)
+		}
+	}
+
+	empty, err := OpenOptionalPass(lib, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = empty.Close() })
+	sum, err := empty.GenerateKeyWithSpec(ctx, KeyGenRequest{
+		UserID:       "Open <open@example.com>",
+		PrimaryAlg:   "EDDSA",
+		PrimaryCurve: "Ed25519",
+		SubkeyAlg:    "ECDH",
+		SubkeyCurve:  "Curve25519",
+		HashAlg:      "SHA256",
+		SymmCipher:   "AES256",
+		Unprotected:  true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUnprotectedSecret(t, sum)
+	if !sum.IsPrimary || len(sum.Subkeys) == 0 {
+		t.Fatalf("unprotected primary %+v", sum)
+	}
+	for _, sk := range sum.Subkeys {
+		assertUnprotectedSecret(t, sk)
+		if sk.IsPrimary || !sk.IsSub {
+			t.Fatalf("subkey flags %+v", sk)
+		}
+	}
+
+	dir := t.TempDir()
+	if err := empty.SaveTo(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := OpenOptionalPass(lib, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reloaded.Close() })
+	if err := reloaded.LoadFrom(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
+	list, err := reloaded.ListKeys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, ok := primaryIn(list, sum.Fingerprint)
+	if !ok {
+		t.Fatal("reloaded primary missing")
+	}
+	assertUnprotectedSecret(t, loaded)
+	if len(loaded.Subkeys) == 0 {
+		t.Fatal("reloaded primary has no subkey")
+	}
+	for _, sk := range loaded.Subkeys {
+		assertUnprotectedSecret(t, sk)
+	}
+
+	const plain = "hello unprotected"
+	cipher, err := reloaded.EncryptText(ctx, plain, EncryptOptions{
+		RecipientFprints: []string{loaded.Fingerprint},
+		Cipher:           "AES256",
+		Compression:      "zlib",
+		Armor:            true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(cipher, "BEGIN PGP MESSAGE") {
+		t.Fatalf("cipher %q", cipher)
+	}
+	dec, err := reloaded.DecryptText(ctx, cipher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dec.Plaintext != plain {
+		t.Fatalf("decrypt %q", dec.Plaintext)
+	}
+	signed, err := reloaded.SignText(ctx, plain, loaded.Fingerprint, SignModeCleartext, "SHA256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	vr, err := reloaded.VerifyText(ctx, signed, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !vr.MathValid {
+		t.Fatalf("verify %+v", vr)
+	}
+	sec, err := reloaded.ExportKey(ctx, loaded.Fingerprint, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sec, "BEGIN PGP PRIVATE KEY BLOCK") {
+		t.Fatalf("secret export %q", sec)
+	}
+	rev, err := reloaded.ExportRevocation(ctx, loaded.Fingerprint, "no", "unprotected")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rev, "BEGIN PGP") {
+		t.Fatalf("revocation %q", rev)
+	}
+
+	added, err := reloaded.AddSubkey(ctx, loaded.Fingerprint, SubkeyGenRequest{
+		Usage: "sign", Algorithm: "EDDSA", HashAlg: "SHA256", Unprotected: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUnprotectedSecret(t, added)
+	if !added.IsSub || !added.CanSign || added.Fingerprint == "" {
+		t.Fatalf("added subkey %+v", added)
+	}
+	const year = uint32(365 * 24 * 60 * 60)
+	if err := reloaded.SetKeyExpiration(ctx, added.Fingerprint, year); err != nil {
+		t.Fatal(err)
+	}
+	afterExp, err := reloaded.ListKeys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, ok := primaryIn(afterExp, loaded.Fingerprint)
+	if !ok {
+		t.Fatal("primary missing after expiry")
+	}
+	expired, ok := subOf(parent, added.Fingerprint)
+	if !ok || expired.IsRevoked || expired.ExpiresUnix != expired.CreatedUnix+year {
+		t.Fatalf("expiry subkey %+v", expired)
+	}
+	assertUnprotectedSecret(t, expired)
+	if err := reloaded.RevokeKey(ctx, added.Fingerprint, "retired", "lifecycle"); err != nil {
+		t.Fatal(err)
+	}
+	again, err := reloaded.ListKeys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, ok = primaryIn(again, loaded.Fingerprint)
+	if !ok || parent.IsRevoked {
+		t.Fatalf("primary after revoke %+v", parent)
+	}
+	assertUnprotectedSecret(t, parent)
+	now, ok := subOf(parent, added.Fingerprint)
+	if !ok || !now.IsRevoked {
+		t.Fatalf("revoked subkey %+v", now)
+	}
+	assertUnprotectedSecret(t, now)
+	if err := reloaded.DeleteSubkey(ctx, parent.Fingerprint); err == nil {
+		t.Fatal("deleted the primary key")
+	}
+	if err := reloaded.DeleteSubkey(ctx, added.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	final, err := reloaded.ListKeys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	left, ok := primaryIn(final, loaded.Fingerprint)
+	if !ok || left.IsRevoked || subIn(left, added.Fingerprint) {
+		t.Fatalf("after delete %+v", left)
+	}
+	assertUnprotectedSecret(t, left)
+	for _, sk := range left.Subkeys {
+		assertUnprotectedSecret(t, sk)
+	}
+}
+
+func assertUnprotectedSecret(t *testing.T, k KeySummary) {
+	t.Helper()
+	if !k.HasSecret || k.IsProtected || k.IsLocked {
+		t.Fatalf("want unprotected unlocked secret, got %+v", k)
+	}
+}
+
 func primaryIn(list []KeySummary, fp string) (KeySummary, bool) {
 	for _, k := range list {
 		if k.IsPrimary && strings.EqualFold(k.Fingerprint, fp) {

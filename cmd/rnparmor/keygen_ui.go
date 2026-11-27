@@ -208,6 +208,17 @@ func presetIDForLabel(label string, labels, ids []string) string {
 	return ""
 }
 
+// takeNewKeyPassphrase copies a typed passphrase into the session.
+// Both fields empty leaves any passphrase already held for other keys.
+func (s *uiState) takeNewKeyPassphrase() {
+	if s.newKeyPass != "" {
+		s.adoptPassphrase(s.newKeyPass)
+		return
+	}
+	s.newKeyPass = ""
+	s.newKeyPass2 = ""
+}
+
 func (s *uiState) viewNewKey(c *ui.Context) {
 	t := c.Theme()
 	if strings.TrimSpace(s.newKeyPreset) == "" {
@@ -235,6 +246,10 @@ func (s *uiState) viewNewKey(c *ui.Context) {
 			curPreset = labels[i]
 		}
 	}
+	passDesc := "desc.pass_protected"
+	if s.newKeyPass == "" && s.newKeyPass2 == "" {
+		passDesc = "desc.pass_unprotected"
+	}
 
 	ui.Column(c).Fill().Children(func() {
 		ui.Scroll(c).Fill().Children(func() {
@@ -252,7 +267,7 @@ func (s *uiState) viewNewKey(c *ui.Context) {
 					})
 					ui.Field(c, s.tr("label.confirm_pass"), func() {
 						ui.TextInput(c, &s.newKeyPass2).Password().Placeholder(s.tr("placeholder.confirm_pass"))
-					})
+					}).Description(s.tr(passDesc))
 					ui.Field(c, s.tr("label.expiration"), func() {
 						ui.Select(c, &curExp, choices)
 					})
@@ -295,7 +310,7 @@ func (s *uiState) viewNewKey(c *ui.Context) {
 							return
 						}
 						s.newKeyErr = ""
-						s.adoptPassphrase(s.newKeyPass)
+						s.takeNewKeyPassphrase()
 						s.keyReq = req
 						s.run("action.generate_key", s.generateKey)
 					}

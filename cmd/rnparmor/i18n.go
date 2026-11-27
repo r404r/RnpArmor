@@ -1080,14 +1080,14 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangJA: "name@example.com",
 	},
 	"placeholder.new_pass": {
-		LangEN: "Passphrase",
-		LangZH: "口令",
-		LangJA: "パスフレーズ",
+		LangEN: "Leave blank for no passphrase",
+		LangZH: "留空即不设口令",
+		LangJA: "空欄ならパスフレーズなし",
 	},
 	"placeholder.confirm_pass": {
-		LangEN: "Confirm passphrase",
-		LangZH: "再次输入口令",
-		LangJA: "パスフレーズを再入力",
+		LangEN: "Confirm passphrase, or leave both blank",
+		LangZH: "再次输入口令，两项都留空则不设口令",
+		LangJA: "パスフレーズを再入力。両方空欄ならパスフレーズなし",
 	},
 	"exp.never": {
 		LangEN: "Never",
@@ -1573,6 +1573,26 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangEN: "Required to unlock the primary secret key and protect the new subkey",
 		LangZH: "必填，用于解锁主密钥私钥并保护新子密钥",
 		LangJA: "必須。主鍵の秘密鍵を解錠し、新しい副鍵を保護します",
+	},
+	"placeholder.pass_optional_unprotected": {
+		LangEN: "Optional. Leave blank to skip passphrase protection",
+		LangZH: "可选。留空则不使用口令保护",
+		LangJA: "任意。空欄ならパスフレーズによる保護を行いません",
+	},
+	"desc.pass_unprotected": {
+		LangEN: "Both fields are empty. An unprotected secret key will be generated and stored unencrypted.",
+		LangZH: "两项均为空。将生成无口令保护的私钥，并以未加密形式保存。",
+		LangJA: "両方とも空欄です。パスフレーズなしの秘密鍵を生成し、暗号化せずに保存します。",
+	},
+	"desc.pass_protected": {
+		LangEN: "The secret key will be encrypted with this passphrase.",
+		LangZH: "将使用该口令加密保护私钥。",
+		LangJA: "このパスフレーズで秘密鍵を暗号化して保護します。",
+	},
+	"badge.unprotected": {
+		LangEN: "No Passphrase",
+		LangZH: "无口令保护",
+		LangJA: "パスフレーズなし",
 	},
 	"exp.never_sub": {
 		LangEN: "Never expires",
