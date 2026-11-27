@@ -122,15 +122,15 @@ Linux 运行时主窗口实机截图（`1120×780`，融合式 `文件 / 工作�
   - `rnparmor.png`、`rnparmor-256.png`、`rnparmor.ico`、`RnpArmor.icns`：多平台透明应用图标资产。
   - `icons.go`、`icons_test.go`：内嵌 `rnparmor-256.png`（`icons.AppIconPNG`）供运行时窗口与 Dock 图标使用。
 - `cmd/rnparmor/`
-  - `main.go`：MyGo 主程序、分平台窗口外观策略（`mainWindowOptions`：Windows 隐藏标题栏并启用 Mica，Linux/macOS 保留默认标题栏）、运行时窗口/Dock 图标设置、自绘融合式或系统 4 组菜单栏（含 `文件 → 选择文件夹...`）、浅色 Fluent 画布/卡片与按钮适配（`prepareSurface` / `rnpCard` / `rnpButton`）、主窗口底部固定状态栏与 `AlertDialog` 宿主、启动静默自动加载钥匙圈（`runSilent`）、默认空口令与 `OpenOptionalPass`、5 工作区切换（在文本与文件工作区集成共享收件人/签名者下拉选择器与掩码对称口令，并在文件与 Packet 页嵌入原生文件选择按钮）、`580×520` 非模态 About 子窗口、`+ 新建密钥` 口令明文开关与提交校验状态（`newKeyShowPass`、`newKeyShowPass2`、`newKeyChecked`）、便携页掩码口令输入、异步会话操作、`--smoke-out` 及构建注入 `appVersion` 展示/输出。
+  - `main.go`：MyGo 主程序、分平台窗口外观策略（`mainWindowOptions`：Windows 隐藏标题栏并启用 Mica，Linux/macOS 保留默认标题栏）、运行时窗口/Dock 图标设置、自绘融合式或系统 4 组菜单栏（含 `文件 → 选择文件夹...`）、浅色 Fluent 画布/卡片与按钮适配（`prepareSurface` / `rnpCard` / `rnpButton`）、主窗口底部固定状态栏与 `AlertDialog` 宿主、启动静默自动加载钥匙圈（`runSilent`）、默认空口令与 `OpenOptionalPass`、5 工作区切换（在文本与文件工作区集成共享收件人/签名者下拉选择器、通过 `passphraseRow` 提供带独立显隐状态 `showTextEncPass`/`showFileEncPass` 的对称口令输入框，并在文件与 Packet 页嵌入原生文件选择按钮）、`580×520` 非模态 About 子窗口、`+ 新建密钥` 口令明文开关与提交校验状态（`newKeyShowPass`、`newKeyShowPass2`、`newKeyChecked`）、便携页 `passphraseRow` 解锁口令与 `showUnlockPass` 显隐开关、子密钥弹窗显隐状态（`subShowPass`、`expiryShowPass`、`revokeShowPass`，并在 `applyResult` 提交成功关闭时调用对应 `reset*PassUI`）、异步会话操作、`--smoke-out` 及构建注入 `appVersion` 展示/输出。
   - `style_ui.go`：浅色 Fluent 与局部磨砂玻璃视觉实现层（遵循系统高对比度/字号/强调色偏好的 `rnpLightTheme`、`#edf1f7` 画布与 Windows 11 原生 Mica 透底兼容、`rnpCard` 纯白圆角阴影卡片、带垂直渐变/高光/折边/1 DIP 按压下沉的 `rnpButton` / `rnpPrimaryButton` / `rnpDangerButton`、带 `passEyeIcon`/`passEyeOffIcon` SVG 图标与 `flipPassVisible` 的口令显隐切换按钮 `rnpPassEye`、表格紧凑展开按钮 `rnpDisclosure`、`useIntegratedMenuBar` / `viewIntegratedMenuBar` 可拖动融合菜单栏、`ui.PopoverMenus` + `mygo/plugins/glass` `menuGlass` / `glassMenuPanel` 下拉与右键磨砂浮层，以及 `toastGlass` 磨砂轻提示样式）。
   - `feedback_ui.go`：主窗口底部固定状态栏（`viewStatusBar`：半透明浅色底栏展示 `librnp` 版本、单行省略可悬停看全路径并点击复制的动态库路径、主密钥数量计数与 `就绪` / `忙碌 · <操作>` 状态）、位于状态栏正上方的 `toastGlass` 磨砂玻璃轻提示视口（`viewToastViewport`，`toastLifetime = 4s`、悬停暂停、手动 `×` 关闭）、方案 A 分级路由（`noteActionFeedback` / `feedbackRoute`：成功 Toast、验签结果与主窗口错误 `AlertDialog`、未关闭子窗口内联报错保留、启动静默加载）与 `safeNotice` 脱敏（口令替换 `••••` 并隐藏 `BEGIN PGP PRIVATE` / `BEGIN PGP SECRET` 区块）。
   - `keys_ui.go`：Phase 1 `rnpCard` 双栏钥匙圈管理工作区（`+ 新建密钥`、`导入文件...`、`粘贴导入...`、`刷新`、只读工作目录 + 原生`选择文件夹...`）、所有权分段过滤（`全部` / `我的密钥` / `公钥`）、`密钥 ID (16)` ↔ `指纹 (40)` 切换、实时搜索（覆盖主密钥与子密钥）、可排序可折叠主密钥树形表（`▾` / `▸` 采用 `rnpDisclosure`）、右侧详情检视栏（4 字符分组指纹复制并触发 `copyFingerprintText` 轻提示、徽章含主密钥`认证`与`无口令保护`、内嵌子密钥操作卡片与 `+ 添加子密钥...`、带确认提示/隐秘剪贴板/`0600` 落盘的公钥/私钥/吊销证书导出、原生二次确认 `删除密钥...`、可折叠 `原始密钥 JSON`）、脱敏异步错误弹窗（`reportAsyncErr`）、`validateNewKey`、`resetNewKeyPassUI`（在新建密钥弹窗打开、关闭及 `OnClosed` 回调时复位口令显示开关与校验报错），以及 `rnpCard` 样式的`粘贴导入密钥`独立子窗口。
-  - `subkey_ui.go`：左侧树形可折叠子密钥行构建与选中高亮联动（默认展开的 `  └ 子密钥` 缩进行，联动 16/40 位 ID 展示）以及基于 `rnpCard` 的完整子密钥生命周期弹窗（`添加子密钥` `560×680` 按用途约束算法与曲线/位宽联动、`修改子密钥有效期` `480×420`、`吊销子密钥` `500×460` + 二次确认、警告确认`删除...`、子密钥`无口令保护`徽章、子密钥指纹复制轻提示，以及对无口令主密钥免填会话口令的支持——主动填写口令时仍可单独加密新子密钥）。
+  - `subkey_ui.go`：左侧树形可折叠子密钥行构建与选中高亮联动（默认展开的 `  └ 子密钥` 缩进行，联动 16/40 位 ID 展示）以及基于 `rnpCard` 的完整子密钥生命周期弹窗（`添加子密钥` `560×680` 按用途约束算法与曲线/位宽联动、`修改子密钥有效期` `480×420`、`吊销子密钥` `500×460` + 二次确认、警告确认`删除...`、子密钥`无口令保护`徽章、子密钥指纹复制轻提示、3 个子密钥弹窗的 `passphraseRow` + `rnpPassEye` 显隐开关与打开/关闭/`OnClosed`/提交自动复位函数 `resetAddSubPassUI`/`resetExpiryPassUI`/`resetRevokePassUI`，以及对无口令主密钥免填会话口令的支持——主动填写口令时仍可单独加密新子密钥）。
   - `keygen_ui.go`：采用 `rnpCard` 布局的可滚动 `560×640` `+ 新建密钥` 弹窗，提供 5 档算法预设（`现代推荐（Ed25519 + Curve25519）` 默认推荐、`RSA 4096 + RSA 4096`、`RSA 3072 + RSA 3072`、`NIST P-256（合规）` 与自动展开高级区的`自定义`）、预设偏离自动切回自定义逻辑、随所选主密钥/加密子密钥算法联动的有效曲线或位数选择器、`passphraseRow` 附带 `rnpPassEye` 口令显隐开关（打开/关闭/提交后自动复位隐藏）、口令不一致实时字段高亮与自动清除（`passMismatchVisible` / `syncNewKeyPassError`）、`submitNewKey` 拦截提交并显示红色内联错误框（覆盖单侧留空）、实时加密/未加密保存提示（双口令均留空时生成 RFC 4880 无口令私钥并通过 `takeNewKeyPassphrase` 保留现有会话口令），以及三语动态说明与悬停 Tooltip 提示。
   - `studio_ui.go`：Phase 2 共享主密钥收件人下拉选择器（`+ 添加` 忽略大小写与空格去重、`清除` 及手动编辑列表）、含私钥主密钥签名者下拉框（`使用当前选中密钥（默认）` + 手动指纹覆盖）以及文件工作区与 Packet 页的 Fluent 按钮与原生 `浏览...` / `另存为...` 文件对话窗封装。
   - `i18n.go`：EN/ZH/JA 三语词典（中文统一使用「主密钥 / 子密钥」，英文 `Primary Key / Subkey`，日文 `主鍵 / 副鍵`）、状态栏/轻提示/弹窗词条、新建密钥预设、口令显隐悬停提示（`tip.show_passphrase` / `tip.hide_passphrase`）、无口令保护徽章/未加密提示与子密钥管理说明/悬停提示、语言解析与完整性校验。
-  - `main_test.go`：冒烟输出与文件写入、菜单模板结构、`TestFluentGlassChrome`（Windows 隐藏标题栏+Mica vs Linux/macOS 默认标题栏、融合菜单栏开关、浅色画布与高对比度/字号偏好、主/次/危险按钮外观及 `menuGlass` / `toastGlass` 校验）、状态联动、`TestKeyManagerFilterSearchSortAndForms`（钥匙圈筛选/搜索/排序/ID 切换、设口令与空口令校验、眼睛显隐切换与关闭复位、口令不一致实时字段提示/提交拦截不改动会话口令及修改一致后自动清除）、`TestKeygenPresetsSyncAndTips`、`TestSubkeyTableExpiryUsageAndCatalog`、`TestStudioKeyPickersAndFileDialogPaths`、`TestI18nComplete`、`TestStatusBarAndFeedback`、文本解密/验签输入解析、收件人留空回退规则单元测试，以及基于真实 `librnp` 的端到端 GUI 动作回归单测（`TestUIStateActionsEndToEnd` 与 `TestUIStateEmptyPassphraseLifecycle`）。
+  - `main_test.go`：冒烟输出与文件写入、菜单模板结构、`TestFluentGlassChrome`（Windows 隐藏标题栏+Mica vs Linux/macOS 默认标题栏、融合菜单栏开关、浅色画布与高对比度/字号偏好、主/次/危险按钮外观及 `menuGlass` / `toastGlass` 校验）、`TestPassphraseEyeEverywhere`（验证全部 6 处工作区/子密钥显隐开关默认隐藏、`flipPassVisible` 空指针保护、彼此独立切换、关闭/`reset*PassUI`/`applyResult` 成功路径复位与失败报错保留、三语眼睛提示校验及 `.Password(` 仅存于 `keygen_ui.go` `passphraseRow` 的回归守卫）、状态联动、`TestKeyManagerFilterSearchSortAndForms`（钥匙圈筛选/搜索/排序/ID 切换、设口令与空口令校验、眼睛显隐切换与关闭复位、口令不一致实时字段提示/提交拦截不改动会话口令及修改一致后自动清除）、`TestKeygenPresetsSyncAndTips`、`TestSubkeyTableExpiryUsageAndCatalog`、`TestStudioKeyPickersAndFileDialogPaths`、`TestI18nComplete`、`TestStatusBarAndFeedback`、文本解密/验签输入解析、收件人留空回退规则单元测试，以及基于真实 `librnp` 的端到端 GUI 动作回归单测（`TestUIStateActionsEndToEnd` 与 `TestUIStateEmptyPassphraseLifecycle`）。
 - `cmd/genwinres/`
   - `main.go`：零第三方依赖的纯 Go AMD64 COFF `.syso` 资源生成器，构建时将 `rnparmor.ico` 临时嵌入 `rnparmor.exe`。
 - `cmd/seeddemo/`
@@ -159,14 +159,14 @@ Linux 运行时主窗口实机截图（`1120×780`，融合式 `文件 / 工作�
 
 - 主从双栏密钥管理视图，顶部工具栏集成 `+ 新建密钥`、`导入文件...`、`粘贴导入...`、`刷新` 与只读工作目录 + 原生`选择文件夹...` 选择器。
 - 支持 `全部` / `我的密钥` / `公钥` 分段过滤、`密钥 ID (16)` ↔ `指纹 (40)` 切换、按 UID / Key ID / 指纹 / 算法实时搜索（同时匹配主密钥与子密钥），以及可排序的树形可折叠主密钥列表（带 `▾` / `▸` 折叠按钮，默认展开显示缩进的 `  └ 子密钥` 行与用途/ID/算法/状态，点击子密钥行同步选中主密钥详情并高亮对应子密钥卡片）。
-- 右侧详情栏展示 4 字符分组完整指纹与一键复制、所有权/状态/`无口令保护`/能力徽章（含主密钥`认证`徽章）、`子密钥`卡片列表与含私钥主密钥下的完整子密钥生命周期操作（`+ 添加子密钥...` `560×680` 按用途校验允许算法、`续期 / 改有效期...` `480×420`、`吊销...` `500×460` + 二次确认，以及带保护提示且拒绝误删主密钥的`删除...`）、`复制公钥` / `导出公钥 (.asc)...`、私钥专属的确认弹窗`导出私钥 (.asc)...` / 隐秘剪贴板`复制私钥` / `吊销证书...`（`.rev.asc`）、原生二次确认`删除密钥...` 及可折叠`原始密钥 JSON`。对`无口令保护`主密钥执行添加子密钥、续期、吊销、删除及后续加解密、签名验签时均允许留空口令（若在`+ 添加子密钥...`中主动填写口令，新建子密钥仍会单独加密保护）。
+- 右侧详情栏展示 4 字符分组完整指纹与一键复制、所有权/状态/`无口令保护`/能力徽章（含主密钥`认证`徽章）、`子密钥`卡片列表与含私钥主密钥下的完整子密钥生命周期操作（`+ 添加子密钥...` `560×680` 按用途校验允许算法、`续期 / 改有效期...` `480×420`、`吊销...` `500×460` + 二次确认，以及带保护提示且拒绝误删主密钥的`删除...`；三个子密钥弹窗口令框均统一采用 `passphraseRow` / `rnpPassEye` 显隐开关并在打开、关闭及提交后自动复位隐藏）、`复制公钥` / `导出公钥 (.asc)...`、私钥专属的确认弹窗`导出私钥 (.asc)...` / 隐秘剪贴板`复制私钥` / `吊销证书...`（`.rev.asc`）、原生二次确认`删除密钥...` 及可折叠`原始密钥 JSON`。对`无口令保护`主密钥执行添加子密钥、续期、吊销、删除及后续加解密、签名验签时均允许留空口令（若在`+ 添加子密钥...`中主动填写口令，新建子密钥仍会单独加密保护）。
 - 独立 `+ 新建密钥` 弹窗（`560×640`）支持名称/邮箱、可选掩码`口令` + `确认口令`（两侧均配有 `rnpPassEye` 眼睛图标显隐开关及三语 `显示口令`/`隐藏口令` 悬停提示，打开、关闭及提交后自动复位隐藏）、口令不一致时即时触发红色字段高亮并在点击提交后弹出红色内联错误框通过 `submitNewKey` 拦截生成（含单侧留空，修正一致后由 `syncNewKeyPassError` 自动清除）、有效期（`永不` / `1 年` / `2 年` / `5 年` 底层改由 `rnp_op_generate_*` 操作接口写入，确保 `永不` 即 `0` 秒真正永不过期而不再受 `librnp 0.18.1` 默认 2 年回落影响），提供 5 档算法预设（`现代推荐（Ed25519 + Curve25519）` 默认推荐、`RSA 4096 + RSA 4096`、`RSA 3072 + RSA 3072`、`NIST P-256（合规）` 与`自定义`）以及可折叠高级算法选项（按主密钥/加密子密钥算法联动有效曲线与位数，并提供三语动态说明与悬停提示）。两项口令均留空时，下方明确提示将以未加密形式保存并生成 OpenPGP RFC 4880 无口令保护私钥；启动默认空口令状态下即可浏览与导入仅公钥钥匙圈（仅 `pubring.gpg`）。
 - 只读操作不改写磁盘钥匙圈，空会话显式保存受保护报错，删除最后一把密钥会清理空文件。
 
 ### 2）文本工作区
 
 - 已加载主密钥收件人下拉选择 + `+ 添加` / `清除`（忽略大小写与空格去重），同时支持手动粘贴与编辑逗号分隔指纹；收件人与密码均留空时回退到当前已选择密钥。
-- 对称加密**密码**采用掩码输入（`Password` 模式）。
+- 对称加密**密码**通过 `passphraseRow` 输入，默认掩码遮蔽并配有独立 `rnpPassEye` 显隐开关（含三语悬停提示与无障碍标签）。
 - 含私钥主密钥签名者下拉框（首项`使用当前选中密钥（默认）`）配合手动指纹覆盖框。
 - 文本加密（收件人模式 / 密码模式 / 可选加密同时签名）。
 - 文本解密（支持直接向明文框粘贴外部 PGP 密文或解密暂存输出）。
@@ -179,7 +179,7 @@ Linux 运行时主窗口实机截图（`1120×780`，融合式 `文件 / 工作�
 ### 3）文件工作区
 
 - 原生文件选择器：`源文件`（`浏览...`，默认优先所有文件）、`目标文件`（`另存为...`，默认优先所有文件）与`签名文件路径`（同时提供`浏览...` 与 `另存为...`，默认优先 OpenPGP 扩展名）。
-- 直接在文件工作区内嵌与文本工作区共享的`收件人`、掩码`密码`、`签名者指纹`与`加密并签名`控件，无需切换标签页即可独立配置。
+- 直接在文件工作区内嵌与文本工作区共享的`收件人`、带独立 `rnpPassEye` 显隐开关的掩码`密码`、`签名者指纹`与`加密并签名`控件，无需切换标签页即可独立配置。
 - 文件加密/解密。
 - 分离与内联签名验签。
 - 延续防覆盖发布语义与绝对路径限制。
@@ -192,7 +192,7 @@ Linux 运行时主窗口实机截图（`1120×780`，融合式 `文件 / 工作�
 ### 5）便携钥匙圈存储
 
 - 只读**工作目录**展示 + 原生**选择文件夹...** 选择器，支持显式`打开并加载`、`保存`与`刷新密钥`（兼容仅 `pubring.gpg` 与完整 `pubring.gpg` + `secring.gpg`）。
-- 掩码**口令**输入框（启动默认为空，仅在会话私钥解锁等操作期间以内存形式使用）。
+- 通过 `passphraseRow` 提供的掩码**口令**输入框与独立 `rnpPassEye` 显隐开关（启动默认为空，仅在会话私钥解锁等操作期间以内存形式使用）。
 
 ### 6）分平台 4 组菜单栏、磨砂浮层与独立 About 子窗口
 
@@ -379,14 +379,14 @@ Windows 依赖构建钉扎并打包以下组件：
 
 - 动态库加载路径受控并做完整性校验。
 - 不读写默认钥匙圈，必须显式目录。
-- 口令回调重入被设计性阻断；启动默认空口令（不再预填明文默认口令），界面口令框均作掩码遮蔽，私钥复制采用隐秘剪贴板标记；所有通知与报错均经过 `safeNotice` 自动脱敏，将内存口令替换为 `••••` 并隐去私钥区块明细（`详情已隐藏，因为其中可能包含密钥材料。`）。若刻意在 `+ 新建密钥` 中双项留空口令以生成`无口令保护`私钥，磁盘私钥将按 OpenPGP RFC 4880 未加密保存（虽保留 Unix `0600` 文件权限，但文件泄露即可直接使用），建议仅用于本地隔离、自动化测试或明确可接受磁盘明文风险的场景，日常主力密钥仍建议设置高强度口令。
+- 口令回调重入被设计性阻断；启动默认空口令（不再预填明文默认口令），全应用全部 8 处密码输入框（`+ 新建密钥` 口令与确认口令、文本工作区对称密码、文件工作区对称密码、便携钥匙圈解锁口令以及添加子密钥/修改子密钥有效期/吊销子密钥弹窗）均默认做掩码遮蔽并配有 `rnpPassEye` 显隐开关（弹窗打开、关闭及提交后自动复位隐藏），私钥复制采用隐秘剪贴板标记；所有通知与报错均经过 `safeNotice` 自动脱敏，将内存口令替换为 `••••` 并隐去私钥区块明细（`详情已隐藏，因为其中可能包含密钥材料。`）。若刻意在 `+ 新建密钥` 中双项留空口令以生成`无口令保护`私钥，磁盘私钥将按 OpenPGP RFC 4880 未加密保存（虽保留 Unix `0600` 文件权限，但文件泄露即可直接使用），建议仅用于本地隔离、自动化测试或明确可接受磁盘明文风险的场景，日常主力密钥仍建议设置高强度口令。
 - 内存路径有输入/输出体积上限。
 - 当前阶段仍建议避免在测试环境使用真实生产密钥与口令。
 
 ## 仓库状态说明
 
-- `v0.0.1`–`v0.0.7` 多平台版本均已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）：`v0.0.2` 合入 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、三端应用图标与双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)），`v0.0.3` 修复了 GUI 操作重入死锁与钥匙圈持久化边界问题，`v0.0.4` 合并发布 Phase 1（主从双栏 Keys 管理页、16/40 位 ID 切换、掩码双口令新建密钥弹窗、空口令公钥只读打开与原生文件夹选择器）、Phase 2（`cmd/rnparmor/studio_ui.go` 共享收件人/签名者下拉、掩码对称口令与文件/Packet 原生文件对话窗）及 Release 发布重试与取消草稿加固，`v0.0.5` 合入 PR #14（`+ 新建密钥` 5 档算法预设、动态参数联动、统一`主密钥 / 子密钥`术语、三语动态说明与悬停提示及 `TestKeygenPresetsSyncAndTips`）和 PR #15（`cmd/rnparmor/subkey_ui.go`、左侧树形可折叠子密钥列表、完整子密钥生命周期接口 `AddSubkey`/`SetKeyExpiration`/`RevokeKey`/`DeleteSubkey`、`TestSubkeyLifecycle`、`TestSubkeyTableExpiryUsageAndCatalog` 及扩展 `TestUIStateActionsEndToEnd`），`v0.0.6` 合入 PR #16（双空口令 RFC 4880 无口令保护私钥生成、`无口令保护`徽章、无口令主密钥下子密钥与加解密免口令支持、`TestEmptyPassphraseKeyLifecycle` 及 `TestUIStateEmptyPassphraseLifecycle`），`v0.0.7` 发布 PR #17（`cmd/rnparmor/feedback_ui.go`、底部固定状态栏、点击库路径复制轻提示、方案 A 分级通知反馈、`TestI18nComplete`、`TestStatusBarAndFeedback`）与 PR #18（`cmd/rnparmor/style_ui.go` 浅色 Fluent 主题、#edf1f7 / Windows 11 Mica 与纯白 `rnpCard` 双层景深、渐变高光 1 DIP 按压立体按钮、Windows/Linux 融合式菜单栏与 macOS 系统菜单栏、`mygo/plugins/glass` 磨砂下拉/右键/Toast 浮层及 `TestFluentGlassChrome`）。
-- 已合入 / 面向 `v0.0.8` 的变更：PR #19 新增仅用于截图 CI 的演示钥匙圈初始化工具 `cmd/seeddemo`，刷新了 `docs/screenshots/` 中全部 11 张 Linux 运行时演示截图并图文同步到双语 README 与用户指南；PR #20（`fix/keygen-passphrase-and-expiry`）新增 `rnpPassEye` 口令显隐开关及打开/关闭/提交自动复位（`resetNewKeyPassUI`）、口令不一致实时红色字段提示与提交拦截（`passMismatchVisible` / `syncNewKeyPassError` / `submitNewKey`）、`GenerateKeyWithSpec` 从 `rnp_generate_key_json` 迁移至 `librnp` `rnp_op_generate_*` 操作接口以在 `librnp 0.18.1` 上真正落实 `永不`（`0`）与 `1`/`2`/`5` 年有效期，以及 `TestGenerateKeyExpiration` 和扩展后的 `TestKeyManagerFilterSearchSortAndForms`。
+- `v0.0.1`–`v0.0.8` 多平台版本均已发布（覆盖 macOS `arm64`、Linux `amd64` 与 Windows `amd64`）：`v0.0.2` 合入 Apache-2.0 许可证（[`LICENSE`](LICENSE)）、Linux 实机截图、三端应用图标与双语用户指南（[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)），`v0.0.3` 修复了 GUI 操作重入死锁与钥匙圈持久化边界问题，`v0.0.4` 合并发布 Phase 1（主从双栏 Keys 管理页、16/40 位 ID 切换、掩码双口令新建密钥弹窗、空口令公钥只读打开与原生文件夹选择器）、Phase 2（`cmd/rnparmor/studio_ui.go` 共享收件人/签名者下拉、掩码对称口令与文件/Packet 原生文件对话窗）及 Release 发布重试与取消草稿加固，`v0.0.5` 合入 PR #14（`+ 新建密钥` 5 档算法预设、动态参数联动、统一`主密钥 / 子密钥`术语、三语动态说明与悬停提示及 `TestKeygenPresetsSyncAndTips`）和 PR #15（`cmd/rnparmor/subkey_ui.go`、左侧树形可折叠子密钥列表、完整子密钥生命周期接口 `AddSubkey`/`SetKeyExpiration`/`RevokeKey`/`DeleteSubkey`、`TestSubkeyLifecycle`、`TestSubkeyTableExpiryUsageAndCatalog` 及扩展 `TestUIStateActionsEndToEnd`），`v0.0.6` 合入 PR #16（双空口令 RFC 4880 无口令保护私钥生成、`无口令保护`徽章、无口令主密钥下子密钥与加解密免口令支持、`TestEmptyPassphraseKeyLifecycle` 及 `TestUIStateEmptyPassphraseLifecycle`），`v0.0.7` 发布 PR #17（`cmd/rnparmor/feedback_ui.go`、底部固定状态栏、点击库路径复制轻提示、方案 A 分级通知反馈、`TestI18nComplete`、`TestStatusBarAndFeedback`）与 PR #18（`cmd/rnparmor/style_ui.go` 浅色 Fluent 主题、#edf1f7 / Windows 11 Mica 与纯白 `rnpCard` 双层景深、渐变高光 1 DIP 按压立体按钮、Windows/Linux 融合式菜单栏与 macOS 系统菜单栏、`mygo/plugins/glass` 磨砂下拉/右键/Toast 浮层及 `TestFluentGlassChrome`），`v0.0.8` 发布 PR #19（`cmd/seeddemo` 与 `docs/screenshots/` 11 张 Linux 演示截图刷新并图文同步至双语文档）与 PR #20（`+ 新建密钥` `rnpPassEye` 显隐开关、口令不一致实时高亮与强阻断、`GenerateKeyWithSpec` 改用 `rnp_op_generate_*` 修复永不过期与年限生效、`TestGenerateKeyExpiration` 及扩展 `TestKeyManagerFilterSearchSortAndForms`）。
+- 待随后续版本推出的分支 `feat/passphrase-eye-everywhere` 变更（`v0.0.9` 尚未发布）：将 `passphraseRow` / `rnpPassEye`（含三语悬停提示与无障碍标签）推广至其余全部 6 处密码输入框——文本工作区对称密码（`showTextEncPass`）、文件工作区对称密码（`showFileEncPass`）、便携钥匙圈解锁口令（`showUnlockPass`）以及添加子密钥（`subShowPass`）、修改子密钥有效期（`expiryShowPass`）、吊销子密钥（`revokeShowPass`）弹窗并在子窗口打开/关闭/提交后自动复位隐藏，完成全应用全部 8 处密码输入框覆盖，并配套 `TestPassphraseEyeEverywhere` 回归守卫。
 - 桌面端人工交互体验（Windows 10/11 中文输入法、高 DPI 与安装程序流程，以及 macOS Apple Silicon 首次启动未公证 Gatekeeper 提示）仍依赖真实桌面环境，需在专门手工测试中确认。
 
 ## 许可证
