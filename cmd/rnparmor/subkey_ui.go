@@ -304,27 +304,51 @@ func (s *uiState) openAddSubkeyWindow() {
 	if s.subCipher == "" {
 		s.subCipher = "AES256"
 	}
-	s.subErr = ""
+	s.resetAddSubPassUI()
+	already := s.addSubWin != nil && !s.addSubWin.IsDestroyed()
 	s.openChild(s.tr("title.add_subkey"), 560, 680, s.viewAddSubkey, &s.addSubWin)
+	if !already && s.addSubWin != nil && !s.addSubWin.IsDestroyed() {
+		s.addSubWin.OnClosed(func() {
+			s.resetAddSubPassUI()
+		})
+	}
 }
 
 func (s *uiState) closeAddSubWindow() {
+	s.resetAddSubPassUI()
 	if s.addSubWin != nil && !s.addSubWin.IsDestroyed() {
 		s.addSubWin.Close()
 	}
 }
 
+func (s *uiState) resetAddSubPassUI() {
+	s.subShowPass = false
+	s.subErr = ""
+}
+
 func (s *uiState) openExpiryWindow(fp string, created uint32) {
 	s.expiryTarget = fp
 	s.expiryCreated = created
-	s.expiryErr = ""
+	s.resetExpiryPassUI()
+	already := s.expiryWin != nil && !s.expiryWin.IsDestroyed()
 	s.openChild(s.tr("title.subkey_expiry"), 480, 420, s.viewSubkeyExpiry, &s.expiryWin)
+	if !already && s.expiryWin != nil && !s.expiryWin.IsDestroyed() {
+		s.expiryWin.OnClosed(func() {
+			s.resetExpiryPassUI()
+		})
+	}
 }
 
 func (s *uiState) closeExpiryWindow() {
+	s.resetExpiryPassUI()
 	if s.expiryWin != nil && !s.expiryWin.IsDestroyed() {
 		s.expiryWin.Close()
 	}
+}
+
+func (s *uiState) resetExpiryPassUI() {
+	s.expiryShowPass = false
+	s.expiryErr = ""
 }
 
 func (s *uiState) openRevokeWindow(fp string) {
@@ -332,14 +356,26 @@ func (s *uiState) openRevokeWindow(fp string) {
 	if s.revokeCode == "" {
 		s.revokeCode = "retired"
 	}
-	s.revokeErr = ""
+	s.resetRevokePassUI()
+	already := s.revokeWin != nil && !s.revokeWin.IsDestroyed()
 	s.openChild(s.tr("title.subkey_revoke"), 500, 460, s.viewRevokeSubkey, &s.revokeWin)
+	if !already && s.revokeWin != nil && !s.revokeWin.IsDestroyed() {
+		s.revokeWin.OnClosed(func() {
+			s.resetRevokePassUI()
+		})
+	}
 }
 
 func (s *uiState) closeRevokeWindow() {
+	s.resetRevokePassUI()
 	if s.revokeWin != nil && !s.revokeWin.IsDestroyed() {
 		s.revokeWin.Close()
 	}
+}
+
+func (s *uiState) resetRevokePassUI() {
+	s.revokeShowPass = false
+	s.revokeErr = ""
 }
 
 func (s *uiState) viewAddSubkey(c *ui.Context) {
@@ -383,7 +419,7 @@ func (s *uiState) viewAddSubkey(c *ui.Context) {
 							ui.Select(c, &curExp, choices).Tooltip(s.tr("tip.addsub.expiry"))
 						}).Description(s.tr("tip.addsub.expiry"))
 						ui.Field(c, s.tr("label.session_pass"), func() {
-							ui.TextInput(c, &s.subPass).Password().Placeholder(passPh)
+							s.passphraseRow(c, &s.subPass, &s.subShowPass, passPh)
 						})
 					})
 					for i, label := range choices {
@@ -408,6 +444,7 @@ func (s *uiState) viewAddSubkey(c *ui.Context) {
 								s.adoptPassphrase(s.subPass)
 							}
 							s.subErr = ""
+							s.subShowPass = false
 							s.subReq = req
 							s.run("action.add_subkey", s.addSubkey)
 						}
@@ -486,7 +523,7 @@ func (s *uiState) viewSubkeyExpiry(c *ui.Context) {
 				}
 			}
 			ui.Field(c, s.tr("label.session_pass"), func() {
-				ui.TextInput(c, &s.expiryPass).Password().Placeholder(passPh)
+				s.passphraseRow(c, &s.expiryPass, &s.expiryShowPass, passPh)
 			})
 			if s.expiryErr != "" {
 				ui.Text(c, s.expiryErr).TextColor(t.Danger)
@@ -514,6 +551,7 @@ func (s *uiState) viewSubkeyExpiry(c *ui.Context) {
 						years = 5
 					}
 					s.expiryErr = ""
+					s.expiryShowPass = false
 					s.targetFP = s.expiryTarget
 					s.expirySeconds = expirationFromNow(s.expiryCreated, time.Now().UTC(), years)
 					s.run("action.set_key_expiry", s.setKeyExpiry)
@@ -570,7 +608,7 @@ func (s *uiState) viewRevokeSubkey(c *ui.Context) {
 				ui.TextInput(c, &s.revokeReason).Placeholder(s.tr("label.revoke_reason"))
 			})
 			ui.Field(c, s.tr("label.session_pass"), func() {
-				ui.TextInput(c, &s.revokePass).Password().Placeholder(passPh)
+				s.passphraseRow(c, &s.revokePass, &s.revokeShowPass, passPh)
 			})
 			if s.revokeErr != "" {
 				ui.Text(c, s.revokeErr).TextColor(t.Danger)
@@ -634,6 +672,7 @@ func (s *uiState) confirmRevokeSubkey() {
 			if typed != "" {
 				s.adoptPassphrase(typed)
 			}
+			s.revokeShowPass = false
 			s.revokeCode = code
 			s.revokeReason = reason
 			s.targetFP = target

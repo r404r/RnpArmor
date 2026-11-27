@@ -2022,3 +2022,149 @@ func TestFluentGlassChrome(t *testing.T) {
 }
 
 func colorSum(c ui.Color) int { return int(c.R) + int(c.G) + int(c.B) }
+
+func TestPassphraseEyeEverywhere(t *testing.T) {
+	s := &uiState{langIdx: LangIndex(LangEN)}
+
+	// All passphrase fields start masked by default.
+	if s.showTextEncPass || s.showFileEncPass || s.showUnlockPass ||
+		s.subShowPass || s.expiryShowPass || s.revokeShowPass {
+		t.Fatal("passphrase visibility flags should default to false")
+	}
+
+	// nil guard must be a safe no-op.
+	flipPassVisible(nil)
+
+	// Each workspace and subkey modal flag toggles independently.
+	toggles := []struct {
+		name string
+		ptr  *bool
+	}{
+		{name: "text_enc", ptr: &s.showTextEncPass},
+		{name: "file_enc", ptr: &s.showFileEncPass},
+		{name: "unlock", ptr: &s.showUnlockPass},
+		{name: "add_subkey", ptr: &s.subShowPass},
+		{name: "expiry", ptr: &s.expiryShowPass},
+		{name: "revoke", ptr: &s.revokeShowPass},
+	}
+	for i, tc := range toggles {
+		flipPassVisible(tc.ptr)
+		if !*tc.ptr {
+			t.Fatalf("%s: flip did not show passphrase", tc.name)
+		}
+		for j, other := range toggles {
+			if i != j && *other.ptr {
+				t.Fatalf("%s toggle unexpectedly mutated %s", tc.name, other.name)
+			}
+		}
+		flipPassVisible(tc.ptr)
+		if *tc.ptr {
+			t.Fatalf("%s: second flip did not hide passphrase", tc.name)
+		}
+	}
+
+	// Subkey modal close and reset helpers hide passphrases and clear inline errors.
+	s.subShowPass = true
+	s.subErr = "err-add"
+	s.closeAddSubWindow()
+	if s.subShowPass || s.subErr != "" {
+		t.Fatalf("closeAddSubWindow did not reset: show=%v err=%q", s.subShowPass, s.subErr)
+	}
+	s.subShowPass = true
+	s.subErr = "err-add-2"
+	s.resetAddSubPassUI()
+	if s.subShowPass || s.subErr != "" {
+		t.Fatalf("resetAddSubPassUI did not reset: show=%v err=%q", s.subShowPass, s.subErr)
+	}
+
+	s.expiryShowPass = true
+	s.expiryErr = "err-exp"
+	s.closeExpiryWindow()
+	if s.expiryShowPass || s.expiryErr != "" {
+		t.Fatalf("closeExpiryWindow did not reset: show=%v err=%q", s.expiryShowPass, s.expiryErr)
+	}
+	s.expiryShowPass = true
+	s.expiryErr = "err-exp-2"
+	s.resetExpiryPassUI()
+	if s.expiryShowPass || s.expiryErr != "" {
+		t.Fatalf("resetExpiryPassUI did not reset: show=%v err=%q", s.expiryShowPass, s.expiryErr)
+	}
+
+	s.revokeShowPass = true
+	s.revokeErr = "err-rev"
+	s.closeRevokeWindow()
+	if s.revokeShowPass || s.revokeErr != "" {
+		t.Fatalf("closeRevokeWindow did not reset: show=%v err=%q", s.revokeShowPass, s.revokeErr)
+	}
+	s.revokeShowPass = true
+	s.revokeErr = "err-rev-2"
+	s.resetRevokePassUI()
+	if s.revokeShowPass || s.revokeErr != "" {
+		t.Fatalf("resetRevokePassUI did not reset: show=%v err=%q", s.revokeShowPass, s.revokeErr)
+	}
+
+	// Submit-success close path in applyResult resets each subkey modal's show flag and error.
+	s.subShowPass = true
+	s.subErr = "stale"
+	s.pendingCloseAddSub = false
+	s.applyResult("action.add_subkey", actionOutcome{})
+	if !s.pendingCloseAddSub || s.subShowPass || s.subErr != "" {
+		t.Fatalf("add_subkey success reset failed: close=%v show=%v err=%q", s.pendingCloseAddSub, s.subShowPass, s.subErr)
+	}
+
+	s.expiryShowPass = true
+	s.expiryErr = "stale"
+	s.pendingCloseExpiry = false
+	s.applyResult("action.set_key_expiry", actionOutcome{})
+	if !s.pendingCloseExpiry || s.expiryShowPass || s.expiryErr != "" {
+		t.Fatalf("set_key_expiry success reset failed: close=%v show=%v err=%q", s.pendingCloseExpiry, s.expiryShowPass, s.expiryErr)
+	}
+
+	s.revokeShowPass = true
+	s.revokeErr = "stale"
+	s.pendingCloseRevoke = false
+	s.applyResult("action.revoke_key", actionOutcome{})
+	if !s.pendingCloseRevoke || s.revokeShowPass || s.revokeErr != "" {
+		t.Fatalf("revoke_key success reset failed: close=%v show=%v err=%q", s.pendingCloseRevoke, s.revokeShowPass, s.revokeErr)
+	}
+
+	// Action failure keeps the modal open and records the inline error.
+	s.pendingCloseAddSub = false
+	s.applyResult("action.add_subkey", actionOutcome{err: fmt.Errorf("bad pass")})
+	if s.pendingCloseAddSub || s.subErr == "" {
+		t.Fatalf("add_subkey failure should keep modal open with error: close=%v err=%q", s.pendingCloseAddSub, s.subErr)
+	}
+
+	// Trilingual eye tooltips are present and distinct.
+	for _, l := range []Lang{LangEN, LangZH, LangJA} {
+		showTip := strings.TrimSpace(Tr(l, "tip.show_passphrase"))
+		hideTip := strings.TrimSpace(Tr(l, "tip.hide_passphrase"))
+		if showTip == "" || hideTip == "" || showTip == hideTip {
+			t.Fatalf("invalid eye tips for %s: show=%q hide=%q", l, showTip, hideTip)
+		}
+	}
+
+	// Regression guard: .Password() must only live inside passphraseRow in keygen_ui.go.
+	matches, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("glob *.go: %v", err)
+	}
+	var passwordCalls []string
+	for _, name := range matches {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		b, rerr := os.ReadFile(name)
+		if rerr != nil {
+			t.Fatalf("read %s: %v", name, rerr)
+		}
+		for i, line := range strings.Split(string(b), "\n") {
+			if strings.Contains(line, ".Password(") {
+				passwordCalls = append(passwordCalls, fmt.Sprintf("%s:%d", name, i+1))
+			}
+		}
+	}
+	if len(passwordCalls) != 1 || !strings.HasPrefix(passwordCalls[0], "keygen_ui.go:") {
+		t.Fatalf("bare .Password() call found outside passphraseRow: %v", passwordCalls)
+	}
+}
