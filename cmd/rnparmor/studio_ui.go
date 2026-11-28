@@ -167,7 +167,10 @@ func (s *uiState) recipientPicker(c *ui.Context) {
 	labels, fps := recipientOptions(s.keys)
 	ui.Column(c).Gap(6).Grow(1).Children(func() {
 		if len(labels) == 0 {
-			ui.Text(c, s.tr("empty.recipient_keys")).FontSize(12)
+			ui.Text(c, s.tr("empty.recipient_guide")).FontSize(12)
+			if rnpButton(c, s.tr("btn.goto_keys")).Clicked() {
+				s.selectTab(0)
+			}
 		} else {
 			if !labelIn(s.recipientPick, labels) {
 				s.recipientPick = labels[0]

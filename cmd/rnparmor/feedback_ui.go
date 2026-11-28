@@ -168,7 +168,11 @@ func (s *uiState) noteActionFeedback(title string, out actionOutcome, silent boo
 			s.showAlert(s.tr("alert.error"), s.safeNotice(s.tr(title)+": "+out.err.Error()))
 			return
 		}
-		s.showAlert(s.tr(title), s.safeNotice(s.textOutput))
+		body := s.textOutput
+		if title == "action.verify_file" {
+			body = s.fileOutput
+		}
+		s.showAlert(s.tr(title), s.safeNotice(body))
 	default:
 		s.enqueueToast(s.tr(title), s.tr("toast.done"), "success")
 	}
@@ -222,7 +226,11 @@ func (s *uiState) childOwnsError(title string) bool {
 }
 
 func (s *uiState) safeNotice(msg string) string {
-	for _, sec := range []string{s.passphrase, s.newKeyPass, s.newKeyPass2, s.encPassword, s.subPass, s.expiryPass, s.revokePass} {
+	for _, sec := range []string{
+		s.passphrase, s.newKeyPass, s.newKeyPass2, s.encPassword, s.encPassword2,
+		s.fileEncPassword, s.fileEncPassword2, s.textDecryptPass, s.textSignPass,
+		s.fileDecryptPass, s.fileSignPass, s.subPass, s.expiryPass, s.revokePass,
+	} {
 		if len(sec) < 4 {
 			continue
 		}

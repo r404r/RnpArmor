@@ -68,6 +68,42 @@ type uiState struct {
 	fileSig      string
 	fileDetached bool
 
+	textOp             int
+	textSplitPct       float32
+	textEncMode        int
+	textEncModeTouched bool
+	textEncHybrid      bool
+	textAdvOpen        bool
+	encPassword2       string
+	showTextEncPass2   bool
+	textDecryptInput   string
+	textDecryptPass    string
+	showTextDecPass    bool
+	textSignPass       string
+	showTextSignPass   bool
+	textFormErr        string
+
+	fileOp             int
+	fileSplitPct       float32
+	fileEncMode        int
+	fileEncModeTouched bool
+	fileEncHybrid      bool
+	fileAdvOpen        bool
+	fileEncPassword    string
+	fileEncPassword2   string
+	showFileEncPass2   bool
+	fileDecryptPass    string
+	showFileDecPass    bool
+	fileSignPass       string
+	showFileSignPass   bool
+	fileOutput         string
+	fileFormErr        string
+
+	pendingEncSet        bool
+	pendingEncRecipients string
+	pendingEncPassword   string
+	pendingOpPass        string
+
 	packetInput   string
 	packetAsJSON  bool
 	featureQuery  string
@@ -213,6 +249,8 @@ func main() {
 		workspace:       mustWd(),
 		passphrase:      "",
 		keySplitPct:     58,
+		textSplitPct:    studioSplitDefault,
+		fileSplitPct:    studioSplitDefault,
 		encCipher:       "AES256",
 		encCompress:     "zlib",
 		textMode:        string(rnp.SignModeDetached),
@@ -601,20 +639,26 @@ func (s *uiState) view(c *ui.Context) {
 			if s.tab != prevTab {
 				s.applyMainMenu()
 			}
-			ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-				switch s.tab {
-				case 0:
-					s.viewKeys(c)
-				case 1:
-					s.viewTextStudio(c)
-				case 2:
-					s.viewFileWorkbench(c)
-				case 3:
-					s.viewPackets(c)
-				default:
-					s.viewPortable(c)
-				}
-			})
+			if s.tab == 1 || s.tab == 2 {
+				ui.Column(c).Grow(1).MinHeight(0).Children(func() {
+					if s.tab == 1 {
+						s.viewTextStudio(c)
+					} else {
+						s.viewFileWorkbench(c)
+					}
+				})
+			} else {
+				ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+					switch s.tab {
+					case 0:
+						s.viewKeys(c)
+					case 3:
+						s.viewPackets(c)
+					default:
+						s.viewPortable(c)
+					}
+				})
+			}
 		})
 		s.viewStatusBar(c)
 	})
@@ -647,97 +691,6 @@ func (s *uiState) statusLine() string {
 		status = status + " " + s.tr("state.done")
 	}
 	return state + " | " + status
-}
-
-func (s *uiState) viewTextStudio(c *ui.Context) {
-	rnpCard(c).Padding(14).Gap(8).Children(func() {
-		ui.Form(c, func() {
-			ui.Field(c, s.tr("label.plain_text"), func() {
-				ui.TextArea(c, &s.textInput).Height(120)
-			})
-			ui.Field(c, s.tr("label.recipients"), func() {
-				s.recipientPicker(c)
-			})
-			ui.Field(c, s.tr("label.password"), func() {
-				s.passphraseRow(c, &s.encPassword, &s.showTextEncPass, s.tr("placeholder.symm_pass"))
-			})
-			ui.Field(c, s.tr("label.cipher_compression"), func() {
-				ui.Row(c).Gap(8).Children(func() {
-					ui.Select(c, &s.encCipher, []string{"AES256", "AES192", "AES128", "Camellia256"}).Width(180)
-					ui.Select(c, &s.encCompress, []string{"zlib", "bzip2", "zip", "uncompressed"}).Width(180)
-					ui.Switch(c, &s.encSign).Label(s.tr("toggle.encrypt_sign"))
-				})
-			})
-			ui.Field(c, s.tr("label.sign_mode"), func() {
-				ui.Select(c, &s.textMode, []string{string(rnp.SignModeCleartext), string(rnp.SignModeDetached), string(rnp.SignModeInline)}).Width(220)
-			})
-			ui.Field(c, s.tr("label.signer_fingerprint"), func() {
-				s.signerPicker(c)
-			})
-			ui.Field(c, s.tr("label.detached_verify_sig"), func() {
-				ui.TextArea(c, &s.textVerifyDetached).Height(90)
-			})
-		})
-
-		ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
-			if rnpPrimaryButton(c, s.tr("btn.encrypt_text")).Clicked() {
-				s.run("action.encrypt_text", s.encryptText)
-			}
-			if rnpButton(c, s.tr("btn.decrypt_text")).Clicked() {
-				s.run("action.decrypt_text", s.decryptText)
-			}
-			if rnpButton(c, s.tr("btn.sign_text")).Clicked() {
-				s.run("action.sign_text", s.signText)
-			}
-			if rnpButton(c, s.tr("btn.verify_text")).Clicked() {
-				s.run("action.verify_text", s.verifyText)
-			}
-		})
-		ui.Text(c, s.tr("hint.text_alg")).FontSize(12)
-		ui.Text(c, s.tr("hint.verify_badge")).FontSize(12)
-		ui.TextArea(c, &s.textOutput).Height(280).Placeholder(s.tr("placeholder.result_output"))
-	})
-}
-
-func (s *uiState) viewFileWorkbench(c *ui.Context) {
-	rnpCard(c).Padding(14).Gap(8).Children(func() {
-		ui.Form(c, func() {
-			ui.Field(c, s.tr("label.source"), func() {
-				s.filePathEditors(c, &s.fileSrc, "dlg.browse_source", "", "")
-			})
-			ui.Field(c, s.tr("label.destination"), func() {
-				s.filePathEditors(c, &s.fileDst, "", "dlg.save_destination", s.fileSrc)
-			})
-			ui.Field(c, s.tr("label.signature_path"), func() {
-				s.filePathEditors(c, &s.fileSig, "dlg.browse_signature", "dlg.save_signature", s.fileSrc)
-			})
-			ui.Field(c, s.tr("label.detached_verify"), func() { ui.Switch(c, &s.fileDetached).Label(s.tr("toggle.detached")) })
-			ui.Field(c, s.tr("label.recipients"), func() { s.recipientPicker(c) })
-			ui.Field(c, s.tr("label.password"), func() {
-				s.passphraseRow(c, &s.encPassword, &s.showFileEncPass, s.tr("placeholder.symm_pass"))
-			})
-			ui.Field(c, s.tr("label.signer_fingerprint"), func() { s.signerPicker(c) })
-			ui.Field(c, s.tr("toggle.encrypt_sign"), func() {
-				ui.Switch(c, &s.encSign).Label(s.tr("toggle.encrypt_sign"))
-			})
-		})
-		ui.Row(c).Gap(8).Padding(8, 0, 8, 0).Children(func() {
-			if rnpPrimaryButton(c, s.tr("btn.encrypt_file")).Clicked() {
-				s.run("action.encrypt_file", s.encryptFile)
-			}
-			if rnpButton(c, s.tr("btn.decrypt_file")).Clicked() {
-				s.run("action.decrypt_file", s.decryptFile)
-			}
-			if rnpButton(c, s.tr("btn.sign_file")).Clicked() {
-				s.run("action.sign_file", s.signFile)
-			}
-			if rnpButton(c, s.tr("btn.verify_file")).Clicked() {
-				s.run("action.verify_file", s.verifyFile)
-			}
-		})
-		ui.Text(c, s.tr("hint.file_alg")).FontSize(12)
-		ui.TextArea(c, &s.textOutput).Height(320).Placeholder(s.tr("placeholder.result_output"))
-	})
 }
 
 func (s *uiState) viewPackets(c *ui.Context) {
@@ -879,6 +832,8 @@ type actionInput struct {
 	encCipher          string
 	encCompress        string
 	encSign            bool
+	opPassphrase       string
+	textDecryptInput   string
 	fileSrc            string
 	fileDst            string
 	fileSig            string
@@ -918,6 +873,8 @@ type actionResult struct {
 	features              string
 	hasPacketOut          bool
 	packetOut             string
+	hasFileOutput         bool
+	fileOutput            string
 	hasSessionLoaded      bool
 	sessionLoaded         bool
 	hasForceSelect        bool
@@ -955,6 +912,7 @@ func (s *uiState) snapshot() actionInput {
 		encCipher:          s.encCipher,
 		encCompress:        s.encCompress,
 		encSign:            s.encSign,
+		textDecryptInput:   s.textDecryptInput,
 		fileSrc:            s.fileSrc,
 		fileDst:            s.fileDst,
 		fileSig:            s.fileSig,
@@ -972,6 +930,15 @@ func (s *uiState) snapshot() actionInput {
 		revokeCode:         s.revokeCode,
 		revokeReason:       s.revokeReason,
 	}
+	if s.pendingEncSet {
+		in.encRecipients = s.pendingEncRecipients
+		in.encPassword = s.pendingEncPassword
+		s.pendingEncSet = false
+		s.pendingEncRecipients = ""
+		s.pendingEncPassword = ""
+	}
+	in.opPassphrase = s.pendingOpPass
+	s.pendingOpPass = ""
 	s.importBytes = nil
 	s.exportPath = ""
 	s.exportKind = ""
@@ -998,6 +965,10 @@ func (s *uiState) runSilent(title string, fn sessionAction) {
 func (s *uiState) startRun(title string, fn sessionAction, silent bool) {
 	s.mu.Lock()
 	if s.busy {
+		s.pendingEncSet = false
+		s.pendingEncRecipients = ""
+		s.pendingEncPassword = ""
+		s.pendingOpPass = ""
 		s.mu.Unlock()
 		return
 	}
@@ -1143,6 +1114,9 @@ func (s *uiState) applyResult(title string, out actionOutcome) {
 	if res.hasPacketOut {
 		s.packetOut = res.packetOut
 	}
+	if res.hasFileOutput {
+		s.fileOutput = res.fileOutput
+	}
 	if out.haveKeys {
 		kept := s.selected
 		s.keys = out.keys
@@ -1238,7 +1212,7 @@ func subkeyStillPresent(keys []rnp.KeySummary, primary, sub string) bool {
 }
 
 func performAction(in actionInput, fn sessionAction) actionOutcome {
-	pass := []byte(in.passphrase)
+	pass := []byte(effectiveSessionPassphrase(in))
 	defer func() {
 		for i := range pass {
 			pass[i] = 0
@@ -1420,7 +1394,7 @@ func (s *uiState) encryptText(sess *rnp.Session, ctx context.Context, in actionI
 }
 
 func (s *uiState) decryptText(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
-	body := resolveDecryptInput(in.textInput, in.textVerifyInput, in.textOutput)
+	body := resolveDecryptInput(in.textDecryptInput, in.textInput, in.textVerifyInput, in.textOutput)
 	v, err := sess.DecryptText(ctx, body)
 	if err != nil {
 		return actionResult{}, err
@@ -1451,7 +1425,7 @@ func (s *uiState) signText(sess *rnp.Session, ctx context.Context, in actionInpu
 }
 
 func (s *uiState) verifyText(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
-	msg, detached := resolveVerifyInput(in.textInput, in.textVerifyInput, in.textOutput, in.textVerifyDetached)
+	msg, detached := resolveVerifyInput(in.textVerifyInput, in.textInput, in.textOutput, in.textVerifyDetached)
 	v, err := sess.VerifyText(ctx, msg, detached)
 	if err != nil {
 		return actionResult{}, err
@@ -1468,11 +1442,17 @@ func (s *uiState) encryptFile(sess *rnp.Session, ctx context.Context, in actionI
 		Compression:      in.encCompress,
 		Armor:            strings.HasSuffix(strings.ToLower(in.fileDst), ".asc"),
 	}
-	return actionResult{}, sess.EncryptFileWithOpts(ctx, in.fileSrc, in.fileDst, opts)
+	if err := sess.EncryptFileWithOpts(ctx, in.fileSrc, in.fileDst, opts); err != nil {
+		return actionResult{}, err
+	}
+	return actionResult{hasFileOutput: true, fileOutput: in.tr("status.file_done") + "\n" + in.fileDst}, nil
 }
 
 func (s *uiState) decryptFile(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
-	return actionResult{}, sess.DecryptFile(ctx, in.fileSrc, in.fileDst)
+	if err := sess.DecryptFile(ctx, in.fileSrc, in.fileDst); err != nil {
+		return actionResult{}, err
+	}
+	return actionResult{hasFileOutput: true, fileOutput: in.tr("status.file_done") + "\n" + in.fileDst}, nil
 }
 
 func (s *uiState) signFile(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
@@ -1484,7 +1464,10 @@ func (s *uiState) signFile(sess *rnp.Session, ctx context.Context, in actionInpu
 	if mode == "" {
 		mode = rnp.SignModeDetached
 	}
-	return actionResult{}, sess.SignFileWithOpts(ctx, in.fileSrc, in.fileSig, signer, mode, true, "SHA256")
+	if err := sess.SignFileWithOpts(ctx, in.fileSrc, in.fileSig, signer, mode, true, "SHA256"); err != nil {
+		return actionResult{}, err
+	}
+	return actionResult{hasFileOutput: true, fileOutput: in.tr("status.file_done") + "\n" + in.fileSig}, nil
 }
 
 func (s *uiState) verifyFile(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
@@ -1492,7 +1475,7 @@ func (s *uiState) verifyFile(sess *rnp.Session, ctx context.Context, in actionIn
 	if err != nil {
 		return actionResult{}, err
 	}
-	return actionResult{hasTextOutput: true, textOutput: formatVerify(in, v)}, nil
+	return actionResult{hasFileOutput: true, fileOutput: formatVerify(in, v)}, nil
 }
 
 func (s *uiState) dumpPackets(sess *rnp.Session, ctx context.Context, in actionInput) (actionResult, error) {
@@ -1536,17 +1519,19 @@ func formatVerify(in actionInput, v rnp.VerifyResult) string {
 	)
 }
 
+// recipientFingerprints is the explicit recipient list only.
+// An empty list does not fall back to the selected key.
 func recipientFingerprints(in actionInput) []string {
-	fps := splitCSV(in.encRecipients)
-	if len(fps) == 0 && strings.TrimSpace(in.encPassword) == "" && strings.TrimSpace(in.selected) != "" {
-		return []string{strings.TrimSpace(in.selected)}
-	}
-	return fps
+	return splitCSV(in.encRecipients)
 }
 
 // resolveDecryptInput picks the armored message the user can actually see.
-// A pasted ciphertext in the input box wins over the hidden verify buffer.
-func resolveDecryptInput(textInput, textVerifyInput, textOutput string) string {
+// The decrypt box wins, then a pasted ciphertext in the shared input,
+// then the hidden verify buffer.
+func resolveDecryptInput(decryptBox, textInput, textVerifyInput, textOutput string) string {
+	if strings.Contains(decryptBox, "-----BEGIN PGP MESSAGE-----") {
+		return decryptBox
+	}
 	if strings.Contains(textInput, "-----BEGIN PGP MESSAGE-----") {
 		return textInput
 	}

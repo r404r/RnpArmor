@@ -305,9 +305,12 @@ func TestResolveDecryptInput(t *testing.T) {
 		{name: "blank verify is empty", in: "hello", verify: "  \n", out: other, want: other},
 		{name: "plain fallback", in: "hello", verify: "", out: "plain", want: "hello"},
 	}
+	if got := resolveDecryptInput(msg, "plain", "hidden", other); got != msg {
+		t.Fatalf("decrypt box wins: %q", got)
+	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := resolveDecryptInput(tc.in, tc.verify, tc.out)
+			got := resolveDecryptInput("", tc.in, tc.verify, tc.out)
 			if got != tc.want {
 				t.Fatalf("got %q want %q", got, tc.want)
 			}
@@ -353,8 +356,8 @@ func TestResolveVerifyInput(t *testing.T) {
 func TestRecipientFingerprintsFallback(t *testing.T) {
 	in := actionInput{selected: "ABC"}
 	got := recipientFingerprints(in)
-	if len(got) != 1 || got[0] != "ABC" {
-		t.Fatalf("fallback %#v", got)
+	if len(got) != 0 {
+		t.Fatalf("selected must not be used %#v", got)
 	}
 	in.encRecipients = " DEF , GHI "
 	got = recipientFingerprints(in)
@@ -469,7 +472,7 @@ func exerciseEmptyPassphraseUI(lib, ws string) error {
 	}
 
 	s.textInput = plain
-	s.encRecipients = ""
+	s.encRecipients = s.selected
 	s.encPassword = ""
 	s.encSign = false
 	if err := runUI(s, "action.encrypt_text", s.encryptText); err != nil {
@@ -686,7 +689,7 @@ func exerciseUIActions(lib, ws string) error {
 	}
 
 	s.textInput = plain
-	s.encRecipients = ""
+	s.encRecipients = s.selected
 	s.encPassword = ""
 	s.encSign = false
 	if err := runUI(s, "action.encrypt_text", s.encryptText); err != nil {
@@ -759,7 +762,7 @@ func exerciseUIActions(lib, ws string) error {
 	}
 	s.fileSrc = src
 	s.fileDst = enc
-	s.encRecipients = ""
+	s.encRecipients = s.selected
 	s.encPassword = ""
 	s.encSign = false
 	if err := runUI(s, "action.encrypt_file", s.encryptFile); err != nil {
@@ -788,8 +791,8 @@ func exerciseUIActions(lib, ws string) error {
 	if err := runUI(s, "action.verify_file", s.verifyFile); err != nil {
 		return err
 	}
-	if !strings.Contains(s.textOutput, "[Math: VALID]") {
-		return fmt.Errorf("file verify: %q", s.textOutput)
+	if !strings.Contains(s.fileOutput, "[Math: VALID]") {
+		return fmt.Errorf("file verify: %q", s.fileOutput)
 	}
 	s.packetInput = enc
 	s.packetAsJSON = true
@@ -1371,8 +1374,8 @@ func TestStudioKeyPickersAndFileDialogPaths(t *testing.T) {
 	}
 	cleared := clearRecipientList(next)
 	got := recipientFingerprints(actionInput{encRecipients: cleared, selected: "SELECTED"})
-	if len(got) != 1 || got[0] != "SELECTED" {
-		t.Fatalf("cleared fallback = %#v", got)
+	if len(got) != 0 {
+		t.Fatalf("cleared must not fall back to selected: %#v", got)
 	}
 
 	def := "Use selected key (default)"
@@ -1985,6 +1988,15 @@ func TestI18nComplete(t *testing.T) {
 		"toast.done", "toast.path_copied", "toast.fingerprint_copied",
 		"toast.text_signed", "toast.text_encrypted",
 		"btn.ok", "btn.quit", "alert.error", "alert.redacted",
+		"op.encrypt", "op.decrypt", "op.sign", "op.verify",
+		"btn.paste", "btn.clear", "btn.copy_result", "btn.copy_report",
+		"btn.send_decrypt", "btn.send_verify", "btn.goto_keys",
+		"label.encrypt_input", "label.decrypt_input", "label.sign_input", "label.verify_input",
+		"label.enc_password", "label.enc_password2", "label.decrypt_pass", "label.sign_pass",
+		"label.studio_advanced", "mode.password", "mode.pubkey",
+		"hint.hybrid_on", "hint.decrypt_pass", "hint.pass_mismatch_live",
+		"err.enc_password_empty", "err.enc_recipients_empty", "err.passphrase_mismatch",
+		"toast.copied", "toggle.hybrid", "toggle.detached_verify", "status.file_done",
 		"dlg.quit_title", "dlg.quit_msg", "dlg.quit_busy_msg",
 		"state.idle", "state.busy", "status.ready",
 	}
@@ -2169,8 +2181,9 @@ func TestPassphraseEyeEverywhere(t *testing.T) {
 	s := &uiState{langIdx: LangIndex(LangEN)}
 
 	// All passphrase fields start masked by default.
-	if s.showTextEncPass || s.showFileEncPass || s.showUnlockPass ||
-		s.subShowPass || s.expiryShowPass || s.revokeShowPass {
+	if s.showTextEncPass || s.showTextEncPass2 || s.showTextDecPass || s.showTextSignPass ||
+		s.showFileEncPass || s.showFileEncPass2 || s.showFileDecPass || s.showFileSignPass ||
+		s.showUnlockPass || s.subShowPass || s.expiryShowPass || s.revokeShowPass {
 		t.Fatal("passphrase visibility flags should default to false")
 	}
 
@@ -2183,7 +2196,13 @@ func TestPassphraseEyeEverywhere(t *testing.T) {
 		ptr  *bool
 	}{
 		{name: "text_enc", ptr: &s.showTextEncPass},
+		{name: "text_enc2", ptr: &s.showTextEncPass2},
+		{name: "text_dec", ptr: &s.showTextDecPass},
+		{name: "text_sign", ptr: &s.showTextSignPass},
 		{name: "file_enc", ptr: &s.showFileEncPass},
+		{name: "file_enc2", ptr: &s.showFileEncPass2},
+		{name: "file_dec", ptr: &s.showFileDecPass},
+		{name: "file_sign", ptr: &s.showFileSignPass},
 		{name: "unlock", ptr: &s.showUnlockPass},
 		{name: "add_subkey", ptr: &s.subShowPass},
 		{name: "expiry", ptr: &s.expiryShowPass},

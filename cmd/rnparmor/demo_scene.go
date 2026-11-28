@@ -68,6 +68,12 @@ func (s *uiState) applyDemoKeys() {
 
 func (s *uiState) applyDemoText() {
 	s.tab = 1
+	s.textOp = studioOpEncrypt
+	s.textSplitPct = studioSplitDefault
+	s.textEncMode = encModePubKey
+	s.textEncModeTouched = false
+	s.textEncHybrid = false
+	s.textAdvOpen = false
 	s.textInput = demoPlainText(s.workspace)
 	s.textOutput = readDemoFile(s.workspace, demoSignedName)
 	alice, bob, carol := demoPartyPrints(s.keys)
@@ -78,6 +84,12 @@ func (s *uiState) applyDemoText() {
 
 func (s *uiState) applyDemoFile() {
 	s.tab = 2
+	s.fileOp = studioOpEncrypt
+	s.fileSplitPct = studioSplitDefault
+	s.fileEncMode = encModePubKey
+	s.fileEncModeTouched = false
+	s.fileEncHybrid = false
+	s.fileAdvOpen = false
 	s.fileSrc = filepath.Join(s.workspace, demoNoteName)
 	s.fileDst = filepath.Join(s.workspace, demoEncryptedName)
 	s.fileSig = filepath.Join(s.workspace, demoSignedName)

@@ -87,6 +87,9 @@ func TestDemoTextSceneToast(t *testing.T) {
 	if s.tab != 1 || s.textInput != note || s.textOutput != armor {
 		t.Fatalf("text tab=%d in=%q out=%q", s.tab, s.textInput, s.textOutput)
 	}
+	if s.textOp != studioOpEncrypt || s.textSplitPct != studioSplitDefault || s.textAdvOpen || s.textEncHybrid || s.textEncModeTouched {
+		t.Fatalf("text studio op=%d split=%v adv=%v hybrid=%v touched=%v", s.textOp, s.textSplitPct, s.textAdvOpen, s.textEncHybrid, s.textEncModeTouched)
+	}
 	if s.encRecipients != "ALICEFP, BOBFP" || s.textSigner != "CAROLFP" {
 		t.Fatalf("parties rec=%q signer=%q", s.encRecipients, s.textSigner)
 	}
@@ -112,6 +115,9 @@ func TestDemoFileAndPacketScenes(t *testing.T) {
 	s.applyDemoScene()
 	if s.tab != 2 || s.fileSrc != filepath.Join(dir, demoNoteName) || s.fileDst != filepath.Join(dir, demoEncryptedName) || s.fileSig != filepath.Join(dir, demoSignedName) {
 		t.Fatalf("file src=%s dst=%s sig=%s", s.fileSrc, s.fileDst, s.fileSig)
+	}
+	if s.fileOp != studioOpEncrypt || s.fileSplitPct != studioSplitDefault || s.fileAdvOpen || s.fileEncHybrid || s.fileEncModeTouched {
+		t.Fatalf("file studio op=%d split=%v adv=%v hybrid=%v touched=%v", s.fileOp, s.fileSplitPct, s.fileAdvOpen, s.fileEncHybrid, s.fileEncModeTouched)
 	}
 	if s.encRecipients != "ALICEFP, BOBFP" || len(s.pendingToasts) != 0 {
 		t.Fatalf("file recipients %q toasts %d", s.encRecipients, len(s.pendingToasts))
