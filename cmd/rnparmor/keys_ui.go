@@ -264,6 +264,11 @@ func (s *uiState) chooseWorkspace() {
 		}
 		mygo.RunOnMain(func() {
 			s.workspace = dir
+			if usableSavedWorkspace(dir) {
+				s.savedWorkspace = strings.TrimSpace(dir)
+				s.keepWorkspace = true
+				s.savePreferences()
+			}
 			s.run("action.list_keys", s.reloadKeys)
 		})
 	}()

@@ -192,7 +192,7 @@ Linux runtime main-window screenshot (`1120×780`, integrated `File / Workspace 
 
 ### 5) Portable keyring storage
 
-- Read-only `Workspace` path with native `Choose Folder...` picker and explicit `Open+Load` / `Save` / `Reload keys` controls (supporting public-only `pubring.gpg` as well as full `pubring.gpg` + `secring.gpg`).
+- Read-only `Workspace` path with native `Choose Folder...` picker and explicit `Open+Load` / `Save` / `Reload keys` controls (supporting public-only `pubring.gpg` as well as full `pubring.gpg` + `secring.gpg`). Startup defaults to the startup working directory; if that directory is the filesystem root (`/` from macOS Finder or the Dock), it uses the current user's home. Preferences are stored in a config file (`RnpArmor/config.json` in the user config directory, or `config.json` beside the executable when `PORTABLE.txt` is beside it). The passphrase is not written.
 - Masked unlock `Passphrase` via `passphraseRow` + independent `rnpPassEye` show/hide toggle (empty at startup, used only in memory for active secret-key operations).
 
 ### 6) Platform-adapted menu bar, quit confirmation, frosted overlays & standalone About child window

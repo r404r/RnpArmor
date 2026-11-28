@@ -198,6 +198,18 @@ type uiState struct {
 
 	demoSceneApplied bool
 	demoOpenAbout    bool
+
+	// Preference file. persistConfig is false for --smoke-test (it returns
+	// first) and for screenshot scenes. savedLang is the file's lang string;
+	// langDirty is set only when the user changes language, so a --lang flag
+	// is not written back. keepWorkspace is set only for a path loaded from
+	// the file or chosen in the folder dialog, never for a filesystem root.
+	persistConfig  bool
+	configPath     string
+	savedLang      string
+	langDirty      bool
+	savedWorkspace string
+	keepWorkspace  bool
 }
 
 func main() {
@@ -228,6 +240,7 @@ func main() {
 		os.Exit(1)
 	}
 	lang := ResolveLang(*langFlag)
+	_, langFlagSet := parseLang(*langFlag)
 
 	if *smoke {
 		smokeText := buildSmokeOutput(appVersion, path, v)
@@ -241,12 +254,25 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Screenshot scenes must not read or write the user config file.
+	persistConfig := demoScene() == ""
+	var loaded userConfig
+	configPath := ""
+	if persistConfig {
+		configPath = locateUserConfigPath()
+		loaded = loadUserConfig(configPath)
+	}
+	workspace := mustWd()
+	if persistConfig {
+		workspace = preferSavedWorkspace(loaded.Workspace, workspace)
+	}
+
 	st := &uiState{
 		libPath:         path,
 		version:         v,
 		statusKey:       "status.ready",
 		statusDone:      false,
-		workspace:       mustWd(),
+		workspace:       workspace,
 		passphrase:      "",
 		keySplitPct:     58,
 		textSplitPct:    studioSplitDefault,
@@ -268,6 +294,11 @@ func main() {
 			HashAlg:      "SHA256",
 			SymmCipher:   "AES256",
 		},
+		persistConfig: persistConfig,
+		configPath:    configPath,
+	}
+	if persistConfig {
+		st.applyUserConfig(loaded, langFlagSet)
 	}
 
 	mygo.App.WhenReady(func() {
@@ -306,9 +337,55 @@ func main() {
 func mustWd() string {
 	wd, err := os.Getwd()
 	if err != nil {
-		return ""
+		wd = ""
 	}
-	return wd
+	if !startupWorkspaceNeedsHome(wd) {
+		return wd
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+	return resolveStartupWorkspace(wd, home)
+}
+
+// resolveStartupWorkspace picks the portable keyring directory from the
+// process working directory and the user home. Callers pass those strings
+// in; this function does not read the process environment.
+// A normal absolute path is kept. An empty path, ".", or a filesystem root
+// (Unix "/" or a Windows volume root such as "C:\", "C:/", or "C:") uses
+// home. If that fallback is needed and home is empty, the result is empty.
+func resolveStartupWorkspace(wd, home string) string {
+	if !startupWorkspaceNeedsHome(wd) {
+		return wd
+	}
+	return home
+}
+
+func startupWorkspaceNeedsHome(wd string) bool {
+	if wd == "" || wd == "." || wd == "/" {
+		return true
+	}
+	return isWindowsVolumeRoot(wd)
+}
+
+// isWindowsVolumeRoot reports paths like "C:\", "C:/", and "C:" using
+// characters only. filepath.VolumeName follows the host OS, so a Linux
+// test would not see "C:\" as a Windows root.
+func isWindowsVolumeRoot(wd string) bool {
+	if len(wd) < 2 || wd[1] != ':' || !isASCIILetter(wd[0]) {
+		return false
+	}
+	for i := 2; i < len(wd); i++ {
+		if wd[i] != '/' && wd[i] != '\\' {
+			return false
+		}
+	}
+	return true
+}
+
+func isASCIILetter(b byte) bool {
+	return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')
 }
 
 func buildSmokeOutput(appVer, libPath, version string) string {
@@ -343,6 +420,8 @@ func (s *uiState) setLang(l Lang) {
 		return
 	}
 	s.langIdx = idx
+	s.langDirty = true
+	s.savePreferences()
 	s.applyMainMenu()
 	if s.mainWin != nil && !s.mainWin.IsDestroyed() {
 		s.mainWin.SetTitle(s.tr("title.app"))
@@ -573,6 +652,7 @@ func (s *uiState) shouldInterceptQuit(goos string, sessionEnding bool) bool {
 
 func (s *uiState) handleBeforeQuit(e *mygo.QuitEvent) {
 	if e == nil || !s.shouldInterceptQuit(runtime.GOOS, e.SessionEnding) {
+		s.savePreferences()
 		return
 	}
 	e.PreventDefault()
