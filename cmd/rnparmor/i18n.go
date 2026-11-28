@@ -1269,6 +1269,11 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangZH: "对称口令",
 		LangJA: "共通鍵のパスフレーズ",
 	},
+	"placeholder.enc_password2": {
+		LangEN: "Re-enter the encryption password",
+		LangZH: "再次输入加密密码",
+		LangJA: "暗号化パスワードを再入力",
+	},
 	"dlg.browse_source": {
 		LangEN: "Choose source file",
 		LangZH: "选择源文件",
@@ -1778,5 +1783,264 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangEN: "The details were hidden because they may contain key material.",
 		LangZH: "详情已隐藏，因为其中可能包含密钥材料。",
 		LangJA: "鍵の内容が含まれる可能性があるため、詳細は表示しません。",
+	},
+	"op.encrypt": {LangEN: "Encrypt", LangZH: "加密", LangJA: "暗号化"},
+	"op.decrypt": {LangEN: "Decrypt", LangZH: "解密", LangJA: "復号"},
+	"op.sign":    {LangEN: "Sign", LangZH: "签名", LangJA: "署名"},
+	"op.verify":  {LangEN: "Verify", LangZH: "验签", LangJA: "検証"},
+	"btn.paste":  {LangEN: "Paste", LangZH: "粘贴", LangJA: "貼り付け"},
+	"btn.clear":  {LangEN: "Clear", LangZH: "清空", LangJA: "クリア"},
+	"btn.copy_result": {
+		LangEN: "Copy result",
+		LangZH: "复制结果",
+		LangJA: "結果をコピー",
+	},
+	"btn.copy_report": {
+		LangEN: "Copy report",
+		LangZH: "复制报告",
+		LangJA: "報告をコピー",
+	},
+	"btn.send_decrypt": {
+		LangEN: "Send to decrypt test",
+		LangZH: "送去解密测试",
+		LangJA: "復号テストへ送る",
+	},
+	"btn.send_verify": {
+		LangEN: "Send to verify test",
+		LangZH: "送去验签测试",
+		LangJA: "検証テストへ送る",
+	},
+	"btn.goto_keys": {
+		LangEN: "Open ① Keys",
+		LangZH: "前往 ① 钥匙圈",
+		LangJA: "① 鍵リングを開く",
+	},
+	"label.encrypt_input": {
+		LangEN: "Text to encrypt",
+		LangZH: "要加密的内容",
+		LangJA: "暗号化する内容",
+	},
+	"label.decrypt_input": {
+		LangEN: "PGP message to decrypt",
+		LangZH: "要解密的 PGP 密文",
+		LangJA: "復号する PGP 暗号文",
+	},
+	"label.sign_input": {
+		LangEN: "Text to sign",
+		LangZH: "要签名的文字",
+		LangJA: "署名する文章",
+	},
+	"label.verify_input": {
+		LangEN: "Text or signed PGP block",
+		LangZH: "待验证文本或已签名 PGP 块",
+		LangJA: "検証する文章または署名済み PGP",
+	},
+	"label.detached_sig": {
+		LangEN: "Detached signature",
+		LangZH: "分离签名块",
+		LangJA: "分離署名",
+	},
+	"label.encrypt_mode": {
+		LangEN: "Encryption method",
+		LangZH: "加密方式",
+		LangJA: "暗号化方式",
+	},
+	"label.enc_password": {
+		LangEN: "Encryption password",
+		LangZH: "加密密码",
+		LangJA: "暗号化パスワード",
+	},
+	"label.enc_password2": {
+		LangEN: "Confirm encryption password",
+		LangZH: "确认加密密码",
+		LangJA: "暗号化パスワードの確認",
+	},
+	"label.decrypt_pass": {
+		LangEN: "Decrypt password or key passphrase (optional)",
+		LangZH: "解密密码 / 私钥口令（可选）",
+		LangJA: "復号パスワード / 秘密鍵のパスフレーズ（任意）",
+	},
+	"label.sign_pass": {
+		LangEN: "Key passphrase (optional)",
+		LangZH: "私钥口令（可选）",
+		LangJA: "秘密鍵のパスフレーズ（任意）",
+	},
+	"label.result": {
+		LangEN: "Result",
+		LangZH: "结果",
+		LangJA: "結果",
+	},
+	"label.decrypt_result": {
+		LangEN: "Decrypted text",
+		LangZH: "解密结果（明文）",
+		LangJA: "復号結果（平文）",
+	},
+	"label.sign_result": {
+		LangEN: "Signature",
+		LangZH: "签名结果",
+		LangJA: "署名結果",
+	},
+	"label.verify_result": {
+		LangEN: "Verification",
+		LangZH: "验签结果",
+		LangJA: "検証結果",
+	},
+	"label.studio_advanced": {
+		LangEN: "Advanced",
+		LangZH: "高级选项",
+		LangJA: "詳細オプション",
+	},
+	"label.cipher": {
+		LangEN: "Cipher",
+		LangZH: "加密算法",
+		LangJA: "暗号方式",
+	},
+	"label.compression": {
+		LangEN: "Compression",
+		LangZH: "压缩",
+		LangJA: "圧縮",
+	},
+	"label.file_summary": {
+		LangEN: "Task summary",
+		LangZH: "任务摘要",
+		LangJA: "作業の概要",
+	},
+	"mode.password": {
+		LangEN: "Encrypt with a password",
+		LangZH: "用密码加密",
+		LangJA: "パスワードで暗号化",
+	},
+	"mode.pubkey": {
+		LangEN: "Encrypt to a public key",
+		LangZH: "用对方公钥加密",
+		LangJA: "相手の公開鍵で暗号化",
+	},
+	"hint.mode_password": {
+		LangEN: "Only someone who knows this password can decrypt.",
+		LangZH: "只有知道该密码的人可以解密。",
+		LangJA: "このパスワードを知る人だけが復号できます。",
+	},
+	"hint.mode_pubkey": {
+		LangEN: "Only the holder of a chosen public key can decrypt.",
+		LangZH: "只有所选公钥的持有者可以解密。",
+		LangJA: "選んだ公開鍵の持ち主だけが復号できます。",
+	},
+	"hint.hybrid_on": {
+		LangEN: "Either the public key or the password can decrypt. This is not a double lock.",
+		LangZH: "任一方式皆可解密，并非双重加锁。",
+		LangJA: "公開鍵かパスワードのどちらかで復号できます。二重の鍵ではありません。",
+	},
+	"hint.decrypt_pass": {
+		LangEN: "Used first. Leave blank to use the passphrase on ⑤ Portable Keyring, or an unprotected key.",
+		LangZH: "优先用此处口令。留空则沿用 ⑤ 便携钥匙圈口令，或无口令私钥。",
+		LangJA: "ここが優先されます。空なら ⑤ の鍵リングのパスフレーズ、またはパスフレーズなしの鍵を使います。",
+	},
+	"hint.detached_only": {
+		LangEN: "Fill this only for a detached signature.",
+		LangZH: "仅分离签名需要填写。",
+		LangJA: "分離署名のときだけ入力します。",
+	},
+	"hint.sign_modes": {
+		LangEN: "clearsign keeps the text readable. detached is a separate signature. inline wraps the text.",
+		LangZH: "clearsign 明文签名；detached 分离签名；inline 内联签名。",
+		LangJA: "clearsign は本文が見えます。detached は分離署名。inline は本文を包みます。",
+	},
+	"hint.armor_asc": {
+		LangEN: "A destination ending in .asc is saved as ASCII armor.",
+		LangZH: "目标文件以 .asc 结尾时自动使用 ASCII armor。",
+		LangJA: "出力が .asc のときは ASCII アーマーで保存します。",
+	},
+	"hint.pass_mismatch_live": {
+		LangEN: "The passwords do not match.",
+		LangZH: "两次口令不一致。",
+		LangJA: "パスワードが一致しません。",
+	},
+	"badge.pgp_message": {LangEN: "PGP message", LangZH: "PGP 密文", LangJA: "PGP メッセージ"},
+	"badge.pgp_signed":  {LangEN: "Signed PGP", LangZH: "已签名 PGP", LangJA: "署名付き PGP"},
+	"badge.not_pgp":     {LangEN: "Not a PGP block", LangZH: "未识别为 PGP", LangJA: "PGP ではありません"},
+	"btn.encrypt_text_password": {
+		LangEN: "Encrypt with a password",
+		LangZH: "用密码加密",
+		LangJA: "パスワードで暗号化",
+	},
+	"btn.encrypt_text_pubkey": {
+		LangEN: "Encrypt to a public key",
+		LangZH: "用公钥加密",
+		LangJA: "公開鍵で暗号化",
+	},
+	"btn.encrypt_text_hybrid": {
+		LangEN: "Encrypt with key and password",
+		LangZH: "用混合方式加密",
+		LangJA: "ハイブリッドで暗号化",
+	},
+	"btn.encrypt_file_password": {
+		LangEN: "Encrypt file with a password",
+		LangZH: "用密码加密文件",
+		LangJA: "パスワードでファイルを暗号化",
+	},
+	"btn.encrypt_file_pubkey": {
+		LangEN: "Encrypt file to a public key",
+		LangZH: "用公钥加密文件",
+		LangJA: "公開鍵でファイルを暗号化",
+	},
+	"btn.encrypt_file_hybrid": {
+		LangEN: "Encrypt file with key and password",
+		LangZH: "用混合方式加密文件",
+		LangJA: "ハイブリッドでファイルを暗号化",
+	},
+	"err.enc_password_empty": {
+		LangEN: "Enter an encryption password.",
+		LangZH: "请填写加密密码。",
+		LangJA: "暗号化パスワードを入力してください。",
+	},
+	"err.enc_recipients_empty": {
+		LangEN: "Choose at least one public key.",
+		LangZH: "请至少选择一个收件人公钥。",
+		LangJA: "公開鍵を1つ以上選んでください。",
+	},
+	"err.passphrase_mismatch": {
+		LangEN: "The passwords do not match.",
+		LangZH: "两次输入的口令不一致。",
+		LangJA: "パスワードが一致しません。",
+	},
+	"toast.copied": {
+		LangEN: "Copied",
+		LangZH: "已复制",
+		LangJA: "コピーしました",
+	},
+	"empty.recipient_guide": {
+		LangEN: "No public keys yet. Create or import one on the keyring page.",
+		LangZH: "钥匙圈里还没有公钥。请先到钥匙圈创建或导入。",
+		LangJA: "公開鍵がまだありません。鍵リングで作成または読み込んでください。",
+	},
+	"signmode.cleartext": {
+		LangEN: "clearsign · readable text",
+		LangZH: "clearsign · 明文签名",
+		LangJA: "clearsign · 読める署名",
+	},
+	"signmode.detached": {
+		LangEN: "detached · separate signature",
+		LangZH: "detached · 分离签名",
+		LangJA: "detached · 分離署名",
+	},
+	"signmode.inline": {
+		LangEN: "inline · wrapped text",
+		LangZH: "inline · 内联签名",
+		LangJA: "inline · 内包署名",
+	},
+	"toggle.hybrid": {
+		LangEN: "Allow hybrid encryption (public key + password)",
+		LangZH: "允许混合加密（公钥 + 密码）",
+		LangJA: "ハイブリッド暗号化を許可（公開鍵 + パスワード）",
+	},
+	"toggle.detached_verify": {
+		LangEN: "Detached verification",
+		LangZH: "分离验签",
+		LangJA: "分離検証",
+	},
+	"status.file_done": {
+		LangEN: "File task finished",
+		LangZH: "文件任务已完成",
+		LangJA: "ファイル作業が完了しました",
 	},
 }

@@ -16,11 +16,12 @@ import (
 )
 
 const (
-	demoPassphrase = "demo-pass"
-	demoNoteBody   = "RnpArmor portable OpenPGP demo message.\n"
-	demoNoteName   = "demo-note.txt"
-	demoSignedName = "demo-signed.asc"
-	demoEncName    = "demo-encrypted.pgp"
+	demoPassphrase   = "demo-pass"
+	demoNoteBody     = "RnpArmor portable OpenPGP demo message.\n"
+	demoNoteName     = "demo-note.txt"
+	demoSignedName   = "demo-signed.asc"
+	demoEncName      = "demo-encrypted.pgp"
+	demoEncArmorName = "demo-encrypted.asc"
 )
 
 func main() {
@@ -94,7 +95,7 @@ func seedDemo(dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	for _, name := range []string{"pubring.gpg", "secring.gpg", demoEncName} {
+	for _, name := range []string{"pubring.gpg", "secring.gpg", demoEncName, demoEncArmorName} {
 		path := filepath.Join(dir, name)
 		if _, err := os.Lstat(path); err == nil {
 			return fmt.Errorf("%s already exists", name)
@@ -147,12 +148,24 @@ func seedDemo(dir string) error {
 	if err := os.WriteFile(filepath.Join(dir, demoSignedName), []byte(signed), 0o644); err != nil {
 		return err
 	}
-	if err := sess.EncryptFileWithOpts(ctx, notePath, filepath.Join(dir, demoEncName), rnp.EncryptOptions{
+	encOpts := rnp.EncryptOptions{
 		RecipientFprints: []string{alice.Fingerprint, bobFP},
 		Cipher:           "AES256",
 		Compression:      "zlib",
 		Armor:            false,
-	}); err != nil {
+	}
+	if err := sess.EncryptFileWithOpts(ctx, notePath, filepath.Join(dir, demoEncName), encOpts); err != nil {
+		return err
+	}
+	encOpts.Armor = true
+	cipher, err := sess.EncryptText(ctx, demoNoteBody, encOpts)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(cipher, "-----BEGIN PGP MESSAGE-----") {
+		return errors.New("armored demo ciphertext is not a PGP message")
+	}
+	if err := os.WriteFile(filepath.Join(dir, demoEncArmorName), []byte(cipher), 0o644); err != nil {
 		return err
 	}
 	return sess.SaveTo(ctx, dir)

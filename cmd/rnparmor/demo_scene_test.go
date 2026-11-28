@@ -74,11 +74,15 @@ func TestDemoKeysScenePrefersAlice(t *testing.T) {
 func TestDemoTextSceneToast(t *testing.T) {
 	dir := t.TempDir()
 	note := "RnpArmor portable OpenPGP demo message.\n"
-	armor := "-----BEGIN PGP SIGNED MESSAGE-----\ndemo\n"
+	signed := "-----BEGIN PGP SIGNED MESSAGE-----\ndemo\n"
+	armor := "-----BEGIN PGP MESSAGE-----\ndemo\n-----END PGP MESSAGE-----\n"
 	if err := os.WriteFile(filepath.Join(dir, demoNoteName), []byte(note), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, demoSignedName), []byte(armor), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, demoSignedName), []byte(signed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, demoEncryptedArmorName), []byte(armor), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("RNPARMOR_DEMO_SCENE", "text")
@@ -87,13 +91,16 @@ func TestDemoTextSceneToast(t *testing.T) {
 	if s.tab != 1 || s.textInput != note || s.textOutput != armor {
 		t.Fatalf("text tab=%d in=%q out=%q", s.tab, s.textInput, s.textOutput)
 	}
+	if s.textOp != studioOpEncrypt || s.textEncMode != encModePubKey || s.textSplitPct != studioSplitDefault || s.textAdvOpen || s.textEncHybrid || s.textEncModeTouched {
+		t.Fatalf("text studio op=%d mode=%d split=%v adv=%v hybrid=%v touched=%v", s.textOp, s.textEncMode, s.textSplitPct, s.textAdvOpen, s.textEncHybrid, s.textEncModeTouched)
+	}
 	if s.encRecipients != "ALICEFP, BOBFP" || s.textSigner != "CAROLFP" {
 		t.Fatalf("parties rec=%q signer=%q", s.encRecipients, s.textSigner)
 	}
 	if len(s.pendingToasts) != 1 || s.pendingToasts[0].Timeout != demoToastLifetime || s.pendingToasts[0].Timeout == toastLifetime {
 		t.Fatalf("toast %+v", s.pendingToasts)
 	}
-	if s.pendingToasts[0].Title != "Text signed" || s.pendingToasts[0].Description != "Done" || s.pendingToasts[0].Type != "success" {
+	if s.pendingToasts[0].Title != "Text encrypted" || s.pendingToasts[0].Description != "Done" || s.pendingToasts[0].Type != "success" {
 		t.Fatalf("toast copy %+v", s.pendingToasts[0])
 	}
 	if demoToastLifetime != 12*time.Second {
@@ -112,6 +119,9 @@ func TestDemoFileAndPacketScenes(t *testing.T) {
 	s.applyDemoScene()
 	if s.tab != 2 || s.fileSrc != filepath.Join(dir, demoNoteName) || s.fileDst != filepath.Join(dir, demoEncryptedName) || s.fileSig != filepath.Join(dir, demoSignedName) {
 		t.Fatalf("file src=%s dst=%s sig=%s", s.fileSrc, s.fileDst, s.fileSig)
+	}
+	if s.fileOp != studioOpEncrypt || s.fileSplitPct != studioSplitDefault || s.fileAdvOpen || s.fileEncHybrid || s.fileEncModeTouched {
+		t.Fatalf("file studio op=%d split=%v adv=%v hybrid=%v touched=%v", s.fileOp, s.fileSplitPct, s.fileAdvOpen, s.fileEncHybrid, s.fileEncModeTouched)
 	}
 	if s.encRecipients != "ALICEFP, BOBFP" || len(s.pendingToasts) != 0 {
 		t.Fatalf("file recipients %q toasts %d", s.encRecipients, len(s.pendingToasts))

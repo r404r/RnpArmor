@@ -20,6 +20,8 @@ Supported release targets:
 
 Release packages are published via `.github/workflows/release.yml` (`v0.0.1`–`v0.0.10` have been released: `v0.0.2` added Apache-2.0 licensing, Linux runtime screenshots, multi-platform icons, and the initial bilingual User Guide; `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 master-detail Key Manager / native folder picker and Phase 2 keyring pickers / native file browse and save dialogs; `v0.0.5` added PR #14 `+ New Key` algorithm presets/parameter linking/tri-lingual tips and PR #15 hierarchical collapsible subkey tree & full subkey lifecycle management; `v0.0.6` delivered PR #16 empty-passphrase RFC 4880 unprotected key generation and `No Passphrase` lifecycle support; `v0.0.7` shipped PR #17 pinned bottom status bar & graded notification feedback plus PR #18 light Fluent & frosted-glass UI refresh; `v0.0.8` shipped PR #19 refreshing all 11 Linux demo screenshots across the docs and PR #20 adding `+ New Key` passphrase visibility toggles, live mismatch blocking, and real `librnp` op-API key expiration; `v0.0.9` delivered PR #21 extending the show/hide passphrase eye toggle across all remaining password inputs, PR #22 switching Windows CI builds to package pinned prebuilt `r404r/rnp@v0.18.1-win.2` DLLs, and PR #23 refreshing the `v0.0.9` screenshots; `v0.0.10` delivered PR #24 adding the macOS Application menu with `Cmd+Q` and tri-lingual quit confirmation with active-operation warning across platforms).
 
+The `feat/beginner-friendly-studios` workspace changes described above are not yet released.
+
 ### Verifying Release Checksums
 
 Each release provides a combined checksum file `rnparmor-<TAG>-SHA256SUMS.txt` alongside the platform archives. Verify your download before extracting or installing:
@@ -212,67 +214,28 @@ Use this workspace as a master-detail key manager to browse your keyring folder,
 
 ### Workspace 2: `② Text Studio`
 
-Use this workspace for ASCII-armored text encryption, decryption, signing, and verification (showing demo plaintext, recipient picker & fingerprint list, `AES256` / `zlib`, signer dropdown, and the 4 text operation buttons):
+The four task tabs use a left input pane and a right result pane (initially 54% / 46%). The interface supports English, Simplified Chinese, and Japanese.
 
 ![RnpArmor Text Studio (English, Linux runtime)](screenshots/rnparmor-linux-text-en.png)
 
-**Fields:**
-
-- **Plain text**: defaults to `"hello from RnpArmor"`. You can also paste an external ASCII-armored PGP ciphertext (`-----BEGIN PGP MESSAGE-----`) here to run **Decrypt text**, or paste an external `cleartext` / `inline` signed PGP block (`-----BEGIN PGP SIGNED MESSAGE-----` / `-----BEGIN PGP MESSAGE-----`) here to run **Verify text**.
-- **Recipients (comma fp)**:
-  - **Keyring picker**: select any loaded primary key from the dropdown (`UID [Key ID]`) and click **`+ Add`** to append its fingerprint to the comma-separated list (case- and whitespace-insensitive deduplication preserves existing entries); click **`Clear`** to empty the list.
-  - **Manual entry**: paste or edit comma-separated fingerprints directly in the text box (`Comma-separated fingerprints`). If no keys are loaded yet, you can still paste fingerprints directly.
-  - **Fallback**: if both **Recipients** and **Password** are empty, RnpArmor automatically falls back to the currently **Selected** key (preferring a certifiable primary secret key by default).
-- **Password**: optional masked symmetric encryption password (placeholder `Symmetric passphrase`, paired with an independent eye show/hide toggle and localized **`Show passphrase`** / **`Hide passphrase`** tooltip; can be combined with recipients, or used alone without falling back to the **Selected** key).
-- **Cipher / Compression**: cipher (`AES256`, `AES192`, `AES128`, `Camellia256`; default `AES256`), compression (`zlib`, `bzip2`, `zip`, `uncompressed`; default `zlib`), and **Encrypt+Sign** toggle.
-- **Sign mode**: `cleartext`, `detached` (default), or `inline` (attached OpenPGP signature).
-- **Signer fingerprint**:
-  - **Signer dropdown**: lists loaded primary keys that have a secret key, starting with **`Use selected key (default)`**. Switching entries updates the fingerprint override field; choosing **`Use selected key (default)`** clears the override so **Encrypt+Sign** and **Sign text** use the currently **Selected** key.
-  - **Manual override**: paste or type a custom fingerprint in the text field below (`Fingerprint override`) to override without altering the dropdown until changed.
-- **Detached verify sig**: paste a detached ASCII-armored signature here when verifying a detached signature against the text in **Plain text**.
-
-**Operations:**
-
-- **Encrypt text**: encrypts **Plain text** to **result output** (and stages the armored message internally for immediate one-click testing with **Decrypt text**). If **Recipients** and **Password** are both blank, encrypts to the currently **Selected** key.
-- **Decrypt text**: decrypts an ASCII-armored message (`-----BEGIN PGP MESSAGE-----`) pasted directly into **Plain text**; if **Plain text** does not contain a ciphertext block, falls back to the message staged from **Encrypt text** / **Sign text** (or shown in **result output**), then prints the plaintext to **result output**.
-- **Sign text**: signs **Plain text** using the selected **Sign mode** (`cleartext`, `detached`, or `inline`, with `SHA256`) and prints the result to **result output** (for `detached`, also copies the signature into **Detached verify sig**).
-- **Verify text**:
-  - When **Detached verify sig** is non-empty: verifies **Plain text** (or the staged plaintext if **Plain text** is blank) against **Detached verify sig**.
-  - When **Detached verify sig** is empty: verifies a `cleartext` or `inline` PGP block pasted directly into **Plain text**, or falls back to the signed message staged from **Sign text** (or in **result output**).
-  - Displays:
-    - Mathematical validity badge: `[Math: VALID]` or `[Math: INVALID]`
-    - Identity trust badge: `[Identity: UNVERIFIED]` or `[Identity: TRUSTED]` *(always `UNVERIFIED` in this release because RnpArmor reports cryptographic validity only and does not assert policy trust)*
-    - Metadata lines: `Status`, `KeyID`, `Fingerprint`, `Hash`, `Created`, `Expires`.
+1. **Encrypt**: enter text under **Text to encrypt**. Choose **Encrypt with a password** and enter matching **Encryption password** and **Confirm encryption password**, or choose **Encrypt to a public key** and add recipient fingerprints. With no available public key, password mode is selected by default; otherwise public-key mode is selected. Your manual choice is retained. The app does not silently use the selected key as an encryption recipient. Password fields have eye toggles; a mismatch is shown while editing a nonempty confirmation and missing or mismatched passwords block submission.
+2. Open **Advanced** if needed to choose cipher and compression, enable encryption with signing, or enable hybrid encryption. Hybrid is off by default and requires both recipients and a matching password; either method can decrypt the result, so it is not a double lock. Otherwise only the selected method's credentials are submitted. Encrypt to show ciphertext in the result pane; use **Copy result**, **Clear**, or **Send to decrypt test**.
+3. **Decrypt**: paste the armored message into **PGP message to decrypt**, or send the encryption result to this task. Enter the optional decrypt password or key passphrase here and decrypt. A nonempty local value takes priority; when blank, the Portable Keyring session passphrase or an unprotected key is used.
+4. **Sign**: enter text, select a signature mode and signer, and optionally enter the key passphrase on this page. The same local-first passphrase fallback applies. Copy the signature or use **Send to verify test**.
+5. **Verify**: paste the signed block or text into the verification input; for a detached signature, also supply the separate signature block. The result reports signature validity and metadata; mathematical validity does not establish identity trust.
 
 ### Workspace 3: `③ File Workbench`
 
-Use this workspace to encrypt, decrypt, sign, and verify files on disk safely using native file pickers and self-contained recipient/signer controls:
+The file page has the same four tasks and initial 54% / 46% split. The left pane contains the task fields; the right shows a task summary and output or verification report.
 
 ![RnpArmor File Workbench (English, Linux runtime)](screenshots/rnparmor-linux-file-en.png)
 
-**Fields & Native File Dialogs:**
+1. **Encrypt**: select a source and new destination using **Browse...** and **Save As...**. Choose password or public-key encryption and complete its fields as described for Text Studio. Advanced options include cipher, compression, signing and optional hybrid encryption. A destination ending in `.asc` uses ASCII armor.
+2. **Decrypt**: select the encrypted source and a new destination. Enter the optional decrypt password or key passphrase on this page; a blank field falls back to the Portable Keyring session passphrase or an unprotected key.
+3. **Sign**: choose the source, signature output path, signing mode and signer; enter an optional local key passphrase. The local value takes priority over the session passphrase.
+4. **Verify**: select the source; enable detached verification and select the signature path for a detached signature. For an inline signature, leave detached verification off.
 
-- **Source**: file path text box + **`Browse...`** native Open dialog (defaults to showing **`All files`** first, with **`OpenPGP`** filter available).
-- **Destination**: file path text box + **`Save As...`** native Save dialog (defaults to **`All files`** first; starts in **Source**'s directory if **Destination** is blank, falling back to **Workspace**).
-- **Signature path**: file path text box + both **`Browse...`** (for selecting an existing signature when verifying) and **`Save As...`** (for choosing output signature path when signing); both default to the **`OpenPGP`** filter (`.asc`, `.pgp`, `.gpg`, `.key`, `.sig`) first and **`All files`** second.
-- **Detached verify**: toggle **`Detached`** on when verifying a detached signature file.
-- **Recipients (comma fp)**, **Password** (masked, sharing the password value with **Text Studio** while keeping an independent eye show/hide toggle), **Signer fingerprint**, and **Encrypt+Sign**: embedded directly in **File Workbench** and shared with **Text Studio**, so you can configure recipients, passphrase, signer, and **Encrypt+Sign** without switching tabs.
-
-**Important Path & Safety Rules:**
-
-- All paths (**Source**, **Destination**, **Signature path**) must be **absolute paths** (the native **`Browse...`** / **`Save As...`** dialogs fill absolute paths automatically).
-- **Source** and **Destination** cannot be the same path.
-- **Non-overwrite protection**: RnpArmor refuses to overwrite an existing **Destination** or **Signature path** (`refusing to overwrite an existing file`). Choose a new output filename each time.
-- **Size limit**: regular files only, non-empty, up to **32 MiB** (`MaxInput`) input and **40 MiB** (`MaxOutput`) in-memory output.
-
-**Operations:**
-
-- **Encrypt file**: pick or enter **Source** and **Destination**, configure **Recipients**, **Password**, or **Encrypt+Sign** right in **File Workbench** (or **Cipher / Compression** in **Text Studio**; falls back to the currently **Selected** key if both recipients and password are blank), then click **Encrypt file**. Output uses ASCII armor automatically when **Destination** ends with `.asc` (otherwise binary OpenPGP).
-- **Decrypt file**: pick or enter **Source** (encrypted file) and **Destination** (new output path), then click **Decrypt file**.
-- **Sign file**: pick or enter **Source** and **Signature path**, optionally pick a **Signer** (or choose **Sign mode** `detached`/`inline` in **Text Studio**; armored with `SHA256`), and click **Sign file**.
-- **Verify file**:
-  - For detached verification: toggle **Detached** on, pick **Source** (original file) and **Signature path** (`.asc`/`.sig` file via **`Browse...`**), and click **Verify file**.
-  - For inline signed files: toggle **Detached** off, pick **Source** (signed file), and click **Verify file**.
+Paths must be absolute. The source and destination must differ, and existing output files are not overwritten. Inputs must be regular, non-empty files up to 32 MiB; the in-memory output limit is 40 MiB.
 
 ### Workspace 4: `④ Packet & Features`
 
@@ -309,7 +272,7 @@ Use this workspace to load, save, and migrate explicit portable keyrings, or to 
 ### Security Reminders
 
 - **Notification redaction & safe secret handling**: status toasts never embed passphrase or key contents, and **`AlertDialog`** error/result messages pass through `safeNotice` to mask in-memory passphrases (`••••`) and hide any `BEGIN PGP PRIVATE` / `BEGIN PGP SECRET` blocks (*"The details were hidden because they may contain key material."*).
-- **Masked passphrases & concealed secret copies**: RnpArmor never pre-fills a default passphrase (`""` at startup). All 8 passphrase and symmetric password inputs across **New Key**, **Text Studio**, **File Workbench**, **Portable Keyring**, and the three subkey lifecycle modals (**Add Subkey**, **Change Expiry**, **Revoke**) default to masked mode with a right-side eye show/hide toggle (auto-resetting to hidden whenever modal dialogs open, close, or finish submitting). **Copy Secret** marks clipboard content as concealed; exported secret key files and `.rev.asc` revocation certificates are written with `0600` permissions on Unix. If you intentionally leave both passphrase fields blank to create a **`No Passphrase`** secret key, its private key packets are stored unencrypted (`secring.gpg` and exports still keep `0600` file mode on Unix, but anyone obtaining the file can use the key without a passphrase); use a strong passphrase for everyday primary keys and reserve unprotected keys for isolated local testing or controlled automation.
+- **Masked passphrases & concealed secret copies**: RnpArmor never pre-fills a default passphrase (`""` at startup). The passphrase and symmetric password inputs across **New Key**, **Text Studio**, **File Workbench**, **Portable Keyring**, and the three subkey lifecycle modals (**Add Subkey**, **Change Expiry**, **Revoke**) default to masked mode with a right-side eye show/hide toggle (auto-resetting to hidden whenever modal dialogs open, close, or finish submitting). **Copy Secret** marks clipboard content as concealed; exported secret key files and `.rev.asc` revocation certificates are written with `0600` permissions on Unix. If you intentionally leave both passphrase fields blank to create a **`No Passphrase`** secret key, its private key packets are stored unencrypted (`secring.gpg` and exports still keep `0600` file mode on Unix, but anyone obtaining the file can use the key without a passphrase); use a strong passphrase for everyday primary keys and reserve unprotected keys for isolated local testing or controlled automation.
 - **No implicit system keyring**: RnpArmor never reads or modifies `~/.gnupg` or any default OS keyring.
 - **Math validity vs. identity trust**: `[Math: VALID]` confirms the cryptographic signature matches the key and data; `[Identity: UNVERIFIED]` reminds you that RnpArmor does not evaluate Web-of-Trust or policy trust. Always verify key fingerprints out-of-band.
 - **In-flight call cancellation**: An active `librnp` C call cannot be interrupted mid-flight; timeouts discard the result only after the C call finishes.
