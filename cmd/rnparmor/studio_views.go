@@ -279,7 +279,7 @@ func (s *uiState) passwordPair(c *ui.Context, file bool) {
 		s.passphraseRow(c, pass, show, s.tr("placeholder.symm_pass"))
 	})
 	ui.Field(c, s.tr("label.enc_password2"), func() {
-		s.passphraseRow(c, pass2, show2, s.tr("placeholder.confirm_pass"))
+		s.passphraseRow(c, pass2, show2, s.tr("placeholder.enc_password2"))
 	})
 	if passConfirmMismatch(*pass, *pass2) {
 		ui.Text(c, s.tr("hint.pass_mismatch_live")).TextColor(c.Theme().Danger)

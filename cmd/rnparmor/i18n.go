@@ -1269,6 +1269,11 @@ var i18nCatalog = map[string]map[Lang]string{
 		LangZH: "对称口令",
 		LangJA: "共通鍵のパスフレーズ",
 	},
+	"placeholder.enc_password2": {
+		LangEN: "Re-enter the encryption password",
+		LangZH: "再次输入加密密码",
+		LangJA: "暗号化パスワードを再入力",
+	},
 	"dlg.browse_source": {
 		LangEN: "Choose source file",
 		LangZH: "选择源文件",

@@ -1260,7 +1260,7 @@ func TestStudioKeyPickersAndFileDialogPaths(t *testing.T) {
 	newKeys := []string{
 		"btn.add_recipient", "btn.clear_recipients", "btn.browse", "btn.save_as",
 		"signer.use_selected", "empty.recipient_keys",
-		"placeholder.recipients", "placeholder.signer", "placeholder.symm_pass",
+		"placeholder.recipients", "placeholder.signer", "placeholder.symm_pass", "placeholder.enc_password2",
 		"dlg.browse_source", "dlg.save_destination", "dlg.browse_signature", "dlg.save_signature", "dlg.browse_packet",
 		"filter.openpgp", "filter.all_files",
 	}
@@ -1992,7 +1992,7 @@ func TestI18nComplete(t *testing.T) {
 		"btn.paste", "btn.clear", "btn.copy_result", "btn.copy_report",
 		"btn.send_decrypt", "btn.send_verify", "btn.goto_keys",
 		"label.encrypt_input", "label.decrypt_input", "label.sign_input", "label.verify_input",
-		"label.enc_password", "label.enc_password2", "label.decrypt_pass", "label.sign_pass",
+		"label.enc_password", "label.enc_password2", "placeholder.enc_password2", "label.decrypt_pass", "label.sign_pass",
 		"label.studio_advanced", "mode.password", "mode.pubkey",
 		"hint.hybrid_on", "hint.decrypt_pass", "hint.pass_mismatch_live",
 		"err.enc_password_empty", "err.enc_recipients_empty", "err.passphrase_mismatch",
