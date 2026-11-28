@@ -33,11 +33,11 @@ Linux runtime main-window screenshot (`1120×780`, integrated `File / Workspace 
 <details>
 <summary>Additional workspaces &amp; standalone About window screenshots (English)</summary>
 
-**Text Studio** (`② Text Studio`, pre-filled demo plaintext, recipient picker & fingerprint list, `AES256` / `zlib`, signer selector, and 4 text action buttons):
+**Text Studio** (`② Text Studio`, four task tabs and a split input/result layout):
 
 ![RnpArmor Text Studio (English, Linux runtime)](docs/screenshots/rnparmor-linux-text-en.png)
 
-**File Workbench** (`③ File Workbench`, demo source/destination/signature paths, recipient fingerprints, and 4 file action buttons):
+**File Workbench** (`③ File Workbench`, four task tabs and a split task/summary layout):
 
 ![RnpArmor File Workbench (English, Linux runtime)](docs/screenshots/rnparmor-linux-file-en.png)
 
@@ -174,24 +174,16 @@ Linux runtime main-window screenshot (`1120×780`, integrated `File / Workspace 
 
 ### 2) Text studio
 
-- Keyring primary-key recipient dropdown with `+ Add` / `Clear` (case- and whitespace-insensitive deduplication) alongside manual comma-separated fingerprint editing; falls back to the selected key when both recipients and password are empty.
-- Masked symmetric `Password` input via `passphraseRow` (`Password` mode + independent `rnpPassEye` show/hide toggle with tri-lingual tooltip and accessibility label).
-- Secret-only primary signer dropdown (`Use selected key (default)` first) paired with a manual fingerprint override field.
-- Encrypt text (recipient and/or password modes, optional sign-on-encrypt).
-- Decrypt text (supports pasting external armored PGP ciphertext directly into Plain text, or staged output).
-- Sign text in three modes:
-  - cleartext
-  - detached
-  - inline
-- Verify text with signature metadata output (supports pasted external cleartext/inline blocks, detached signatures, or staged output).
+- Select one of four tasks: Encrypt, Decrypt, Sign, or Verify. The left pane holds task inputs and the right pane shows results; the initial split is 54% / 46%.
+- Encryption uses either a password or recipient public keys. With no available public key, password mode is the default; otherwise public-key mode is the default. A manual choice is retained. Neither method silently falls back to the selected key.
+- Password encryption requires matching password and confirmation fields, with eye toggles and live mismatch feedback once confirmation is nonempty; submission rejects empty or mismatched passwords. Public-key mode requires recipients. Only the selected method's credentials are submitted unless hybrid encryption is enabled.
+- Collapsed Advanced options include cipher, compression, Encrypt and sign, and optional hybrid encryption. Hybrid is off by default; either the public key or the password can decrypt, so it is not a double lock.
+- Decrypt and Sign accept an optional local passphrase, preferred over the Portable Keyring session passphrase; a blank field falls back to that passphrase or an unprotected key. Paste ciphertext in the Decrypt task. Copy or clear results, or send encrypted and signed results to the corresponding test task.
 
 ### 3) File workbench
 
-- Native file dialogs alongside path fields: `Source` (`Browse...`, defaults to `All files`), `Destination` (`Save As...`, defaults to `All files`), and `Signature path` (`Browse...` + `Save As...`, defaults to `OpenPGP` filter).
-- Self-contained embedded controls shared with Text Studio (`Recipients (comma fp)`, symmetric `Password` paired with an independent `rnpPassEye` show/hide toggle, `Signer fingerprint`, and `Encrypt+Sign` toggle) so file tasks do not require switching tabs.
-- Encrypt/decrypt files.
-- Sign/verify files (detached and inline flows).
-- Keeps non-overwrite publish behavior aligned with internal file safety utilities.
+- The same four-task split layout, encryption choices, confirmation, advanced options, and local decrypt/sign passphrase apply to files.
+- Native file dialogs select source, destination, and signature paths. The right pane shows a task summary and output or verification report; file output retains absolute-path and non-overwrite protections.
 
 ### 4) Packet & features
 
@@ -395,13 +387,15 @@ Workflow: `.github/workflows/linux-screenshot.yml`
 
 - Dynamic library loading is constrained and integrity-checked.
 - No implicit default keyring read/write path.
-- Passphrase callback re-entry is blocked by design; startup starts with an empty passphrase (no pre-filled default), all 8 UI passphrase/password inputs (`+ New Key` Passphrase & Confirm Passphrase, Text Studio Password, File Workbench Password, Portable Keyring Passphrase, and Add Subkey / Change Expiry / Revoke Subkey dialogs) default to masked mode with a `rnpPassEye` reveal toggle (auto-resetting on modal open, close, and submit), secret-key clipboard copies use concealed mode, and error/alert notices redact in-memory passphrases (`••••`) and `BEGIN PGP PRIVATE` / `BEGIN PGP SECRET` blocks (`The details were hidden because they may contain key material.`). When both passphrase fields in `+ New Key` are intentionally left empty to generate a `No Passphrase` key, secret key packets are stored unencrypted on disk (with `0600` permissions on Unix); reserve unprotected secret keys for isolated local/automated testing or scenarios where plaintext-at-rest risk is acceptable, and use a strong passphrase for everyday primary keys.
+- Passphrase callback re-entry is blocked by design; startup starts with an empty passphrase (no pre-filled default), UI passphrase and password inputs default to masked mode with a `rnpPassEye` reveal toggle (auto-resetting on modal open, close, and submit), secret-key clipboard copies use concealed mode, and error/alert notices redact in-memory passphrases (`••••`) and `BEGIN PGP PRIVATE` / `BEGIN PGP SECRET` blocks (`The details were hidden because they may contain key material.`). When both passphrase fields in `+ New Key` are intentionally left empty to generate a `No Passphrase` key, secret key packets are stored unencrypted on disk (with `0600` permissions on Unix); reserve unprotected secret keys for isolated local/automated testing or scenarios where plaintext-at-rest risk is acceptable, and use a strong passphrase for everyday primary keys.
 - Large input/output caps are enforced in memory paths.
 - Portable test guidance remains: do not use real production keys/passphrases in this stage.
 
 ## Repository Status Notes
 
 - `v0.0.1`–`v0.0.10` have been released across macOS (`arm64`), Linux (`amd64`), and Windows (`amd64`): `v0.0.2` added Apache-2.0 licensing ([`LICENSE`](LICENSE)), Linux runtime screenshots, multi-platform application icons, and the bilingual user guides ([`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) / [`docs/USER_GUIDE.zh-CN.md`](docs/USER_GUIDE.zh-CN.md)); `v0.0.3` fixed the GUI action deadlock and keyring persistence edge cases; `v0.0.4` shipped Phase 1 (master-detail Key Manager, 16/40-char ID switch, masked New Key dialog, public-only empty-passphrase startup, native folder picker) and Phase 2 (`cmd/rnparmor/studio_ui.go` recipient/signer pickers, masked symmetric passphrase, native file `Browse...` / `Save As...` dialogs), plus release upload hardening; `v0.0.5` delivered PR #14 (`+ New Key` algorithm presets, curve/size linking, tri-lingual tips, `Primary Key / Subkey` terminology, `TestKeygenPresetsSyncAndTips`) and PR #15 (`cmd/rnparmor/subkey_ui.go`, left-pane hierarchical collapsible subkey tree, full subkey lifecycle `AddSubkey`/`SetKeyExpiration`/`RevokeKey`/`DeleteSubkey`, `TestSubkeyLifecycle`, `TestSubkeyTableExpiryUsageAndCatalog`, and expanded `TestUIStateActionsEndToEnd`); `v0.0.6` delivered PR #16 (RFC 4880 empty-passphrase unprotected key generation, `No Passphrase` badges, optional passphrases across subkey lifecycle and crypto flows, `TestEmptyPassphraseKeyLifecycle`, and `TestUIStateEmptyPassphraseLifecycle`); `v0.0.7` delivered PR #17 (`cmd/rnparmor/feedback_ui.go`, pinned bottom status bar, click-to-copy library path toast, Scheme A graded result notifications, `TestI18nComplete`, `TestStatusBarAndFeedback`) and PR #18 (`cmd/rnparmor/style_ui.go` light Fluent theme honoring system high-contrast/text-scale/accent preferences, `#edf1f7`/Windows 11 Mica canvas + white `rnpCard` panels, raised gradient/1-DIP-press buttons, Windows/Linux integrated menu bar vs macOS system menu bar, `mygo/plugins/glass` frosted popovers/menus/toasts, `TestFluentGlassChrome`); `v0.0.8` shipped PR #19 (`cmd/seeddemo`, 11 refreshed Linux runtime demo screenshots embedded across the bilingual docs) and PR #20 (`rnpPassEye` show/hide toggles in `+ New Key`, live/submit mismatch blocking, `GenerateKeyWithSpec` migration to `librnp` `rnp_op_generate_*` for real `Never` & duration expiration, `TestGenerateKeyExpiration`, and expanded `TestKeyManagerFilterSearchSortAndForms`); `v0.0.9` delivered PR #21 (`passphraseRow` / `rnpPassEye` show/hide toggles across all 8 app-wide password inputs + `TestPassphraseEyeEverywhere`), PR #22 (Windows prebuilt `r404r/rnp@v0.18.1-win.2` CI pipeline via `-Stage prebuilt-rnp` with sibling runtime DLLs, licenses, `SHA256SUMS`, and recursive PE import audit), and PR #23 (`v0.0.9` Linux demo screenshot refresh across bilingual docs); `v0.0.10` delivered PR #24 (standard macOS Application menu with `About`, `Services`, `Hide`/`Hide Others`/`Show All`, and `Cmd+Q`-bound `Quit`, tri-lingual quit confirmation dialog with active-operation warning for macOS `Cmd+Q` / Application `Quit` / Dock `Quit` and cross-platform `File → Quit`, unblocked `SessionEnding` / `×` / Linux `SIGTERM`, plus `TestMenuTemplateForOS` and `TestQuitConfirmState`).
+
+The `feat/beginner-friendly-studios` branch contains the text and file workspace changes described above; they are not yet released.
 - Desktop manual UX validation—including Windows 10/11 Chinese IME, high-DPI, and Inno Setup installer flow, plus macOS Apple Silicon first-launch Gatekeeper handling—remains environment-dependent and must be confirmed in dedicated manual runs.
 
 ## License
