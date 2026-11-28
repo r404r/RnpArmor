@@ -123,14 +123,18 @@ func TestUserConfigRoundTripOmitsSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Mode().Perm() != 0o600 {
-		t.Fatalf("config mode %o, want 600", fi.Mode().Perm())
+	// Windows does not store Unix permission bits. Go reports 0666/0777
+	// there, so the 0600/0700 checks only run on Unix.
+	if runtime.GOOS != "windows" {
+		if fi.Mode().Perm() != 0o600 {
+			t.Fatalf("config mode %o, want 600", fi.Mode().Perm())
+		}
 	}
 	di, err := os.Stat(filepath.Dir(path))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if di.Mode().Perm() != 0o700 {
+	if runtime.GOOS != "windows" && di.Mode().Perm() != 0o700 {
 		t.Fatalf("config dir mode %o, want 700", di.Mode().Perm())
 	}
 
