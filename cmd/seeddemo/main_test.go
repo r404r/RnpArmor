@@ -62,7 +62,7 @@ func TestSeedLive(t *testing.T) {
 	if err := seedDemo(dir); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"pubring.gpg", "secring.gpg", demoNoteName, demoSignedName, demoEncName} {
+	for _, name := range []string{"pubring.gpg", "secring.gpg", demoNoteName, demoSignedName, demoEncName, demoEncArmorName} {
 		st, err := os.Stat(filepath.Join(dir, name))
 		if err != nil || st.Size() == 0 {
 			t.Fatalf("%s: %v size=%d", name, err, sizeOf(st))
@@ -79,6 +79,10 @@ func TestSeedLive(t *testing.T) {
 	enc, err := os.ReadFile(filepath.Join(dir, demoEncName))
 	if err != nil || bytes.HasPrefix(enc, []byte("-----")) {
 		t.Fatal("encrypted file is not binary")
+	}
+	msg, err := os.ReadFile(filepath.Join(dir, demoEncArmorName))
+	if err != nil || !bytes.Contains(msg, []byte("-----BEGIN PGP MESSAGE-----")) || bytes.Contains(msg, []byte("BEGIN PGP SIGNED MESSAGE")) {
+		t.Fatalf("armored ciphertext %v", err)
 	}
 
 	pass := []byte(demoPassphrase)

@@ -11,11 +11,12 @@ import (
 )
 
 const (
-	demoNoteName      = "demo-note.txt"
-	demoSignedName    = "demo-signed.asc"
-	demoEncryptedName = "demo-encrypted.pgp"
-	demoNoteFallback  = "RnpArmor portable OpenPGP demo message."
-	demoToastLifetime = 12 * time.Second
+	demoNoteName           = "demo-note.txt"
+	demoSignedName         = "demo-signed.asc"
+	demoEncryptedName      = "demo-encrypted.pgp"
+	demoEncryptedArmorName = "demo-encrypted.asc"
+	demoNoteFallback       = "RnpArmor portable OpenPGP demo message."
+	demoToastLifetime      = 12 * time.Second
 )
 
 // demoScene is the screenshot hook. An empty or unknown value keeps the
@@ -75,11 +76,11 @@ func (s *uiState) applyDemoText() {
 	s.textEncHybrid = false
 	s.textAdvOpen = false
 	s.textInput = demoPlainText(s.workspace)
-	s.textOutput = readDemoFile(s.workspace, demoSignedName)
+	s.textOutput = readDemoFile(s.workspace, demoEncryptedArmorName)
 	alice, bob, carol := demoPartyPrints(s.keys)
 	s.encRecipients = joinDemoRecipients(alice, bob)
 	s.textSigner = carol
-	s.enqueueToastFor(s.tr("toast.text_signed"), s.tr("toast.done"), "success", demoToastLifetime)
+	s.enqueueToastFor(s.tr("toast.text_encrypted"), s.tr("toast.done"), "success", demoToastLifetime)
 }
 
 func (s *uiState) applyDemoFile() {
